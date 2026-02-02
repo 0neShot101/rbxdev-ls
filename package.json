@@ -1,0 +1,44 @@
+{
+  "name": "ts",
+  "version": "0.0.1",
+  "description": "t",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "setup": "bun install && bun run setup.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "start": "bun dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/**/*.{ts,tsx} --fix",
+    "lint:check": "eslint src/**/*.{ts,tsx}",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "bun",
+    "typescript",
+    "template",
+    "eslint",
+    "prettier",
+    "setup-script"
+  ],
+  "author": "Andrew Tandy <andrewtandy12@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
