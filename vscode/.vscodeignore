@@ -1,0 +1,17 @@
+.vscode/**
+.github/**
+src/**
+scripts/**
+node_modules/**
+!node_modules/vscode-languageclient/**
+!node_modules/vscode-languageserver-protocol/**
+!node_modules/vscode-languageserver-types/**
+!node_modules/vscode-jsonrpc/**
+!node_modules/semver/**
+!node_modules/balanced-match/**
+!node_modules/brace-expansion/**
+*.ts
+*.map
+tsconfig.json
+bun.lock
+.gitignore
