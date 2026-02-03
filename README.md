@@ -1,131 +1,140 @@
-# TypeScript Project Template
+# rbxdev-ls
 
-[![Bun](https://img.shields.io/badge/Bun-000000?style=for-the-badge&logo=bun&logoColor=white)](https://bun.sh)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![ESLint](https://img.shields.io/badge/ESLint-4B3263?style=for-the-badge&logo=eslint&logoColor=white)](https://eslint.org)
-[![Prettier](https://img.shields.io/badge/Prettier-F7B93E?style=for-the-badge&logo=prettier&logoColor=black)](https://prettier.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+A fast, full-featured language server for Roblox Luau development.
 
-> A modern TypeScript project template with Bun runtime, featuring an epic setup wizard and best practices out of the box.
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
+![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)
 
-## 🚀 Features
+---
 
-- **⚡ Bun Runtime** - Fast package management and bundling
-- **🎯 TypeScript 5.0** - Full type safety with strict configuration
-- **🎨 ESLint + Prettier** - Code quality and consistent formatting
-- **📦 Zero Config** - Works out of the box with sensible defaults
-- **🧙‍♂️ Setup Wizard** - Interactive project initialization with random memes
-- **🔧 VS Code Ready** - Optimized settings and extension recommendations
+## Features
 
-## 🎭 Quick Start
+### Intelligent Completions
+- Full Roblox API — all classes, methods, properties, and events
+- Sunc executor functions out of the box
+- Live game tree completions when connected to an executor
+- Auto-import suggestions from your workspace modules
+- Context-aware table field completions
 
-1. **Use this template:**
+### Type Checking
+- Bidirectional type inference
+- `--!strict`, `--!nonstrict`, and `--!nocheck` modes
+- All Roblox datatypes (Vector3, CFrame, Color3, UDim2, etc.)
+- Generics, unions, intersections, and optional types
+- Inheritance-aware class typing
 
-2. **Run the setup wizard:**
+### Navigation
+- Go to definition
+- Find all references
+- Rename symbol across files
+- Document symbol outline
 
-   ```bash
-   bun run setup
-   ```
+### Editor Goodies
+- Hover docs with full type signatures
+- Signature help while typing function args
+- Semantic highlighting
+- Inlay hints for inferred types
+- Color picker for Color3 values
+- StyLua formatting integration
 
-3. **Start developing:**
-   ```bash
-   bun run dev
-   ```
+### Workspace Integration
+- Rojo project file support
+- DataModel path resolution
+- Automatic require path generation
 
-The setup wizard will:
+---
 
-- Configure your project name and description
-- Set up your author information (from git config)
-- Generate a clean `src/index.ts` entry point
-- Create a project-specific README
-- Format everything with Prettier
-- Clean up after itself
-
-## 📋 Available Scripts
-
-| Script                 | Description                      |
-| ---------------------- | -------------------------------- |
-| `bun run setup`        | Run the interactive setup wizard |
-| `bun run dev`          | Development with hot reload      |
-| `bun run build`        | Build for production             |
-| `bun start`            | Run the built application        |
-| `bun run lint`         | Lint and fix code                |
-| `bun run lint:check`   | Check for linting errors         |
-| `bun run format`       | Format code with Prettier        |
-| `bun run format:check` | Check code formatting            |
-| `bun run type-check`   | TypeScript type checking         |
-
-## 🏗️ Project Structure
-
-```
-├── src/
-│   └── index.ts          # Main entry point
-├── .eslintrc.cjs         # ESLint configuration
-├── .prettierrc           # Prettier configuration
-├── .gitattributes        # Git line ending enforcement
-├── .gitignore            # Git ignore rules
-├── .editorconfig         # Editor configuration
-├── tsconfig.json         # TypeScript configuration
-├── package.json          # Dependencies and scripts
-└── setup.ts              # Epic setup wizard (self-deleting)
-```
-
-## ⚙️ Configuration
-
-### TypeScript
-
-- Strict type checking enabled
-- Modern ES2022 target
-- Path aliases support ready
-- Declaration files generated
-
-### ESLint
-
-- TypeScript-specific rules
-- Import organization
-- Prettier integration
-- Custom rule preferences
-
-### Prettier
-
-- LF line endings enforced
-- Consistent code formatting
-- Works with ESLint
+## Installation
 
 ### VS Code
 
-- Auto-format on save
-- Extension recommendations
-- Workspace settings included
+```bash
+cd vscode
+bun install
+bun run package
+# Install the .vsix file
+```
 
-## 🎨 Code Style
+Or grab it from the releases page.
 
-This template enforces:
+### Standalone
 
-- **Arrow functions** preferred over function declarations
-- **const/let** over var (prefer const when possible)
-- **Import organization** with automatic sorting
-- **LF line endings** across all platforms
-- **No trailing semicolons** (handled by Prettier)
-- **Consistent quotes** and spacing
+```bash
+bun install
+bun run build
+```
 
-## 🛠️ Built With
-
-- [Bun](https://bun.sh) - Fast JavaScript runtime and package manager
-- [TypeScript](https://typescriptlang.org) - Type-safe JavaScript
-- [ESLint](https://eslint.org) - Code quality and consistency
-- [Prettier](https://prettier.io) - Code formatting
-
-## 📝 License
-
-MIT - see [LICENSE](LICENSE) for details.
-
-## 💡 Why This Template?
-
-- **Modern Stack**: Bun + TypeScript for maximum performance and type safety
-- **Developer Experience**: Everything configured for a smooth development workflow
-- **Best Practices**: Follows current TypeScript and Node.js best practices
-- **Fun Setup**: Because setting up projects should be enjoyable, not boring
-- **Zero Bloat**: Only includes what you actually need
+The server speaks LSP over stdio — plug it into any editor that supports language servers.
 
 ---
+
+## Usage
+
+Drop a mode comment at the top of your file:
+
+```lua
+--!strict
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- Full type inference and completions from here
+```
+
+### Executor Bridge
+
+The language server can connect to Roblox executors for live game data. When an executor connects to port `21324`:
+
+- Get completions from the actual game tree
+- See real Instance children and properties
+- No more guessing what exists at runtime
+
+---
+
+## Project Layout
+
+```
+src/
+├── @core/        # LSP server setup
+├── @parser/      # Luau lexer & parser
+├── @typings/     # Type system
+├── @definitions/ # Roblox API types
+├── @lsp/         # All the LSP handlers
+├── @executor/    # Runtime bridge
+└── @workspace/   # Rojo support
+```
+
+---
+
+## Development
+
+```bash
+bun run dev        # Watch mode
+bun run build      # Production build
+bun run type-check # Check types
+bun run lint       # Lint & fix
+bun run format     # Prettier
+```
+
+### Updating Roblox API
+
+```bash
+bun run fetch-api
+```
+
+Pulls the latest API dump from Roblox and regenerates type definitions.
+
+---
+
+## Contributing
+
+PRs welcome. If you're adding a feature, write a test for it.
+
+---
+
+## License
+
+MIT
