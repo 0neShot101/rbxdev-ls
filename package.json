@@ -1,34 +1,45 @@
 {
-  "name": "ts",
-  "version": "0.0.1",
-  "description": "t",
+  "name": "rbxdev-ls",
+  "version": "0.1.0",
+  "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/index.js",
+  "bin": {
+    "rbxdev-ls": "./dist/index.js"
+  },
   "type": "module",
   "scripts": {
-    "setup": "bun install && bun run setup.ts",
     "build": "bun build src/index.ts --outdir dist --target node",
     "start": "bun dist/index.js",
     "dev": "bun --watch src/index.ts",
     "clean": "rm -rf dist",
-    "lint": "eslint src/**/*.{ts,tsx} --fix",
-    "lint:check": "eslint src/**/*.{ts,tsx}",
+    "lint": "eslint src --ext .ts --fix",
+    "lint:check": "eslint src --ext .ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "fetch-api": "bun scripts/fetch-roblox-api.ts && bun scripts/fetch-sunc-api.ts"
   },
   "keywords": [
-    "bun",
-    "typescript",
-    "template",
-    "eslint",
-    "prettier",
-    "setup-script"
+    "roblox",
+    "luau",
+    "lua",
+    "language-server",
+    "lsp",
+    "sunc"
   ],
   "author": "Andrew Tandy <andrewtandy12@gmail.com>",
   "license": "MIT",
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "ws": "^8.19.0"
+  },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
