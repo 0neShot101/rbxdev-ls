@@ -18,6 +18,9 @@ module.exports = {
   'rules': {
     'prettier/prettier': ['error', {}, { 'usePrettierrc': true }],
     'no-unused-vars': 'off',
+    'no-redeclare': 'off',
+    '@typescript-eslint/no-redeclare': 'error',
+    'no-constant-condition': ['error', { 'checkLoops': false }],
     '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_' }],
     '@typescript-eslint/no-explicit-any': 'warn',
     '@typescript-eslint/explicit-function-return-type': 'off',

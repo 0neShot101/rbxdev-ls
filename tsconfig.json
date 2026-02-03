@@ -50,7 +50,16 @@
     // Modules
     "baseUrl": ".",
     "paths": {
-      // add your path aliases here
+      "@core/*": ["src/@core/*"],
+      "@parser/*": ["src/@parser/*"],
+      "@typings/*": ["src/@typings/*"],
+      "@analyzer/*": ["src/@analyzer/*"],
+      "@definitions/*": ["src/@definitions/*"],
+      "@lsp/*": ["src/@lsp/*"],
+      "@utils/*": ["src/@utils/*"],
+      "@workspace/*": ["src/@workspace/*"],
+      "@executor": ["src/@executor/index.ts"],
+      "@executor/*": ["src/@executor/*"]
     },
 
     // Emit Rules
