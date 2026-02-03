@@ -1,0 +1,142 @@
+{
+  "name": "rbxdev-ls",
+  "displayName": "Roblox Luau Language Server",
+  "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
+  "version": "0.1.0",
+  "publisher": "rbxdev",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "keywords": [
+    "roblox",
+    "luau",
+    "lua",
+    "sunc",
+    "language-server"
+  ],
+  "activationEvents": [
+    "onLanguage:lua",
+    "onLanguage:luau"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "luau",
+        "aliases": ["Luau", "luau"],
+        "extensions": [".luau"],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "lua",
+        "aliases": ["Lua", "lua"],
+        "extensions": [".lua"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "luau",
+        "scopeName": "source.luau",
+        "path": "./syntaxes/luau.tmLanguage.json"
+      },
+      {
+        "language": "lua",
+        "scopeName": "source.luau",
+        "path": "./syntaxes/luau.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Roblox Luau Language Server",
+      "properties": {
+        "rbxdev-ls.typeCheckMode": {
+          "type": "string",
+          "default": "strict",
+          "enum": ["nocheck", "nonstrict", "strict"],
+          "description": "Type checking mode (matches --!strict, --!nonstrict, --!nocheck)"
+        },
+        "rbxdev-ls.enableSuncApi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Sunc executor API completions and type checking"
+        },
+        "rbxdev-ls.executorBridge.port": {
+          "type": "number",
+          "default": 21324,
+          "description": "WebSocket port for executor bridge connections"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "rbxdev-ls.execute",
+        "title": "Execute in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.executeSelection",
+        "title": "Execute Selection in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.toggleBridge",
+        "title": "Toggle Executor Bridge"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "rbxdev-ls.execute",
+        "key": "ctrl+shift+e",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.executeSelection",
+        "key": "ctrl+shift+alt+e",
+        "when": "editorLangId == lua || editorLangId == luau && editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "rbxdev-ls.execute",
+          "when": "editorLangId == lua || editorLangId == luau",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "rbxdev-ls.execute",
+          "when": "editorLangId == lua || editorLangId == luau",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rbxdev-ls.executeSelection",
+          "when": "editorLangId == lua || editorLangId == luau && editorHasSelection",
+          "group": "1_modification"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run build-all",
+    "build-all": "cd .. && bun run build && cd vscode && tsc -p ./ && cp ../dist/index.js ./server/ && cp -r ../data ./server/",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.0.0"
+  }
+}
