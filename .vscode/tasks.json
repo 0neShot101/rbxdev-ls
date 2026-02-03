@@ -1,0 +1,34 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-server",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "build"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "build-extension",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "compile"],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode"
+      },
+      "group": "build",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "build-all",
+      "dependsOn": ["build-server", "build-extension"],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
