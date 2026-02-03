@@ -125,7 +125,8 @@
   },
   "scripts": {
     "vscode:prepublish": "bun run build-all",
-    "build-all": "cd .. && bun run build && cd vscode && tsc -p ./ && cp ../dist/index.js ./server/ && cp -r ../data ./server/",
+    "build-all": "cd .. && bun run build && cd vscode && tsc -p ./ && bun run copy-server",
+    "copy-server": "bun ./scripts/copy-server.ts",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package"
