@@ -148,5 +148,12 @@ html/
 .Trashes
 ehthumbs.db
 Thumbs.db
+nul
 
-CLAUDE.md
+# Claude Code local settings
+.claude/
+
+# VS Code extension build artifacts
+vscode/out/
+vscode/server/
+vscode/*.vsix
