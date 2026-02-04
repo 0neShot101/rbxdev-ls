@@ -167,6 +167,58 @@ export interface RequestScriptSourceMessage {
 }
 
 /**
+ * Message sent from the server to create a new instance
+ */
+export interface CreateInstanceMessage {
+  /** Message type identifier */
+  readonly type: 'createInstance';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** The class name of the instance to create */
+  readonly className: string;
+  /** Path segments to the parent instance */
+  readonly parentPath: ReadonlyArray<string>;
+  /** Optional name for the new instance */
+  readonly name?: string;
+}
+
+/**
+ * Message sent from the server to clone an existing instance
+ */
+export interface CloneInstanceMessage {
+  /** Message type identifier */
+  readonly type: 'cloneInstance';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** Path segments to the instance to clone */
+  readonly path: ReadonlyArray<string>;
+}
+
+/**
+ * Message sent from the server to enable/disable remote spy
+ */
+export interface SetRemoteSpyEnabledMessage {
+  /** Message type identifier */
+  readonly type: 'setRemoteSpyEnabled';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** Whether to enable or disable remote spy */
+  readonly enabled: boolean;
+}
+
+/**
+ * Message sent from the server to set remote spy filter
+ */
+export interface SetRemoteSpyFilterMessage {
+  /** Message type identifier */
+  readonly type: 'setRemoteSpyFilter';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** Filter pattern (empty string = no filter) */
+  readonly filter: string;
+}
+
+/**
  * Union type representing all possible messages sent from the server to the executor client
  */
 export type ServerMessage =
@@ -179,7 +231,11 @@ export type ServerMessage =
   | DeleteInstanceMessage
   | ReparentInstanceMessage
   | RequestChildrenMessage
-  | RequestScriptSourceMessage;
+  | RequestScriptSourceMessage
+  | CreateInstanceMessage
+  | CloneInstanceMessage
+  | SetRemoteSpyEnabledMessage
+  | SetRemoteSpyFilterMessage;
 
 /**
  * Message sent from the executor client upon successful WebSocket connection
@@ -414,6 +470,96 @@ export interface ScriptSourceResultMessage {
 }
 
 /**
+ * Message sent from the executor client confirming instance creation
+ */
+export interface CreateInstanceResultMessage {
+  /** Message type identifier */
+  readonly type: 'createInstanceResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the instance was successfully created */
+  readonly success: boolean;
+  /** The name of the created instance */
+  readonly instanceName?: string;
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
+ * Message sent from the executor client confirming instance cloning
+ */
+export interface CloneInstanceResultMessage {
+  /** Message type identifier */
+  readonly type: 'cloneInstanceResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the instance was successfully cloned */
+  readonly success: boolean;
+  /** The name of the cloned instance */
+  readonly cloneName?: string;
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
+ * Message sent from the executor client confirming remote spy enabled state
+ */
+export interface SetRemoteSpyEnabledResultMessage {
+  /** Message type identifier */
+  readonly type: 'setRemoteSpyEnabledResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the operation was successful */
+  readonly success: boolean;
+  /** The current enabled state */
+  readonly enabled?: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
+ * Message sent from the executor client confirming remote spy filter update
+ */
+export interface SetRemoteSpyFilterResultMessage {
+  /** Message type identifier */
+  readonly type: 'setRemoteSpyFilterResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the operation was successful */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
+ * Represents a captured remote call from remote spy
+ */
+export interface RemoteSpyCall {
+  /** The name of the remote event/function */
+  readonly remoteName: string;
+  /** The path to the remote in the game tree */
+  readonly remotePath: ReadonlyArray<string>;
+  /** The class name (RemoteEvent, RemoteFunction, etc.) */
+  readonly remoteType: string;
+  /** The method called (FireServer, InvokeServer) */
+  readonly method: string;
+  /** String representation of the arguments */
+  readonly arguments: string;
+  /** Unix timestamp when the call occurred */
+  readonly timestamp: number;
+}
+
+/**
+ * Message sent from the executor client when a remote is called (notification)
+ */
+export interface RemoteSpyMessage {
+  /** Message type identifier */
+  readonly type: 'remoteSpy';
+  /** The captured remote call data */
+  readonly call: RemoteSpyCall;
+}
+
+/**
  * Union type representing all possible messages sent from the executor client to the server
  */
 export type ClientMessage =
@@ -429,7 +575,12 @@ export type ClientMessage =
   | DeleteInstanceResultMessage
   | ReparentInstanceResultMessage
   | ChildrenResultMessage
-  | ScriptSourceResultMessage;
+  | ScriptSourceResultMessage
+  | CreateInstanceResultMessage
+  | CloneInstanceResultMessage
+  | SetRemoteSpyEnabledResultMessage
+  | SetRemoteSpyFilterResultMessage
+  | RemoteSpyMessage;
 
 /**
  * Type guard to check if an unknown value is a ConnectedMessage
@@ -584,6 +735,65 @@ export const isScriptSourceResultMessage = (msg: unknown): msg is ScriptSourceRe
   typeof (msg as ScriptSourceResultMessage).success === 'boolean';
 
 /**
+ * Type guard to check if an unknown value is a CreateInstanceResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid CreateInstanceResultMessage
+ */
+export const isCreateInstanceResultMessage = (msg: unknown): msg is CreateInstanceResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as CreateInstanceResultMessage).type === 'createInstanceResult' &&
+  typeof (msg as CreateInstanceResultMessage).id === 'string' &&
+  typeof (msg as CreateInstanceResultMessage).success === 'boolean';
+
+/**
+ * Type guard to check if an unknown value is a CloneInstanceResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid CloneInstanceResultMessage
+ */
+export const isCloneInstanceResultMessage = (msg: unknown): msg is CloneInstanceResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as CloneInstanceResultMessage).type === 'cloneInstanceResult' &&
+  typeof (msg as CloneInstanceResultMessage).id === 'string' &&
+  typeof (msg as CloneInstanceResultMessage).success === 'boolean';
+
+/**
+ * Type guard to check if an unknown value is a SetRemoteSpyEnabledResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid SetRemoteSpyEnabledResultMessage
+ */
+export const isSetRemoteSpyEnabledResultMessage = (msg: unknown): msg is SetRemoteSpyEnabledResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as SetRemoteSpyEnabledResultMessage).type === 'setRemoteSpyEnabledResult' &&
+  typeof (msg as SetRemoteSpyEnabledResultMessage).id === 'string' &&
+  typeof (msg as SetRemoteSpyEnabledResultMessage).success === 'boolean';
+
+/**
+ * Type guard to check if an unknown value is a SetRemoteSpyFilterResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid SetRemoteSpyFilterResultMessage
+ */
+export const isSetRemoteSpyFilterResultMessage = (msg: unknown): msg is SetRemoteSpyFilterResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as SetRemoteSpyFilterResultMessage).type === 'setRemoteSpyFilterResult' &&
+  typeof (msg as SetRemoteSpyFilterResultMessage).id === 'string' &&
+  typeof (msg as SetRemoteSpyFilterResultMessage).success === 'boolean';
+
+/**
+ * Type guard to check if an unknown value is a RemoteSpyMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid RemoteSpyMessage
+ */
+export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as RemoteSpyMessage).type === 'remoteSpy' &&
+  typeof (msg as RemoteSpyMessage).call === 'object';
+
+/**
  * Parses a JSON string and validates it as a ClientMessage
  * @param data - The raw JSON string to parse
  * @returns The parsed ClientMessage if valid, or undefined if parsing fails or the message type is unrecognized
@@ -604,6 +814,11 @@ export const parseClientMessage = (data: string): ClientMessage | undefined => {
     if (isReparentInstanceResultMessage(parsed)) return parsed;
     if (isChildrenResultMessage(parsed)) return parsed;
     if (isScriptSourceResultMessage(parsed)) return parsed;
+    if (isCreateInstanceResultMessage(parsed)) return parsed;
+    if (isCloneInstanceResultMessage(parsed)) return parsed;
+    if (isSetRemoteSpyEnabledResultMessage(parsed)) return parsed;
+    if (isSetRemoteSpyFilterResultMessage(parsed)) return parsed;
+    if (isRemoteSpyMessage(parsed)) return parsed;
     return undefined;
   } catch {
     return undefined;

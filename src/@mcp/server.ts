@@ -314,6 +314,76 @@ export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } =>
         'required': ['path'],
       },
     },
+    {
+      'name': 'create_instance',
+      'description':
+        'Create a new instance in the Roblox game. Supports common classes like Part, Folder, Script, Model, GUI elements, values, and more.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'className': {
+            'type': 'string',
+            'description': 'The class name of the instance to create (e.g., "Part", "Folder", "Script")',
+          },
+          'parentPath': {
+            'type': 'array',
+            'items': { 'type': 'string' },
+            'description': 'Path to the parent instance where the new instance will be created',
+          },
+          'name': {
+            'type': 'string',
+            'description': 'Optional name for the new instance. Defaults to the class name.',
+          },
+        },
+        'required': ['className', 'parentPath'],
+      },
+    },
+    {
+      'name': 'clone_instance',
+      'description':
+        'Clone an existing instance in the Roblox game. The clone will be created as a sibling of the original with the same parent.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'path': {
+            'type': 'array',
+            'items': { 'type': 'string' },
+            'description': 'Path to the instance to clone',
+          },
+        },
+        'required': ['path'],
+      },
+    },
+    {
+      'name': 'get_remote_calls',
+      'description':
+        'Get recently captured remote calls from the Remote Spy. Requires Remote Spy to be enabled first. Returns FireServer and InvokeServer calls made on RemoteEvents and RemoteFunctions.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'limit': {
+            'type': 'number',
+            'description': 'Maximum number of calls to return. Defaults to 50.',
+          },
+        },
+        'required': [],
+      },
+    },
+    {
+      'name': 'set_remote_spy_enabled',
+      'description':
+        'Enable or disable the Remote Spy feature. When enabled, it monitors all FireServer and InvokeServer calls made on RemoteEvents and RemoteFunctions.',
+      'inputSchema': {
+        'type': 'object',
+        'properties': {
+          'enabled': {
+            'type': 'boolean',
+            'description': 'Whether to enable or disable Remote Spy',
+          },
+        },
+        'required': ['enabled'],
+      },
+    },
   ];
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -862,6 +932,171 @@ export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } =>
           }
           return {
             'content': [{ 'type': 'text', 'text': `Error: ${result.error ?? 'Failed to get script source'}` }],
+            'isError': true,
+          };
+        } catch (err) {
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${err instanceof Error ? err.message : String(err)}` }],
+            'isError': true,
+          };
+        }
+      }
+
+      case 'create_instance': {
+        if (bridge.isConnected === false) {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: No executor connected' }],
+            'isError': true,
+          };
+        }
+
+        const typedArgs = args as { className: string; parentPath: string[]; name?: string };
+
+        if (typeof typedArgs.className !== 'string' || typedArgs.className.trim() === '') {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: className parameter is required' }],
+            'isError': true,
+          };
+        }
+
+        if (Array.isArray(typedArgs.parentPath) === false || typedArgs.parentPath.length === 0) {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: parentPath parameter is required' }],
+            'isError': true,
+          };
+        }
+
+        try {
+          const result = await bridge.createInstance(typedArgs.className, typedArgs.parentPath, typedArgs.name);
+          if (result.success) {
+            return {
+              'content': [
+                {
+                  'type': 'text',
+                  'text': `Successfully created ${result.instanceName} (${typedArgs.className}) in ${typedArgs.parentPath.join('.')}`,
+                },
+              ],
+            };
+          }
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${result.error ?? 'Failed to create instance'}` }],
+            'isError': true,
+          };
+        } catch (err) {
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${err instanceof Error ? err.message : String(err)}` }],
+            'isError': true,
+          };
+        }
+      }
+
+      case 'clone_instance': {
+        if (bridge.isConnected === false) {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: No executor connected' }],
+            'isError': true,
+          };
+        }
+
+        const typedArgs = args as { path: string[] };
+
+        if (Array.isArray(typedArgs.path) === false || typedArgs.path.length === 0) {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: path parameter is required' }],
+            'isError': true,
+          };
+        }
+
+        try {
+          const result = await bridge.cloneInstance(typedArgs.path);
+          if (result.success) {
+            return {
+              'content': [
+                {
+                  'type': 'text',
+                  'text': `Successfully cloned ${typedArgs.path.join('.')} as ${result.cloneName}`,
+                },
+              ],
+            };
+          }
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${result.error ?? 'Failed to clone instance'}` }],
+            'isError': true,
+          };
+        } catch (err) {
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${err instanceof Error ? err.message : String(err)}` }],
+            'isError': true,
+          };
+        }
+      }
+
+      case 'get_remote_calls': {
+        const typedArgs = args as { limit?: number } | undefined;
+        const limit = typedArgs?.limit ?? 50;
+
+        const calls = bridge.remoteSpyCalls.slice(-limit);
+
+        if (calls.length === 0) {
+          return {
+            'content': [
+              {
+                'type': 'text',
+                'text': `No remote calls captured. Remote Spy is ${bridge.isRemoteSpyEnabled ? 'enabled' : 'disabled - enable it first with set_remote_spy_enabled'}.`,
+              },
+            ],
+          };
+        }
+
+        const formatted = calls
+          .map(call => {
+            const time = new Date(call.timestamp * 1000).toISOString().slice(11, 23);
+            const pathStr = `game.${call.remotePath.join('.')}`;
+            return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Path: ${pathStr}\n  Args: ${call.arguments || '(none)'}`;
+          })
+          .join('\n\n');
+
+        return {
+          'content': [
+            {
+              'type': 'text',
+              'text': `Recent remote calls (${calls.length}):\n\n${formatted}`,
+            },
+          ],
+        };
+      }
+
+      case 'set_remote_spy_enabled': {
+        if (bridge.isConnected === false) {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: No executor connected' }],
+            'isError': true,
+          };
+        }
+
+        const typedArgs = args as { enabled: boolean };
+
+        if (typeof typedArgs.enabled !== 'boolean') {
+          return {
+            'content': [{ 'type': 'text', 'text': 'Error: enabled parameter is required (boolean)' }],
+            'isError': true,
+          };
+        }
+
+        try {
+          const result = await bridge.setRemoteSpyEnabled(typedArgs.enabled);
+          if (result.success) {
+            return {
+              'content': [
+                {
+                  'type': 'text',
+                  'text': `Remote Spy ${result.enabled === true ? 'enabled' : 'disabled'}`,
+                },
+              ],
+            };
+          }
+          return {
+            'content': [{ 'type': 'text', 'text': `Error: ${result.error ?? 'Failed to set Remote Spy state'}` }],
             'isError': true,
           };
         } catch (err) {

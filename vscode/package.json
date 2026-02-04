@@ -250,6 +250,69 @@
           },
           "required": ["path"]
         }
+      },
+      {
+        "name": "rbxdev_create_instance",
+        "toolReferenceName": "roblox-create",
+        "displayName": "Create Roblox Instance",
+        "description": "Create a new instance in the Roblox game as a child of the specified parent.",
+        "modelDescription": "Create a new Roblox instance. Specify the class name (e.g., 'Part', 'Folder', 'Script'), optional instance name, and the parent path.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "className": {
+              "type": "string",
+              "description": "The Roblox class name to create (e.g., 'Part', 'Folder', 'Model')"
+            },
+            "parentPath": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the parent instance (e.g., [\"Workspace\"])"
+            },
+            "name": {
+              "type": "string",
+              "description": "Optional name for the new instance"
+            }
+          },
+          "required": ["className", "parentPath"]
+        }
+      },
+      {
+        "name": "rbxdev_clone_instance",
+        "toolReferenceName": "roblox-clone",
+        "displayName": "Clone Roblox Instance",
+        "description": "Clone an existing instance in the Roblox game.",
+        "modelDescription": "Clone (duplicate) a Roblox instance. The clone will be created as a sibling of the original.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the instance to clone (e.g., [\"Workspace\", \"Part\"])"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "rbxdev_get_remote_calls",
+        "toolReferenceName": "roblox-remote-spy",
+        "displayName": "Get Remote Spy Calls",
+        "description": "Get recently captured remote calls from the Remote Spy feature.",
+        "modelDescription": "Get recent FireServer and InvokeServer calls captured by Remote Spy. Requires Remote Spy to be enabled. Returns remote name, path, method, and arguments.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "number",
+              "description": "Maximum number of calls to return (default 50)"
+            }
+          }
+        }
       }
     ],
     "languages": [
@@ -381,6 +444,61 @@
         "command": "rbxdev-ls.viewScript",
         "title": "View Script Source",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "rbxdev-ls.createInstance",
+        "title": "Create Instance",
+        "icon": "$(add)"
+      },
+      {
+        "command": "rbxdev-ls.cloneInstance",
+        "title": "Clone Instance",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "rbxdev-ls.searchGameTree",
+        "title": "Search Game Tree",
+        "icon": "$(search)"
+      },
+      {
+        "command": "rbxdev-ls.clearGameTreeSearch",
+        "title": "Clear Search",
+        "icon": "$(close)"
+      },
+      {
+        "command": "rbxdev-ls.toggleRemoteSpy",
+        "title": "Toggle Remote Spy",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.setRemoteSpyFilter",
+        "title": "Set Remote Spy Filter",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "rbxdev-ls.clearRemoteSpyOutput",
+        "title": "Clear Remote Spy Output",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "rbxdev-ls.showRemoteSpy",
+        "title": "Show Remote Spy Output",
+        "icon": "$(output)"
+      },
+      {
+        "command": "rbxdev-ls.copyLastRemoteCall",
+        "title": "Copy Remote Call to Clipboard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "rbxdev-ls.insertLastRemoteCall",
+        "title": "Insert Remote Call at Cursor",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "rbxdev-ls.copyQuickRemote",
+        "title": "Quick Copy Last Remote Call",
+        "icon": "$(clippy)"
       }
     ],
     "keybindings": [
@@ -393,6 +511,21 @@
         "command": "rbxdev-ls.executeSelection",
         "key": "ctrl+shift+alt+e",
         "when": "editorLangId == lua || editorLangId == luau && editorHasSelection"
+      },
+      {
+        "command": "rbxdev-ls.copyLastRemoteCall",
+        "key": "ctrl+shift+r",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.insertLastRemoteCall",
+        "key": "ctrl+shift+alt+r",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.copyQuickRemote",
+        "key": "ctrl+alt+c",
+        "when": "editorLangId == lua || editorLangId == luau"
       }
     ],
     "menus": {
@@ -419,9 +552,19 @@
       ],
       "view/title": [
         {
+          "command": "rbxdev-ls.searchGameTree",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbxdev-ls.clearGameTreeSearch",
+          "when": "view == rbxdev-gameTree && rbxdev-ls:searchActive",
+          "group": "navigation@2"
+        },
+        {
           "command": "rbxdev-ls.refreshGameTree",
           "when": "view == rbxdev-gameTree",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -454,6 +597,16 @@
           "command": "rbxdev-ls.viewScript",
           "when": "view == rbxdev-gameTree && viewItem =~ /script/",
           "group": "navigation@4"
+        },
+        {
+          "command": "rbxdev-ls.createInstance",
+          "when": "view == rbxdev-gameTree",
+          "group": "3_create@1"
+        },
+        {
+          "command": "rbxdev-ls.cloneInstance",
+          "when": "view == rbxdev-gameTree && viewItem != service",
+          "group": "3_create@2"
         }
       ]
     }

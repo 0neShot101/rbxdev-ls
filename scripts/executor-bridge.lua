@@ -211,6 +211,11 @@ local refreshConnections = {};
 local pendingUpdate = false;
 local updateDebounce = 0.5; -- Debounce time for updates
 
+-- Remote spy state
+local remoteSpyEnabled = false;
+local remoteSpyFilter = '';
+local originalNamecall = nil;
+
 local jsonEncode = function(data)
 	return HttpService:JSONEncode(data);
 end;
@@ -242,6 +247,46 @@ local resolveInstancePath = function(path)
 		instance = child;
 	end
 	return instance;
+end;
+
+-- Get path array from instance
+local getInstancePath = function(instance)
+	local path = {};
+	local current = instance;
+	while current ~= nil and current ~= game do
+		table.insert(path, 1, current.Name);
+		current = current.Parent;
+	end
+	return path;
+end;
+
+-- Serialize arguments for remote spy
+local serializeArguments = function(...)
+	local args = {...};
+	local parts = {};
+	for i = 1, select('#', ...) do
+		local v = args[i];
+		local t = typeof(v);
+		if t == 'Instance' then
+			table.insert(parts, '<' .. v.ClassName .. '> ' .. v:GetFullName());
+		elseif t == 'table' then
+			local success, json = pcall(HttpService.JSONEncode, HttpService, v);
+			if success == true then
+				table.insert(parts, json);
+			else
+				table.insert(parts, '{table}');
+			end
+		elseif t == 'function' then
+			table.insert(parts, '<function>');
+		elseif t == 'thread' then
+			table.insert(parts, '<thread>');
+		elseif t == 'userdata' then
+			table.insert(parts, '<userdata>');
+		else
+			table.insert(parts, tostring(v));
+		end
+	end
+	return table.concat(parts, ', ');
 end;
 
 local getDefaultProperties = function(className)
@@ -657,12 +702,161 @@ MESSAGE_HANDLERS.requestScriptSource = function(message)
 	print('[rbxdev-bridge] Script source sent successfully');
 end;
 
+MESSAGE_HANDLERS.createInstance = function(message)
+	local className = message.className;
+	local parentPath = message.parentPath;
+	local instanceName = message.name;
+	local id = message.id;
+
+	local parent = resolveInstancePath(parentPath);
+
+	if parent == nil then
+		sendResult('createInstanceResult', id, false, { error = 'Parent not found at: ' .. table.concat(parentPath, '.') });
+		return;
+	end
+
+	local success, result = pcall(function()
+		local instance = Instance.new(className);
+		if instanceName ~= nil then
+			instance.Name = instanceName;
+		end
+		instance.Parent = parent;
+		return instance.Name;
+	end);
+
+	if success == false then
+		sendResult('createInstanceResult', id, false, { error = tostring(result) });
+		return;
+	end
+
+	sendResult('createInstanceResult', id, true, { instanceName = result });
+end;
+
+MESSAGE_HANDLERS.cloneInstance = function(message)
+	local path = message.path;
+	local id = message.id;
+
+	local instance = resolveInstancePath(path);
+
+	if instance == nil then
+		sendResult('cloneInstanceResult', id, false, { error = 'Instance not found at: ' .. table.concat(path, '.') });
+		return;
+	end
+
+	local success, result = pcall(function()
+		local clone = instance:Clone();
+		if clone == nil then
+			error('Instance cannot be cloned');
+		end
+		clone.Parent = instance.Parent;
+		return clone.Name;
+	end);
+
+	if success == false then
+		sendResult('cloneInstanceResult', id, false, { error = tostring(result) });
+		return;
+	end
+
+	sendResult('cloneInstanceResult', id, true, { cloneName = result });
+end;
+
+MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
+	local enabled = message.enabled;
+	local id = message.id;
+
+	-- Check if required functions are available
+	if hookmetamethod == nil then
+		sendResult('setRemoteSpyEnabledResult', id, false, { error = 'hookmetamethod not available in this executor' });
+		return;
+	end
+
+	local success, err = pcall(function()
+		if enabled == true and remoteSpyEnabled == false then
+			local oldNamecall;
+			oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+				-- Capture args immediately
+				local args = {...};
+				local method = getnamecallmethod();
+
+				-- Always call original first to not break anything
+				local results = {oldNamecall(self, unpack(args))};
+
+				-- Now try to log (wrapped in pcall so errors don't propagate)
+				pcall(function()
+					if checkcaller and checkcaller() then return; end
+					if remoteSpyEnabled == false or connected == false then return; end
+					if method ~= 'FireServer' and method ~= 'InvokeServer' then return; end
+					if typeof(self) ~= 'Instance' then return; end
+
+					local className = self.ClassName;
+					if className ~= 'RemoteEvent' and className ~= 'RemoteFunction' and className ~= 'UnreliableRemoteEvent' then return; end
+
+					local remoteName = self.Name;
+					if remoteSpyFilter ~= '' and remoteName:lower():find(remoteSpyFilter:lower()) == nil then return; end
+
+					send({
+						type = 'remoteSpy';
+						call = {
+							remoteName = remoteName;
+							remotePath = getInstancePath(self);
+							remoteType = className;
+							method = method;
+							arguments = serializeArguments(unpack(args));
+							timestamp = os.time();
+						};
+					});
+				end);
+
+				return unpack(results);
+			end));
+
+			originalNamecall = oldNamecall;
+			remoteSpyEnabled = true;
+			print'[rbxdev-bridge] Remote spy enabled';
+
+		elseif enabled == false and remoteSpyEnabled == true then
+			-- Disable remote spy by restoring original namecall
+			if originalNamecall ~= nil then
+				hookmetamethod(game, '__namecall', originalNamecall);
+				originalNamecall = nil;
+			end
+
+			remoteSpyEnabled = false;
+			print'[rbxdev-bridge] Remote spy disabled';
+		end
+	end);
+
+	if success == false then
+		sendResult('setRemoteSpyEnabledResult', id, false, { error = tostring(err) });
+		return;
+	end
+
+	sendResult('setRemoteSpyEnabledResult', id, true, { enabled = remoteSpyEnabled });
+end;
+
+MESSAGE_HANDLERS.setRemoteSpyFilter = function(message)
+	local filter = message.filter or '';
+	local id = message.id;
+
+	remoteSpyFilter = filter;
+	sendResult('setRemoteSpyFilterResult', id, true);
+	print('[rbxdev-bridge] Remote spy filter set to: ' .. (filter == '' and '(none)' or filter));
+end;
+
 local handleMessage = function(rawMessage)
 	local message = jsonDecode(rawMessage);
-	if message == nil then return; end
+	if message == nil then
+		print('[rbxdev-bridge] Failed to decode message');
+		return;
+	end
+
+	print('[rbxdev-bridge] Received message type:', message.type);
 
 	local handler = MESSAGE_HANDLERS[message.type];
-	if handler == nil then return; end
+	if handler == nil then
+		print('[rbxdev-bridge] No handler for message type:', message.type);
+		return;
+	end
 
 	handler(message);
 end;
@@ -686,6 +880,7 @@ local setupLogHooks = function()
 			message = table.concat(parts, '\t');
 			timestamp = os.time();
 		});
+
 
 		inHook = false;
 	end;

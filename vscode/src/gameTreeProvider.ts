@@ -53,6 +53,15 @@ export type ReparentCallback = (sourcePath: ReadonlyArray<string>, targetPath: R
  */
 export type RequestChildrenCallback = (path: ReadonlyArray<string>) => Promise<ReadonlyArray<GameTreeNode> | undefined>;
 
+/**
+ * Search options for filtering the game tree
+ */
+export interface SearchOptions {
+  readonly query: string;
+  readonly searchByName: boolean;
+  readonly searchByClass: boolean;
+}
+
 /** Map of class names to icon file names */
 const CLASS_ICON_MAP: Record<string, string> = {
   // Scripts
@@ -357,12 +366,30 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   /** Cache of fetched children by path (joined with '.') */
   private childrenCache: Map<string, ReadonlyArray<GameTreeNode>> = new Map();
 
+  /** Search state */
+  private searchOptions: SearchOptions | undefined;
+  private searchResults: GameTreeItem[] = [];
+
   /** Drag and drop MIME types */
   readonly dropMimeTypes = [GAME_TREE_MIME_TYPE];
   readonly dragMimeTypes = [GAME_TREE_MIME_TYPE];
 
   constructor(extensionPath: string) {
     this.extensionPath = extensionPath;
+  }
+
+  /**
+   * Gets the current search query if search is active
+   */
+  get isSearchActive(): boolean {
+    return this.searchOptions !== undefined;
+  }
+
+  /**
+   * Gets the current search query
+   */
+  get searchQuery(): string | undefined {
+    return this.searchOptions?.query;
   }
 
   /**
@@ -397,11 +424,100 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   clear = (): void => {
     this.rootNodes = [];
     this.childrenCache.clear();
+    this.searchOptions = undefined;
+    this.searchResults = [];
     this._onDidChangeTreeData.fire(undefined);
   };
 
+  /**
+   * Sets the search filter and triggers a search
+   */
+  setSearchFilter = (query: string, options: { byName: boolean; byClass: boolean }): void => {
+    this.searchOptions = {
+      'query': query.toLowerCase(),
+      'searchByName': options.byName,
+      'searchByClass': options.byClass,
+    };
+    this.performSearch();
+    this._onDidChangeTreeData.fire(undefined);
+  };
+
+  /**
+   * Clears the search and restores normal view
+   */
+  clearSearch = (): void => {
+    this.searchOptions = undefined;
+    this.searchResults = [];
+    this._onDidChangeTreeData.fire(undefined);
+  };
+
+  /**
+   * Performs the search across the cached tree
+   */
+  private performSearch = (): void => {
+    if (this.searchOptions === undefined) {
+      this.searchResults = [];
+      return;
+    }
+
+    const results: GameTreeItem[] = [];
+    const query = this.searchOptions.query;
+
+    const searchNode = (node: GameTreeNode, path: ReadonlyArray<string>, isService: boolean): void => {
+      const matchesName = this.searchOptions!.searchByName && node.name.toLowerCase().includes(query);
+      const matchesClass = this.searchOptions!.searchByClass && node.className.toLowerCase().includes(query);
+
+      if (matchesName || matchesClass) {
+        results.push({
+          'name': node.name,
+          'className': node.className,
+          'path': path,
+          'children': undefined, // Flat results, no children
+          'hasChildren': false,
+          'isService': isService,
+        });
+      }
+
+      // Recursively search children
+      if (node.children !== undefined) {
+        for (const child of node.children) {
+          searchNode(child, [...path, child.name], false);
+        }
+      }
+    };
+
+    // Search all root nodes
+    for (const node of this.rootNodes) {
+      searchNode(node, [node.name], true);
+    }
+
+    // Also search cached children
+    for (const [pathKey, children] of this.childrenCache) {
+      const basePath = pathKey.split('.');
+      for (const child of children) {
+        searchNode(child, [...basePath, child.name], false);
+      }
+    }
+
+    this.searchResults = results;
+  };
+
   getTreeItem = (element: GameTreeItem): TreeItem => {
-    // Support lazy loading: show expand arrow if hasChildren is true OR if children array has items
+    // In search mode, show flat results without expand arrows
+    if (this.searchOptions !== undefined) {
+      const item = new TreeItem(element.name, TreeItemCollapsibleState.None);
+      // Show full path in description during search
+      item.description = `${element.className} — game.${element.path.join('.')}`;
+      item.tooltip = `${element.className}\nPath: game.${element.path.join('.')}`;
+
+      const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
+      item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
+
+      item.iconPath = this.getIconForClass(element.className);
+      return item;
+    }
+
+    // Normal mode: Support lazy loading: show expand arrow if hasChildren is true OR if children array has items
     const hasChildren = element.hasChildren === true ||
       (element.children !== undefined && element.children.length > 0);
     const item = new TreeItem(
@@ -420,6 +536,15 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   getChildren = async (element?: GameTreeItem): Promise<GameTreeItem[]> => {
+    // In search mode, return flat search results at root level
+    if (this.searchOptions !== undefined) {
+      if (element === undefined) {
+        return this.searchResults;
+      }
+      // Search results are flat, no children
+      return [];
+    }
+
     if (element === undefined) {
       return this.rootNodes.map(node => ({
         'name': node.name,
