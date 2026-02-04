@@ -1,7 +1,7 @@
 local HttpService = game:GetService'HttpService';
 local Players = game:GetService'Players';
 
-local userConfig = ... or {};
+local userConfig = (...) or {};
 
 local CONFIG = {
 	host = 'ws://127.0.0.1:21324';
