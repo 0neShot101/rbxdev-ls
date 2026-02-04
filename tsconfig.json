@@ -59,7 +59,9 @@
       "@utils/*": ["src/@utils/*"],
       "@workspace/*": ["src/@workspace/*"],
       "@executor": ["src/@executor/index.ts"],
-      "@executor/*": ["src/@executor/*"]
+      "@executor/*": ["src/@executor/*"],
+      "@mcp": ["src/@mcp/index.ts"],
+      "@mcp/*": ["src/@mcp/*"]
     },
 
     // Emit Rules

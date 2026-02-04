@@ -13,6 +13,7 @@ import {
   isModuleInterfaceMessage,
   isPropertiesResultMessage,
   isReparentInstanceResultMessage,
+  isScriptSourceResultMessage,
   isSetPropertyResultMessage,
   isTeleportToResultMessage,
   parseClientMessage,
@@ -128,6 +129,20 @@ export interface ChildrenResult {
 }
 
 /**
+ * Represents the result of a script source request (decompilation)
+ */
+export interface ScriptSourceResult {
+  /** Whether the script source was successfully retrieved */
+  readonly success: boolean;
+  /** The decompiled script source if successful */
+  readonly source?: string | undefined;
+  /** The script class name (LocalScript, ModuleScript, Script) */
+  readonly scriptType?: string | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
  * The main interface for interacting with the executor bridge.
  * Provides methods to start/stop the server, execute code, and subscribe to events.
  */
@@ -211,6 +226,12 @@ export interface ExecutorBridge {
    * @returns A promise that resolves with the children
    */
   requestChildren: (path: ReadonlyArray<string>) => Promise<ChildrenResult>;
+  /**
+   * Requests decompiled script source.
+   * @param path - Path segments to the script instance
+   * @returns A promise that resolves with the script source
+   */
+  requestScriptSource: (path: ReadonlyArray<string>) => Promise<ScriptSourceResult>;
   /**
    * Registers a callback to be invoked when the bridge status changes.
    * @param callback - Function to call with the new status
@@ -320,6 +341,15 @@ interface PendingChildrenRequest {
 }
 
 /**
+ * Internal interface for tracking pending script source requests (decompilation).
+ */
+interface PendingScriptSourceRequest {
+  readonly resolve: (result: ScriptSourceResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
  * Creates a new executor bridge instance for managing WebSocket connections with Roblox executors.
  * The bridge handles connection lifecycle, code execution, and game tree synchronization.
  * @param log - Logging function to output status and debug messages
@@ -339,6 +369,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   const pendingDeletes = new Map<string, PendingDeleteRequest>();
   const pendingReparents = new Map<string, PendingReparentRequest>();
   const pendingChildren = new Map<string, PendingChildrenRequest>();
+  const pendingScriptSources = new Map<string, PendingScriptSourceRequest>();
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
@@ -531,6 +562,20 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         pending.resolve({
           'success': message.success,
           'children': message.children ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isScriptSourceResultMessage(message)) {
+      const pending = pendingScriptSources.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingScriptSources.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'source': message.source ?? undefined,
+          'scriptType': message.scriptType ?? undefined,
           'error': message.error ?? undefined,
         });
       }
@@ -854,6 +899,28 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       send({ 'type': 'requestChildren', id, 'path': [...path] });
     });
 
+  /**
+   * Requests decompiled script source from the executor.
+   * @param path - Path segments to the script instance
+   * @returns A promise that resolves with the script source
+   */
+  const requestScriptSource = (path: ReadonlyArray<string>): Promise<ScriptSourceResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingScriptSources.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 10000); // Longer timeout for decompilation
+
+      pendingScriptSources.set(id, { resolve, reject, timeout });
+      send({ 'type': 'requestScriptSource', id, 'path': [...path] });
+    });
+
   return {
     get 'isRunning'() {
       return server !== undefined;
@@ -876,6 +943,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     deleteInstance,
     reparentInstance,
     requestChildren,
+    requestScriptSource,
     onStatusChange,
     onRuntimeError,
     onGameTreeUpdate,

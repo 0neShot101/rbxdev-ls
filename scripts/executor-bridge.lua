@@ -604,6 +604,59 @@ MESSAGE_HANDLERS.reparentInstance = function(message)
 	-- Tree will update via ChildAdded/ChildRemoved events
 end;
 
+MESSAGE_HANDLERS.requestScriptSource = function(message)
+	print('[rbxdev-bridge] requestScriptSource received for path:', table.concat(message.path, '.'));
+
+	local instance = resolveInstancePath(message.path);
+
+	if instance == nil then
+		print('[rbxdev-bridge] Instance not found');
+		sendResult('scriptSourceResult', message.id, false, { error = 'Instance not found at: ' .. table.concat(message.path, '.') });
+		return;
+	end
+
+	print('[rbxdev-bridge] Found instance:', instance.ClassName, instance.Name);
+
+	-- Check if it's a script type
+	local isScript = instance:IsA'LocalScript' or instance:IsA'ModuleScript' or instance:IsA'Script';
+	if isScript == false then
+		print('[rbxdev-bridge] Not a script type');
+		sendResult('scriptSourceResult', message.id, false, { error = instance.ClassName .. ' is not a script type' });
+		return;
+	end
+
+	-- Try to get the script source using decompiler (check various common function names)
+	local decompilerFunc = decompile
+		or decompilescript
+		or getscriptsource
+		or getsourcescript
+		or get_script_source
+		or nil;
+
+	print('[rbxdev-bridge] Decompiler available:', decompilerFunc ~= nil);
+
+	if decompilerFunc == nil then
+		sendResult('scriptSourceResult', message.id, false, { error = 'No decompiler available in this executor' });
+		return;
+	end
+
+	local success, source = pcall(decompilerFunc, instance);
+
+	print('[rbxdev-bridge] Decompile result:', success, success and #source or source);
+
+	if success == false then
+		sendResult('scriptSourceResult', message.id, false, { error = 'Decompilation failed: ' .. tostring(source) });
+		return;
+	end
+
+	sendResult('scriptSourceResult', message.id, true, {
+		source = source;
+		scriptType = instance.ClassName;
+	});
+
+	print('[rbxdev-bridge] Script source sent successfully');
+end;
+
 local handleMessage = function(rawMessage)
 	local message = jsonDecode(rawMessage);
 	if message == nil then return; end

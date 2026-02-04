@@ -26,7 +26,10 @@
     "luau",
     "lua",
     "sunc",
-    "language-server"
+    "language-server",
+    "mcp",
+    "copilot",
+    "ai"
   ],
   "activationEvents": [
     "onLanguage:lua",
@@ -34,6 +37,221 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "languageModelTools": [
+      {
+        "name": "rbxdev_get_bridge_status",
+        "toolReferenceName": "roblox-status",
+        "displayName": "Get Roblox Bridge Status",
+        "description": "Get the current status of the Roblox executor bridge connection. Returns whether the bridge is running, connected, and the executor name if connected.",
+        "modelDescription": "Get the current connection status of the Roblox executor bridge. Use this to check if you can interact with the game.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "rbxdev_execute_code",
+        "toolReferenceName": "roblox-execute",
+        "displayName": "Execute Luau Code",
+        "description": "Execute Luau code in the connected Roblox game. The code runs in the executor environment with access to the full Roblox API.",
+        "modelDescription": "Execute Luau/Lua code in the connected Roblox game. Returns the result or error from execution. Use this to run scripts, query game state, or modify the game.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "The Luau code to execute in the game"
+            }
+          },
+          "required": ["code"]
+        }
+      },
+      {
+        "name": "rbxdev_get_game_tree",
+        "toolReferenceName": "roblox-tree",
+        "displayName": "Get Roblox Game Tree",
+        "description": "Get the current game hierarchy tree from the connected Roblox game. Returns the structure of services and their children.",
+        "modelDescription": "Get the game hierarchy/structure from the connected Roblox game. Returns services like Workspace, Players, ReplicatedStorage and their children. Use path parameter to get a subtree.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Optional path to a specific node (e.g., [\"Workspace\", \"Folder\"]). If omitted, returns all services."
+            },
+            "format": {
+              "type": "string",
+              "enum": ["tree", "json"],
+              "description": "Output format: 'tree' for human-readable, 'json' for structured data. Defaults to 'tree'."
+            }
+          }
+        }
+      },
+      {
+        "name": "rbxdev_get_properties",
+        "toolReferenceName": "roblox-props",
+        "displayName": "Get Instance Properties",
+        "description": "Get property values from an instance in the Roblox game.",
+        "modelDescription": "Get property values from a Roblox instance. Specify the path to the instance (e.g., [\"Workspace\", \"Part\"]) and optionally which specific properties to retrieve.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
+            },
+            "properties": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Optional list of specific property names to fetch"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "rbxdev_set_property",
+        "toolReferenceName": "roblox-set-prop",
+        "displayName": "Set Instance Property",
+        "description": "Set a property value on an instance in the Roblox game.",
+        "modelDescription": "Set a property value on a Roblox instance. Supports various types including string, number, boolean, Vector3, Color3, CFrame, UDim2.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
+            },
+            "property": {
+              "type": "string",
+              "description": "Name of the property to set"
+            },
+            "value": {
+              "type": "string",
+              "description": "The value to set (as string, e.g., '100', 'true', '1, 2, 3' for Vector3)"
+            },
+            "valueType": {
+              "type": "string",
+              "description": "The type of the value (string, number, boolean, Vector3, Color3, CFrame, UDim2)"
+            }
+          },
+          "required": ["path", "property", "value", "valueType"]
+        }
+      },
+      {
+        "name": "rbxdev_teleport_player",
+        "toolReferenceName": "roblox-teleport",
+        "displayName": "Teleport Player",
+        "description": "Teleport the local player to an instance's position in the Roblox game.",
+        "modelDescription": "Teleport the local player to a specific instance's position. The instance must have a Position or CFrame property.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the target instance (e.g., [\"Workspace\", \"SpawnLocation\"])"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "rbxdev_delete_instance",
+        "toolReferenceName": "roblox-delete",
+        "displayName": "Delete Instance",
+        "description": "Delete an instance from the Roblox game. This is permanent and cannot be undone.",
+        "modelDescription": "Delete an instance from the Roblox game. Use with caution as this cannot be undone.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the instance to delete (e.g., [\"Workspace\", \"Part\"])"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "rbxdev_reparent_instance",
+        "toolReferenceName": "roblox-reparent",
+        "displayName": "Reparent Instance",
+        "description": "Move an instance to a new parent in the Roblox game hierarchy.",
+        "modelDescription": "Move a Roblox instance to a new parent. Changes the Parent property of the instance.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sourcePath": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the instance to move"
+            },
+            "targetPath": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the new parent instance"
+            }
+          },
+          "required": ["sourcePath", "targetPath"]
+        }
+      },
+      {
+        "name": "rbxdev_get_children",
+        "toolReferenceName": "roblox-children",
+        "displayName": "Get Instance Children",
+        "description": "Get the children of an instance in the Roblox game.",
+        "modelDescription": "Get the children of a Roblox instance. Used for exploring parts of the game tree that weren't initially loaded.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the parent instance"
+            },
+            "format": {
+              "type": "string",
+              "enum": ["tree", "json"],
+              "description": "Output format: 'tree' for human-readable, 'json' for structured data"
+            }
+          },
+          "required": ["path"]
+        }
+      },
+      {
+        "name": "rbxdev_get_script_source",
+        "toolReferenceName": "roblox-script",
+        "displayName": "Get Script Source",
+        "description": "Get the decompiled source code of a Script, LocalScript, or ModuleScript in the Roblox game.",
+        "modelDescription": "Get the decompiled source code of a script instance. Works with Script, LocalScript, and ModuleScript. Requires the executor to have decompiler support.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Path to the script instance (e.g., [\"ReplicatedStorage\", \"MyModule\"])"
+            }
+          },
+          "required": ["path"]
+        }
+      }
+    ],
     "languages": [
       {
         "id": "luau",
@@ -78,6 +296,11 @@
           "type": "number",
           "default": 21324,
           "description": "WebSocket port for executor bridge connections"
+        },
+        "rbxdev-ls.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP server for AI assistants (GitHub Copilot, Claude, etc.)"
         }
       }
     },
@@ -149,6 +372,15 @@
         "command": "rbxdev-ls.deleteInstance",
         "title": "Delete Instance",
         "icon": "$(trash)"
+      },
+      {
+        "command": "rbxdev-ls.setupMcp",
+        "title": "Roblox: Setup MCP Server for Copilot"
+      },
+      {
+        "command": "rbxdev-ls.viewScript",
+        "title": "View Script Source",
+        "icon": "$(file-code)"
       }
     ],
     "keybindings": [
@@ -217,13 +449,18 @@
           "command": "rbxdev-ls.deleteInstance",
           "when": "view == rbxdev-gameTree && viewItem != service",
           "group": "2_actions@2"
+        },
+        {
+          "command": "rbxdev-ls.viewScript",
+          "when": "view == rbxdev-gameTree && viewItem =~ /script/",
+          "group": "navigation@4"
         }
       ]
     }
   },
   "scripts": {
     "vscode:prepublish": "bun run build-all",
-    "build-all": "cd .. && bun run build && cd vscode && tsc -p ./ && bun run copy-server",
+    "build-all": "cd .. && bun run build:all && cd vscode && tsc -p ./ && bun run copy-server",
     "copy-server": "bun ./scripts/copy-server.ts",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
