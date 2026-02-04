@@ -292,6 +292,68 @@ export const startServer = (state: ServerState): void => {
     }
   });
 
+  connection.onRequest(
+    'custom/createInstance',
+    async (params: { className: string; parentPath: string[]; name?: string }) => {
+      if (executorBridge.isConnected === false) {
+        return { 'success': false, 'error': 'No executor connected' };
+      }
+      try {
+        const result = await executorBridge.createInstance(params.className, params.parentPath, params.name);
+        return result;
+      } catch (err) {
+        return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+      }
+    },
+  );
+
+  connection.onRequest('custom/cloneInstance', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.cloneInstance(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/setRemoteSpyEnabled', async (params: { enabled: boolean }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.setRemoteSpyEnabled(params.enabled);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/setRemoteSpyFilter', async (params: { filter: string }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.setRemoteSpyFilter(params.filter);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/getRemoteSpyStatus', () => ({
+    'isEnabled': executorBridge.isRemoteSpyEnabled,
+    'callCount': executorBridge.remoteSpyCalls.length,
+  }));
+
+  connection.onRequest('custom/getRemoteSpyCalls', (params?: { limit?: number }) => {
+    const limit = params?.limit ?? 50;
+    const calls = executorBridge.remoteSpyCalls.slice(-limit);
+    return { 'success': true, 'calls': calls };
+  });
+
   // Forward executor bridge events to client
   executorBridge.onLog(log => {
     connection.sendNotification('custom/log', log);
@@ -299,6 +361,10 @@ export const startServer = (state: ServerState): void => {
 
   executorBridge.onGameTreeUpdate(nodes => {
     connection.sendNotification('custom/gameTreeUpdate', nodes);
+  });
+
+  executorBridge.onRemoteSpy(call => {
+    connection.sendNotification('custom/remoteSpy', call);
   });
 
   // Setup LSP handlers
