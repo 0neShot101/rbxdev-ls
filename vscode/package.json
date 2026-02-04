@@ -89,7 +89,8 @@
         },
         {
           "id": "rbxdev-properties",
-          "name": "Properties"
+          "name": "Properties",
+          "type": "webview"
         }
       ]
     },
@@ -207,11 +208,6 @@
           "command": "rbxdev-ls.deleteInstance",
           "when": "view == rbxdev-gameTree && viewItem != service",
           "group": "2_actions@2"
-        },
-        {
-          "command": "rbxdev-ls.editProperty",
-          "when": "view == rbxdev-properties",
-          "group": "inline"
         }
       ]
     }
