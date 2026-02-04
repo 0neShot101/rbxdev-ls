@@ -4,14 +4,15 @@ import { commands, env, ExtensionContext, OutputChannel, StatusBarAlignment, Sta
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 import { GameTreeDataProvider, type GameTreeItem, type GameTreeNode } from './gameTreeProvider';
-import { PropertiesDataProvider, type PropertyEntry, type PropertyItem } from './propertiesProvider';
+import { type PropertyEntry, type PropertyItem } from './propertiesProvider';
+import { PropertiesWebviewProvider } from './propertiesWebview';
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;
 let executeButton: StatusBarItem;
 let outputChannel: OutputChannel;
 let gameTreeProvider: GameTreeDataProvider;
-let propertiesProvider: PropertiesDataProvider;
+let propertiesProvider: PropertiesWebviewProvider;
 let lastConnectedState: boolean = false;
 let lastExecutorName: string | undefined;
 
@@ -122,7 +123,7 @@ export function activate(context: ExtensionContext) {
 
   // Create Game Tree view (before client starts so it's ready)
   console.log('[rbxdev-ls] Creating Game Tree view...');
-  gameTreeProvider = new GameTreeDataProvider();
+  gameTreeProvider = new GameTreeDataProvider(context.extensionPath);
   const treeView = window.createTreeView('rbxdev-gameTree', {
     'treeDataProvider': gameTreeProvider,
     'showCollapseAll': true,
@@ -153,12 +154,11 @@ export function activate(context: ExtensionContext) {
 
   console.log('[rbxdev-ls] Game Tree view created');
 
-  // Create Properties view
-  propertiesProvider = new PropertiesDataProvider();
-  const propertiesView = window.createTreeView('rbxdev-properties', {
-    'treeDataProvider': propertiesProvider,
-  });
-  context.subscriptions.push(propertiesView);
+  // Create Properties webview
+  propertiesProvider = new PropertiesWebviewProvider(context);
+  context.subscriptions.push(
+    window.registerWebviewViewProvider('rbxdev-properties', propertiesProvider)
+  );
 
   // Handle selection changes in the game tree to show properties
   treeView.onDidChangeSelection(async (e) => {
@@ -188,16 +188,151 @@ export function activate(context: ExtensionContext) {
     }
   });
 
+  // Handle property changes from the webview
+  propertiesProvider.onPropertyChange(async (instancePath, property, value, valueType) => {
+    try {
+      const result = await client.sendRequest<{ success: boolean; error?: string }>(
+        'custom/setProperty',
+        {
+          'path': instancePath,
+          'property': property,
+          'value': value,
+          'valueType': valueType,
+        }
+      );
+
+      if (result.success) {
+        // Refresh properties to show updated value
+        const propsResult = await client.sendRequest<{
+          success: boolean;
+          properties?: PropertyEntry[];
+        }>('custom/requestProperties', { 'path': instancePath });
+        if (propsResult.success && propsResult.properties !== undefined) {
+          propertiesProvider.setProperties(
+            instancePath[instancePath.length - 1] ?? '',
+            propsResult.properties,
+            instancePath
+          );
+        }
+        return true;
+      } else {
+        window.showErrorMessage(`Failed to set ${property}: ${result.error ?? 'Unknown error'}`);
+        return false;
+      }
+    } catch (err) {
+      window.showErrorMessage(`Failed to set ${property}: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
+    }
+  });
+
+  // Helper to convert Roblox script paths to local file paths
+  const convertRobloxPathToFile = (robloxPath: string, line?: number): string => {
+    // Get workspace folder
+    const workspaceFolders = workspace.workspaceFolders;
+    if (workspaceFolders === undefined || workspaceFolders.length === 0) {
+      return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    }
+    const workspaceRoot = workspaceFolders[0]?.uri.fsPath;
+    if (workspaceRoot === undefined) {
+      return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    }
+
+    // Parse roblox path like "game.ServerScriptService.Main" or "ServerScriptService.Main"
+    const pathParts = robloxPath.replace(/^game\./, '').split('.');
+
+    // Common service to folder mappings (based on typical rojo structure)
+    const serviceMap: Record<string, string> = {
+      'ServerScriptService': 'src/server',
+      'ServerStorage': 'src/server/storage',
+      'ReplicatedStorage': 'src/shared',
+      'ReplicatedFirst': 'src/client/first',
+      'StarterPlayer': 'src/client',
+      'StarterPlayerScripts': 'src/client',
+      'StarterCharacterScripts': 'src/client/character',
+      'StarterGui': 'src/client/gui',
+      'StarterPack': 'src/client/starterpack',
+    };
+
+    const service = pathParts[0];
+    if (service === undefined) {
+      return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    }
+
+    const basePath = serviceMap[service];
+    if (basePath === undefined) {
+      return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    }
+
+    // Build potential file paths
+    const scriptPath = pathParts.slice(1).join('/');
+    const possiblePaths = [
+      path.join(workspaceRoot, basePath, `${scriptPath}.server.luau`),
+      path.join(workspaceRoot, basePath, `${scriptPath}.client.luau`),
+      path.join(workspaceRoot, basePath, `${scriptPath}.luau`),
+      path.join(workspaceRoot, basePath, `${scriptPath}.lua`),
+      path.join(workspaceRoot, basePath, scriptPath, 'init.server.luau'),
+      path.join(workspaceRoot, basePath, scriptPath, 'init.client.luau'),
+      path.join(workspaceRoot, basePath, scriptPath, 'init.luau'),
+      path.join(workspaceRoot, basePath, scriptPath, 'init.lua'),
+    ];
+
+    // Check which file exists (sync for simplicity in output formatting)
+    const fs = require('fs');
+    for (const filePath of possiblePaths) {
+      try {
+        if (fs.existsSync(filePath)) {
+          return line !== undefined ? `${filePath}:${line}` : filePath;
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+  };
+
+  // Parse stack trace line and convert to clickable format
+  const formatStackLine = (stackLine: string): string => {
+    // Match patterns like:
+    // "Script 'game.ServerScriptService.Main', Line 12"
+    // "game.ServerScriptService.Main:12"
+    // "ServerScriptService.Main:12: error message"
+    const patterns = [
+      /Script '([^']+)',?\s*Line (\d+)/i,
+      /((?:game\.)?[\w.]+):(\d+)/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = stackLine.match(pattern);
+      if (match !== null && match[1] !== undefined && match[2] !== undefined) {
+        const robloxPath = match[1];
+        const line = parseInt(match[2], 10);
+        const filePath = convertRobloxPathToFile(robloxPath, line);
+        // Replace the original path:line with the file path:line
+        return stackLine.replace(`${robloxPath}:${line}`, filePath);
+      }
+    }
+
+    return stackLine;
+  };
+
   // Start the client (also starts the server)
   client.start().then(() => {
     // Handle log notifications from executor bridge
     client.onNotification('custom/log', (log: { level: string; message: string; stack?: string; timestamp: number }) => {
       const prefix = log.level === 'error' ? '[ERROR]' : log.level === 'warn' ? '[WARN]' : '[INFO]';
       const timestamp = new Date(log.timestamp * 1000).toLocaleTimeString();
-      outputChannel.appendLine(`${timestamp} ${prefix} ${log.message}`);
+
+      // Format message - try to convert any Roblox paths in the message
+      const formattedMessage = formatStackLine(log.message);
+      outputChannel.appendLine(`${timestamp} ${prefix} ${formattedMessage}`);
 
       if (log.stack !== undefined) {
-        outputChannel.appendLine(log.stack);
+        // Format each line of the stack trace
+        const stackLines = log.stack.split('\n');
+        for (const line of stackLines) {
+          outputChannel.appendLine(formatStackLine(line));
+        }
       }
 
       if (log.level === 'error') {
@@ -338,12 +473,168 @@ export function activate(context: ExtensionContext) {
     }),
 
     commands.registerCommand('rbxdev-ls.editProperty', async (item: PropertyItem) => {
-      // Show input box with current value
-      const newValue = await window.showInputBox({
-        'prompt': `Edit ${item.name}`,
-        'value': item.value,
-        'placeHolder': `Enter new value for ${item.name}`,
-      });
+      let newValue: string | undefined;
+
+      // Handle different value types with appropriate UI
+      if (item.valueType === 'boolean') {
+        // Boolean: Quick pick with true/false
+        const selected = await window.showQuickPick(
+          [
+            { 'label': 'true', 'picked': item.value === 'true' },
+            { 'label': 'false', 'picked': item.value === 'false' },
+          ],
+          { 'title': `${item.name}`, 'placeHolder': `Current: ${item.value}` }
+        );
+        newValue = selected?.label;
+
+      } else if (item.valueType === 'Color3') {
+        // Color3: Show color presets + custom option
+        const colorPresets = [
+          { 'label': '$(circle-filled) White', 'description': '1, 1, 1', 'value': '1, 1, 1' },
+          { 'label': '$(circle-filled) Black', 'description': '0, 0, 0', 'value': '0, 0, 0' },
+          { 'label': '$(circle-filled) Red', 'description': '1, 0, 0', 'value': '1, 0, 0' },
+          { 'label': '$(circle-filled) Green', 'description': '0, 1, 0', 'value': '0, 1, 0' },
+          { 'label': '$(circle-filled) Blue', 'description': '0, 0, 1', 'value': '0, 0, 1' },
+          { 'label': '$(circle-filled) Yellow', 'description': '1, 1, 0', 'value': '1, 1, 0' },
+          { 'label': '$(circle-filled) Cyan', 'description': '0, 1, 1', 'value': '0, 1, 1' },
+          { 'label': '$(circle-filled) Magenta', 'description': '1, 0, 1', 'value': '1, 0, 1' },
+          { 'label': '$(circle-filled) Orange', 'description': '1, 0.5, 0', 'value': '1, 0.5, 0' },
+          { 'label': '$(circle-filled) Purple', 'description': '0.5, 0, 1', 'value': '0.5, 0, 1' },
+          { 'label': '$(circle-filled) Gray', 'description': '0.5, 0.5, 0.5', 'value': '0.5, 0.5, 0.5' },
+          { 'label': '$(edit) Custom RGB...', 'description': 'Enter custom values', 'value': '__custom__' },
+        ];
+
+        const selected = await window.showQuickPick(colorPresets, {
+          'title': `${item.name} (Color3)`,
+          'placeHolder': `Current: ${item.value}`,
+        });
+
+        if (selected?.value === '__custom__') {
+          newValue = await window.showInputBox({
+            'prompt': `Enter RGB values (0-1)`,
+            'value': item.value,
+            'placeHolder': 'r, g, b (e.g., "0.5, 0.8, 1")',
+            'validateInput': (v) => {
+              if (!/^-?\d*\.?\d+\s*,\s*-?\d*\.?\d+\s*,\s*-?\d*\.?\d+$/.test(v.trim())) {
+                return 'Enter 3 numbers separated by commas';
+              }
+              const parts = v.split(',').map(s => parseFloat(s.trim()));
+              if (parts.some(n => isNaN(n) || n < 0 || n > 1)) {
+                return 'Values must be between 0 and 1';
+              }
+              return undefined;
+            },
+          });
+        } else {
+          newValue = selected?.value;
+        }
+
+      } else if (item.valueType === 'EnumItem') {
+        // EnumItem: Try to get enum values and show as dropdown
+        const enumMatch = item.value.match(/^Enum\.(\w+)\.(\w+)$/);
+        if (enumMatch !== null && enumMatch[1] !== undefined) {
+          const enumType = enumMatch[1];
+
+          // Common enum values (hardcoded for common types)
+          const enumValues: Record<string, string[]> = {
+            'Material': ['Plastic', 'Wood', 'Slate', 'Concrete', 'CorrodedMetal', 'DiamondPlate', 'Foil', 'Grass', 'Ice', 'Marble', 'Granite', 'Brick', 'Pebble', 'Sand', 'Fabric', 'SmoothPlastic', 'Metal', 'WoodPlanks', 'Cobblestone', 'Neon', 'Glass', 'ForceField'],
+            'PartType': ['Block', 'Cylinder', 'Ball', 'Wedge', 'CornerWedge'],
+            'Shape': ['Block', 'Cylinder', 'Ball'],
+            'Font': ['Legacy', 'Arial', 'ArialBold', 'SourceSans', 'SourceSansBold', 'SourceSansSemibold', 'SourceSansLight', 'SourceSansItalic', 'Bodoni', 'Garamond', 'Cartoon', 'Code', 'Highway', 'SciFi', 'Arcade', 'Fantasy', 'Antique', 'Gotham', 'GothamMedium', 'GothamBold', 'GothamBlack', 'Ubuntu', 'Michroma', 'TitilliumWeb', 'JosefinSans', 'Oswald', 'Merriweather', 'Roboto', 'RobotoMono', 'Sarpanch', 'SpecialElite', 'FredokaOne', 'Creepster', 'IndieFlower', 'PermanentMarker', 'DenkOne', 'BuilderSans', 'BuilderSansMedium', 'BuilderSansBold', 'BuilderSansExtraBold'],
+            'SortOrder': ['LayoutOrder', 'Name', 'Custom'],
+            'HorizontalAlignment': ['Center', 'Left', 'Right'],
+            'VerticalAlignment': ['Center', 'Top', 'Bottom'],
+            'TextXAlignment': ['Center', 'Left', 'Right'],
+            'TextYAlignment': ['Center', 'Top', 'Bottom'],
+            'ScaleType': ['Stretch', 'Slice', 'Tile', 'Fit', 'Crop'],
+            'SizeConstraint': ['RelativeXY', 'RelativeXX', 'RelativeYY'],
+            'BorderMode': ['Outline', 'Middle', 'Inset'],
+            'EasingStyle': ['Linear', 'Sine', 'Back', 'Quad', 'Quart', 'Quint', 'Bounce', 'Elastic', 'Exponential', 'Circular', 'Cubic'],
+            'EasingDirection': ['In', 'Out', 'InOut'],
+            'SurfaceType': ['Smooth', 'Glue', 'Weld', 'Studs', 'Inlet', 'Universal', 'Hinge', 'Motor', 'SteppingMotor'],
+          };
+
+          const values = enumValues[enumType];
+          if (values !== undefined) {
+            const items = values.map(v => ({
+              'label': v,
+              'description': `Enum.${enumType}.${v}`,
+              'picked': item.value === `Enum.${enumType}.${v}`,
+            }));
+
+            const selected = await window.showQuickPick(items, {
+              'title': `${item.name} (${enumType})`,
+              'placeHolder': `Current: ${item.value}`,
+            });
+
+            if (selected !== undefined) {
+              newValue = `Enum.${enumType}.${selected.label}`;
+            }
+          } else {
+            // Unknown enum, fall back to input box
+            newValue = await window.showInputBox({
+              'prompt': `Edit ${item.name}`,
+              'value': item.value,
+              'placeHolder': 'Enum.Type.Value',
+            });
+          }
+        }
+
+      } else if (item.valueType === 'BrickColor') {
+        // BrickColor: Show common colors
+        const brickColors = [
+          'White', 'Grey', 'Light grey', 'Black', 'Really black',
+          'Bright red', 'Bright orange', 'Bright yellow', 'Bright green', 'Bright blue',
+          'Bright violet', 'Hot pink', 'Really red', 'Lime green', 'Toothpaste',
+          'Cyan', 'Deep blue', 'Navy blue', 'Dark green', 'Grime',
+          'Rust', 'Maroon', 'Brown', 'Reddish brown', 'Nougat',
+          'Brick yellow', 'Sand red', 'Sand blue', 'Sand green', 'Teal',
+          'Medium stone grey', 'Dark stone grey', 'Institutional white', 'Ghost grey',
+        ].map(color => ({ 'label': color, 'picked': item.value === color }));
+
+        const selected = await window.showQuickPick(brickColors, {
+          'title': `${item.name} (BrickColor)`,
+          'placeHolder': `Current: ${item.value}`,
+        });
+
+        newValue = selected?.label;
+
+      } else {
+        // Default: Input box with validation
+        const validateInput = (value: string): string | undefined => {
+          switch (item.valueType) {
+            case 'number':
+              return /^-?\d*\.?\d+$/.test(value.trim()) ? undefined : 'Enter a valid number';
+            case 'Vector3':
+            case 'CFrame':
+              return /^-?\d*\.?\d+\s*,\s*-?\d*\.?\d+\s*,\s*-?\d*\.?\d+$/.test(value.trim())
+                ? undefined : 'Enter 3 numbers: x, y, z';
+            case 'Vector2':
+              return /^-?\d*\.?\d+\s*,\s*-?\d*\.?\d+$/.test(value.trim())
+                ? undefined : 'Enter 2 numbers: x, y';
+            case 'UDim2':
+              return /^\{?\s*-?\d*\.?\d+\s*,\s*-?\d+\s*\}?\s*,\s*\{?\s*-?\d*\.?\d+\s*,\s*-?\d+\s*\}?$/.test(value.trim())
+                ? undefined : 'Format: {xScale, xOffset}, {yScale, yOffset}';
+            default:
+              return undefined;
+          }
+        };
+
+        const placeholders: Record<string, string> = {
+          'Vector3': 'x, y, z',
+          'Vector2': 'x, y',
+          'CFrame': 'x, y, z',
+          'UDim2': '{xScale, xOffset}, {yScale, yOffset}',
+          'number': 'Enter a number',
+        };
+
+        newValue = await window.showInputBox({
+          'prompt': `${item.name}`,
+          'value': item.value,
+          'placeHolder': placeholders[item.valueType] ?? `Enter value`,
+          'validateInput': validateInput,
+        });
+      }
 
       if (newValue === undefined) return; // User cancelled
 
@@ -359,8 +650,7 @@ export function activate(context: ExtensionContext) {
         );
 
         if (result.success) {
-          window.showInformationMessage(`${item.name} set to ${newValue}`);
-          // Refresh properties to show updated value
+          // Refresh properties to show updated value (no message popup)
           const propsResult = await client.sendRequest<{
             success: boolean;
             properties?: PropertyEntry[];
@@ -369,10 +659,10 @@ export function activate(context: ExtensionContext) {
             propertiesProvider.setProperties(item.instancePath[item.instancePath.length - 1] ?? '', propsResult.properties, item.instancePath);
           }
         } else {
-          window.showErrorMessage(`Failed to set property: ${result.error ?? 'Unknown error'}`);
+          window.showErrorMessage(`Failed: ${result.error ?? 'Unknown error'}`);
         }
       } catch (err) {
-        window.showErrorMessage(`Failed to set property: ${err instanceof Error ? err.message : String(err)}`);
+        window.showErrorMessage(`Failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }),
 
