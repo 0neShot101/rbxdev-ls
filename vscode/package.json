@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.1.7",
+  "version": "0.1.9",
   "publisher": "rbxdev",
   "license": "MIT",
   "repository": {
@@ -32,11 +32,7 @@
     "ai"
   ],
   "activationEvents": [
-    "onLanguage:lua",
-    "onLanguage:luau",
-    "workspaceContains:**/*.lua",
-    "workspaceContains:**/*.luau",
-    "workspaceContains:**/default.project.json"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
