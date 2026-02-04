@@ -6,8 +6,8 @@ local userConfig = (...) or {};
 local CONFIG = {
 	host = 'ws://127.0.0.1:21324';
 	reconnectDelay = 5;
-	initialTreeDepth = 5;  -- Serialize 5 levels deep for completions
-	expandedTreeDepth = 3; -- When expanding, get 3 more levels
+	initialTreeDepth = 2;  -- Shallow for performance, lazy load deeper
+	expandedTreeDepth = 2; -- When expanding, get 2 more levels
 	gameTreeServices = {
 		'Workspace'; 'Players'; 'ReplicatedStorage'; 'ReplicatedFirst';
 		'StarterGui'; 'StarterPack'; 'StarterPlayer'; 'Lighting';
