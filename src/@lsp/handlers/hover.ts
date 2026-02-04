@@ -4,6 +4,7 @@
  */
 
 import { getCommonChildType } from '@definitions/commonChildren';
+import { type ExecutorBridge } from '@executor';
 import { formatDocCommentForDisplay, type DocComment } from '@parser/docComment';
 import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
@@ -286,6 +287,7 @@ interface MemberAccessInfo {
 /**
  * Detects if the cursor is on a member access expression and extracts
  * the object name, member name, and access type.
+ * Handles complex expressions like GetService calls.
  * @param content - The full document content as a string
  * @param line - The zero-indexed line number
  * @param character - The zero-indexed character position within the line
@@ -319,6 +321,25 @@ const getMemberAccessAtPosition = (content: string, line: number, character: num
   let objStart = objEnd - 1;
   while (objStart >= 0 && /\s/.test(lineContent[objStart] ?? '')) objStart--;
   objEnd = objStart + 1;
+
+  // Check if we hit a closing quote/paren (from GetService call)
+  const charBeforeAccessor = lineContent[objStart];
+  if (charBeforeAccessor === ')' || charBeforeAccessor === "'" || charBeforeAccessor === '"') {
+    // Look for GetService pattern and extract the service name as the "object"
+    const beforeAccessor = lineContent.slice(0, accessorPos);
+    const getServiceMatch = beforeAccessor.match(/:GetService\s*[(['"](["']?)(\w+)\1[)\]'"]\s*$/);
+    if (getServiceMatch !== null && getServiceMatch[2] !== undefined) {
+      // The service name becomes the "object" - map it to its class type
+      const serviceName = getServiceMatch[2];
+      return {
+        'objectName': serviceName,
+        memberName,
+        'isMethod': accessor === ':',
+      };
+    }
+    return undefined;
+  }
+
   while (objStart > 0 && /\w/.test(lineContent[objStart - 1] ?? '')) objStart--;
 
   if (objStart === objEnd) return undefined;
@@ -375,15 +396,133 @@ const lookupClassMember = (
 };
 
 /**
+ * Extracts the full member access chain from a position in the document.
+ * Returns the path segments if this is a game/workspace access, otherwise undefined.
+ * Handles patterns like:
+ *   - game.Workspace.Part.Name
+ *   - game:GetService("Players").LocalPlayer.Name
+ *   - game:GetService'Players'.LocalPlayer.Name
+ *   - workspace.Part.Name
+ * @param content - The document content
+ * @param line - The line number
+ * @param character - The character position
+ * @returns Array of path segments or undefined
+ */
+const extractGamePath = (content: string, line: number, character: number): ReadonlyArray<string> | undefined => {
+  const lines = content.split('\n');
+  const lineContent = lines[line];
+  if (lineContent === undefined) return undefined;
+
+  // Find word boundaries to get end of current word
+  let end = character;
+  while (end < lineContent.length && /\w/.test(lineContent[end] ?? '')) end++;
+
+  // Walk backwards from end to find the full chain
+  const segments: string[] = [];
+  let pos = end;
+
+  while (pos > 0) {
+    // Find word before current position
+    let wordEnd = pos;
+    while (wordEnd > 0 && /\s/.test(lineContent[wordEnd - 1] ?? '')) wordEnd--;
+
+    let wordStart = wordEnd;
+    while (wordStart > 0 && /\w/.test(lineContent[wordStart - 1] ?? '')) wordStart--;
+
+    // Check if we hit a GetService call instead of a word
+    if (wordStart === wordEnd) {
+      // Check for closing quote/paren from GetService
+      const charAtPos = lineContent[wordEnd - 1];
+      if (charAtPos === ')' || charAtPos === "'" || charAtPos === '"') {
+        const beforePos = lineContent.slice(0, wordEnd);
+        const getServiceMatch = beforePos.match(/game\s*:\s*GetService\s*[(['"](["']?)(\w+)\1[)\]'"]\s*$/);
+        if (getServiceMatch !== null && getServiceMatch[2] !== undefined) {
+          segments.unshift(getServiceMatch[2]);
+          segments.unshift('game');
+        }
+      }
+      break;
+    }
+
+    const word = lineContent.slice(wordStart, wordEnd);
+    segments.unshift(word);
+
+    // Check for accessor before this word
+    let accessorPos = wordStart - 1;
+    while (accessorPos >= 0 && /\s/.test(lineContent[accessorPos] ?? '')) accessorPos--;
+
+    if (accessorPos < 0) break;
+    const accessor = lineContent[accessorPos];
+
+    // Handle closing parenthesis/bracket from GetService call
+    if (accessor === ')' || accessor === "'" || accessor === '"') {
+      // Look for GetService pattern: :GetService("ServiceName") or :GetService'ServiceName'
+      const beforeAccessor = lineContent.slice(0, accessorPos + 1);
+      const getServiceMatch = beforeAccessor.match(/game\s*:\s*GetService\s*[(['"](["']?)(\w+)\1[)\]'"]\s*$/);
+
+      if (getServiceMatch !== null && getServiceMatch[2] !== undefined) {
+        // Insert the service name and 'game' at the beginning
+        segments.unshift(getServiceMatch[2]);
+        segments.unshift('game');
+        break;
+      }
+      break;
+    }
+
+    if (accessor !== '.' && accessor !== ':') break;
+
+    pos = accessorPos;
+  }
+
+  // Check if this is a game/workspace path
+  if (segments.length === 0) return undefined;
+  const first = segments[0];
+  if (first === 'game') return segments.slice(1);
+  if (first === 'workspace') return ['Workspace', ...segments.slice(1)];
+
+  // Check if it starts with a service name directly (from GetService resolution)
+  const knownServices = [
+    'Players',
+    'Workspace',
+    'ReplicatedStorage',
+    'ReplicatedFirst',
+    'ServerStorage',
+    'ServerScriptService',
+    'StarterGui',
+    'StarterPack',
+    'StarterPlayer',
+    'Lighting',
+    'SoundService',
+    'Chat',
+    'Teams',
+    'TeleportService',
+    'UserInputService',
+    'RunService',
+    'Debris',
+    'TweenService',
+  ];
+  if (first !== undefined && knownServices.includes(first)) {
+    return segments;
+  }
+
+  return undefined;
+};
+
+/**
  * Registers the hover handler with the LSP connection.
  * Provides type information and documentation when the user hovers
  * over identifiers, member accesses, and type references.
  * @param connection - The LSP connection to register the handler on
  * @param documentManager - The document manager for accessing parsed documents and global environment
+ * @param executorBridge - The executor bridge for fetching live property values
  * @returns void
  */
-export const setupHoverHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onHover((params: HoverParams): Hover | null => {
+export const setupHoverHandler = (
+  connection: Connection,
+  documentManager: DocumentManager,
+  executorBridge: ExecutorBridge,
+): void => {
+  connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined) return null;
 
@@ -394,6 +533,28 @@ export const setupHoverHandler = (connection: Connection, documentManager: Docum
     const memberAccess = getMemberAccessAtPosition(document.content, params.position.line, params.position.character);
 
     if (memberAccess !== undefined) {
+      // Try to fetch live value first if connected (works regardless of static type info)
+      let liveValueMarkdown = '';
+      if (executorBridge.isConnected) {
+        const gamePath = extractGamePath(document.content, params.position.line, params.position.character);
+        if (gamePath !== undefined && gamePath.length > 0) {
+          const instancePath = gamePath.slice(0, -1);
+          if (instancePath.length > 0) {
+            try {
+              const result = await executorBridge.requestProperties(instancePath, [memberAccess.memberName]);
+              if (result.success && result.properties !== undefined && result.properties.length > 0) {
+                const liveValue = result.properties[0];
+                if (liveValue !== undefined) {
+                  liveValueMarkdown = `\n\n**Live Value:** \`${liveValue.value}\``;
+                }
+              }
+            } catch {
+              // Timeout or error - continue with static info
+            }
+          }
+        }
+      }
+
       // Try to find the object's type and look up the member
       const objectClass = documentManager.globalEnv.robloxClasses.get(memberAccess.objectName);
       if (objectClass !== undefined && objectClass.kind === 'Class') {
@@ -411,15 +572,17 @@ export const setupHoverHandler = (connection: Connection, documentManager: Docum
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
-                'value': '```lua\n' + formatMethodDoc(memberAccess.memberName, member.method) + '\n```',
+                'value':
+                  '```lua\n' + formatMethodDoc(memberAccess.memberName, member.method) + '\n```' + liveValueMarkdown,
               },
             };
           }
           if (member.kind === 'property') {
+            const markdown = '```lua\n' + formatPropertyDoc(memberAccess.memberName, member.prop) + '\n```';
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
-                'value': '```lua\n' + formatPropertyDoc(memberAccess.memberName, member.prop) + '\n```',
+                'value': markdown + liveValueMarkdown,
               },
             };
           }
@@ -432,7 +595,8 @@ export const setupHoverHandler = (connection: Connection, documentManager: Docum
                   `(child) ${member.childName}: ${member.childTypeName}` +
                   '\n```\n\n' +
                   `Common child instance of type \`${member.childTypeName}\`\n\n` +
-                  `Accessed via \`FindFirstChild("${member.childName}")\` or direct indexing.`,
+                  `Accessed via \`FindFirstChild("${member.childName}")\` or direct indexing.` +
+                  liveValueMarkdown,
               },
             };
           }
@@ -447,10 +611,21 @@ export const setupHoverHandler = (connection: Connection, documentManager: Docum
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
-              'value': '```lua\n' + formatTypeDoc(memberAccess.memberName, memberProp.type) + '\n```',
+              'value':
+                '```lua\n' + formatTypeDoc(memberAccess.memberName, memberProp.type) + '\n```' + liveValueMarkdown,
             },
           };
         }
+      }
+
+      // If we have a live value but no static type info, show just the live value
+      if (liveValueMarkdown.length > 0) {
+        return {
+          'contents': {
+            'kind': MarkupKind.Markdown,
+            'value': `\`\`\`lua\n${memberAccess.objectName}.${memberAccess.memberName}\n\`\`\`` + liveValueMarkdown,
+          },
+        };
       }
     }
 
