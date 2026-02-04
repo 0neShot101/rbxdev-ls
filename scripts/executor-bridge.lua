@@ -6,9 +6,9 @@ local userConfig = (...) or {};
 local CONFIG = {
 	host = 'ws://127.0.0.1:21324';
 	reconnectDelay = 5;
-	firstConnectDepth = 999; -- Full tree dump on first connect for completions
-	updateTreeDepth = 2;   -- Shallow for subsequent updates (performance)
-	expandedTreeDepth = 2; -- When expanding nodes, get 2 more levels
+	firstConnectDepth = 999;
+	updateTreeDepth = 2;
+	expandedTreeDepth = 2;
 	gameTreeServices = {
 		'Workspace'; 'Players'; 'ReplicatedStorage'; 'ReplicatedFirst';
 		'StarterGui'; 'StarterPack'; 'StarterPlayer'; 'Lighting';
@@ -16,7 +16,6 @@ local CONFIG = {
 	};
 };
 
--- Merge user config with defaults
 for k, v in pairs(userConfig) do CONFIG[k] = v; end
 
 local DEFAULT_PROPERTIES = {
@@ -209,9 +208,8 @@ local connection = nil;
 local connected = false;
 local refreshConnections = {};
 local pendingUpdate = false;
-local updateDebounce = 0.5; -- Debounce time for updates
+local updateDebounce = 0.5;
 
--- Remote spy state
 local remoteSpyEnabled = false;
 local remoteSpyFilter = '';
 local originalNamecall = nil;
@@ -249,7 +247,6 @@ local resolveInstancePath = function(path)
 	return instance;
 end;
 
--- Get path array from instance
 local getInstancePath = function(instance)
 	local path = {};
 	local current = instance;
@@ -260,7 +257,6 @@ local getInstancePath = function(instance)
 	return path;
 end;
 
--- Serialize arguments for remote spy
 local serializeArguments = function(...)
 	local args = {...};
 	local parts = {};
@@ -331,7 +327,6 @@ local parseError = function(errorString)
 	};
 end;
 
--- Serialize instance with limited depth (lazy loading)
 local serializeInstance;
 serializeInstance = function(instance, depth)
 	if depth <= 0 then return nil; end
@@ -339,13 +334,11 @@ serializeInstance = function(instance, depth)
 	local node = { name = instance.Name; className = instance.ClassName };
 	local instanceChildren = instance:GetChildren();
 
-	-- If we're at depth limit but there are children, mark as having children
 	if depth == 1 and #instanceChildren > 0 then
 		node.hasChildren = true;
 		return node;
 	end
 
-	-- Serialize children if we have depth remaining
 	if #instanceChildren > 0 then
 		local children = {};
 		for _, child in ipairs(instanceChildren) do
@@ -362,7 +355,6 @@ serializeInstance = function(instance, depth)
 	return node;
 end;
 
--- Get children for a specific path (for lazy loading)
 local getChildrenAtPath = function(path, depth)
 	local instance = resolveInstancePath(path);
 	if instance == nil then return nil; end
@@ -392,12 +384,8 @@ local getGameTree = function(services, depth)
 	return tree;
 end;
 
--- Debounced game tree update (disabled - initial deep dump + lazy loading is sufficient)
--- Re-enabling would overwrite the deep tree with shallow updates
 local sendGameTreeUpdate;
 sendGameTreeUpdate = function()
-	-- Disabled: lazy loading handles updates, don't overwrite deep tree
-	-- If you want real-time updates, use the refresh button in VS Code
 end;
 
 local getInstanceProperties = function(instance, requestedProps)
@@ -485,7 +473,6 @@ MESSAGE_HANDLERS.requestGameTree = function(message)
 	send{ type = 'gameTree'; data = getGameTree(message.services, depth) };
 end;
 
--- New: Request children for lazy loading when expanding a node
 MESSAGE_HANDLERS.requestChildren = function(message)
 	local path = message.path;
 	local depth = message.depth or CONFIG.expandedTreeDepth;
@@ -618,7 +605,6 @@ MESSAGE_HANDLERS.deleteInstance = function(message)
 	end
 
 	sendResult('deleteInstanceResult', message.id, true);
-	-- Tree will update via ChildRemoved event
 end;
 
 MESSAGE_HANDLERS.reparentInstance = function(message)
@@ -646,31 +632,22 @@ MESSAGE_HANDLERS.reparentInstance = function(message)
 	end
 
 	sendResult('reparentInstanceResult', message.id, true);
-	-- Tree will update via ChildAdded/ChildRemoved events
 end;
 
 MESSAGE_HANDLERS.requestScriptSource = function(message)
-	print('[rbxdev-bridge] requestScriptSource received for path:', table.concat(message.path, '.'));
-
 	local instance = resolveInstancePath(message.path);
 
 	if instance == nil then
-		print('[rbxdev-bridge] Instance not found');
 		sendResult('scriptSourceResult', message.id, false, { error = 'Instance not found at: ' .. table.concat(message.path, '.') });
 		return;
 	end
 
-	print('[rbxdev-bridge] Found instance:', instance.ClassName, instance.Name);
-
-	-- Check if it's a script type
 	local isScript = instance:IsA'LocalScript' or instance:IsA'ModuleScript' or instance:IsA'Script';
 	if isScript == false then
-		print('[rbxdev-bridge] Not a script type');
 		sendResult('scriptSourceResult', message.id, false, { error = instance.ClassName .. ' is not a script type' });
 		return;
 	end
 
-	-- Try to get the script source using decompiler (check various common function names)
 	local decompilerFunc = decompile
 		or decompilescript
 		or getscriptsource
@@ -678,16 +655,12 @@ MESSAGE_HANDLERS.requestScriptSource = function(message)
 		or get_script_source
 		or nil;
 
-	print('[rbxdev-bridge] Decompiler available:', decompilerFunc ~= nil);
-
 	if decompilerFunc == nil then
 		sendResult('scriptSourceResult', message.id, false, { error = 'No decompiler available in this executor' });
 		return;
 	end
 
 	local success, source = pcall(decompilerFunc, instance);
-
-	print('[rbxdev-bridge] Decompile result:', success, success and #source or source);
 
 	if success == false then
 		sendResult('scriptSourceResult', message.id, false, { error = 'Decompilation failed: ' .. tostring(source) });
@@ -698,8 +671,6 @@ MESSAGE_HANDLERS.requestScriptSource = function(message)
 		source = source;
 		scriptType = instance.ClassName;
 	});
-
-	print('[rbxdev-bridge] Script source sent successfully');
 end;
 
 MESSAGE_HANDLERS.createInstance = function(message)
@@ -764,7 +735,6 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 	local enabled = message.enabled;
 	local id = message.id;
 
-	-- Check if required functions are available
 	if hookmetamethod == nil then
 		sendResult('setRemoteSpyEnabledResult', id, false, { error = 'hookmetamethod not available in this executor' });
 		return;
@@ -774,14 +744,11 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 		if enabled == true and remoteSpyEnabled == false then
 			local oldNamecall;
 			oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
-				-- Capture args immediately
 				local args = {...};
 				local method = getnamecallmethod();
 
-				-- Always call original first to not break anything
 				local results = {oldNamecall(self, unpack(args))};
 
-				-- Now try to log (wrapped in pcall so errors don't propagate)
 				pcall(function()
 					if checkcaller and checkcaller() then return; end
 					if remoteSpyEnabled == false or connected == false then return; end
@@ -815,7 +782,6 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 			print'[rbxdev-bridge] Remote spy enabled';
 
 		elseif enabled == false and remoteSpyEnabled == true then
-			-- Disable remote spy by restoring original namecall
 			if originalNamecall ~= nil then
 				hookmetamethod(game, '__namecall', originalNamecall);
 				originalNamecall = nil;
@@ -840,23 +806,14 @@ MESSAGE_HANDLERS.setRemoteSpyFilter = function(message)
 
 	remoteSpyFilter = filter;
 	sendResult('setRemoteSpyFilterResult', id, true);
-	print('[rbxdev-bridge] Remote spy filter set to: ' .. (filter == '' and '(none)' or filter));
 end;
 
 local handleMessage = function(rawMessage)
 	local message = jsonDecode(rawMessage);
-	if message == nil then
-		print('[rbxdev-bridge] Failed to decode message');
-		return;
-	end
-
-	print('[rbxdev-bridge] Received message type:', message.type);
+	if message == nil then return; end
 
 	local handler = MESSAGE_HANDLERS[message.type];
-	if handler == nil then
-		print('[rbxdev-bridge] No handler for message type:', message.type);
-		return;
-	end
+	if handler == nil then return; end
 
 	handler(message);
 end;
@@ -881,7 +838,6 @@ local setupLogHooks = function()
 			timestamp = os.time();
 		});
 
-
 		inHook = false;
 	end;
 
@@ -905,7 +861,6 @@ local setupLogHooks = function()
 			return originalError(message, level);
 		end);
 
-		print'[rbxdev-bridge] Log hooks installed (hookfunction)';
 		return;
 	end
 
@@ -921,11 +876,8 @@ local setupLogHooks = function()
 		safeLog('warn', ...);
 		return originalWarn(...);
 	end;
-
-	print'[rbxdev-bridge] Log hooks installed (getgenv fallback)';
 end;
 
--- Set up event-driven tree updates (no polling!)
 local setupEventListeners = function()
 	for _, conn in ipairs(refreshConnections) do
 		pcall(conn.Disconnect, conn);
@@ -936,7 +888,6 @@ local setupEventListeners = function()
 		local success, service = pcall(game.GetService, game, serviceName);
 
 		if success == true and service ~= nil then
-			-- Listen for direct children changes
 			table.insert(refreshConnections, service.ChildAdded:Connect(function()
 				sendGameTreeUpdate();
 			end));
@@ -944,7 +895,6 @@ local setupEventListeners = function()
 				sendGameTreeUpdate();
 			end));
 
-			-- Also listen for descendant changes (deeper updates)
 			table.insert(refreshConnections, service.DescendantAdded:Connect(function()
 				sendGameTreeUpdate();
 			end));
@@ -953,14 +903,10 @@ local setupEventListeners = function()
 			end));
 		end
 	end
-
-	print'[rbxdev-bridge] Event listeners enabled (no polling)';
 end;
 
 local connect;
 connect = function()
-	print('[rbxdev-bridge] Connecting to ' .. CONFIG.host .. '...');
-
 	local success, ws = pcall(WebSocket.connect, CONFIG.host);
 
 	if success == false or ws == nil then
@@ -977,19 +923,13 @@ connect = function()
 		version = executorVersion;
 	};
 
-	print('[rbxdev-bridge] Connected! Executor: ' .. executorName .. ' v' .. executorVersion);
-
-	-- Send deep tree dump on first connect for completions
-	print('[rbxdev-bridge] Sending initial game tree (depth ' .. CONFIG.firstConnectDepth .. ')...');
 	send{ type = 'gameTree'; data = getGameTree(nil, CONFIG.firstConnectDepth) };
-	print('[rbxdev-bridge] Initial game tree sent!');
 
 	ws.OnMessage:Connect(handleMessage);
 
 	ws.OnClose:Connect(function()
 		connected = false;
 		connection = nil;
-		print'[rbxdev-bridge] Disconnected from server';
 
 		task.delay(CONFIG.reconnectDelay, function()
 			if connected == false then connect(); end
@@ -1002,6 +942,3 @@ end;
 connect();
 setupLogHooks();
 setupEventListeners();
-
-print'[rbxdev-bridge] Bridge script loaded successfully';
-print'[rbxdev-bridge] Press Ctrl+Shift+E in VS Code to execute code';
