@@ -733,7 +733,21 @@ connect = function()
 
 	-- Send deep tree dump on first connect for completions
 	print('[rbxdev-bridge] Sending initial game tree (depth ' .. CONFIG.firstConnectDepth .. ')...');
-	send{ type = 'gameTree'; data = getGameTree(nil, CONFIG.firstConnectDepth) };
+	local tree = getGameTree(nil, CONFIG.firstConnectDepth);
+
+	-- Debug: check if ReplicatedStorage.Interaction has children
+	for _, service in ipairs(tree) do
+		if service.name == 'ReplicatedStorage' and service.children then
+			for _, child in ipairs(service.children) do
+				if child.name == 'Interaction' then
+					local childCount = child.children and #child.children or 0;
+					print('[rbxdev-bridge] DEBUG: Interaction has ' .. childCount .. ' children, hasChildren=' .. tostring(child.hasChildren));
+				end
+			end
+		end
+	end
+
+	send{ type = 'gameTree'; data = tree };
 	print('[rbxdev-bridge] Initial game tree sent!');
 
 	ws.OnMessage:Connect(handleMessage);
