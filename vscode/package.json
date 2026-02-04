@@ -4,6 +4,7 @@
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
   "version": "0.1.0",
   "publisher": "rbxdev",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"
   },
@@ -71,6 +72,27 @@
         }
       }
     },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rbxdev-explorer",
+          "title": "Roblox Explorer",
+          "icon": "icon.png"
+        }
+      ]
+    },
+    "views": {
+      "rbxdev-explorer": [
+        {
+          "id": "rbxdev-gameTree",
+          "name": "Game Tree"
+        },
+        {
+          "id": "rbxdev-properties",
+          "name": "Properties"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "rbxdev-ls.execute",
@@ -85,6 +107,38 @@
       {
         "command": "rbxdev-ls.toggleBridge",
         "title": "Toggle Executor Bridge"
+      },
+      {
+        "command": "rbxdev-ls.copyPath",
+        "title": "Copy Instance Path"
+      },
+      {
+        "command": "rbxdev-ls.insertPath",
+        "title": "Insert Path at Cursor"
+      },
+      {
+        "command": "rbxdev-ls.insertService",
+        "title": "Insert GetService Statement"
+      },
+      {
+        "command": "rbxdev-ls.refreshGameTree",
+        "title": "Refresh Game Tree",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rbxdev-ls.editProperty",
+        "title": "Edit Value",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "rbxdev-ls.teleportTo",
+        "title": "Teleport To",
+        "icon": "$(location)"
+      },
+      {
+        "command": "rbxdev-ls.deleteInstance",
+        "title": "Delete Instance",
+        "icon": "$(trash)"
       }
     ],
     "keybindings": [
@@ -119,6 +173,45 @@
           "command": "rbxdev-ls.executeSelection",
           "when": "editorLangId == lua || editorLangId == luau && editorHasSelection",
           "group": "1_modification"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "rbxdev-ls.refreshGameTree",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rbxdev-ls.copyPath",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbxdev-ls.insertPath",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "rbxdev-ls.insertService",
+          "when": "view == rbxdev-gameTree && viewItem == service",
+          "group": "navigation@3"
+        },
+        {
+          "command": "rbxdev-ls.teleportTo",
+          "when": "view == rbxdev-gameTree",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "rbxdev-ls.deleteInstance",
+          "when": "view == rbxdev-gameTree && viewItem != service",
+          "group": "2_actions@2"
+        },
+        {
+          "command": "rbxdev-ls.editProperty",
+          "when": "view == rbxdev-properties",
+          "group": "inline"
         }
       ]
     }

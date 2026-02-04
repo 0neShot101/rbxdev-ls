@@ -1,11 +1,19 @@
-# rbxdev-ls
+<p align="center">
+  <img src="vscode/icon.png" alt="rbxdev-ls" width="128" height="128">
+</p>
 
-A fast, full-featured language server for Roblox Luau development.
+<h1 align="center">rbxdev-ls</h1>
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
-![Bun](https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white)
+<p align="center">
+  A fast, full-featured language server for Roblox Luau development.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Bun-000000?logo=bun&logoColor=white" alt="Bun">
+</p>
 
 ---
 

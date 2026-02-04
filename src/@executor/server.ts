@@ -6,7 +6,22 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 
 import { createLiveGameModel, type LiveGameModel } from './gameTree';
-import { parseClientMessage, type GameTreeNode, type RuntimeError, type ServerMessage } from './protocol';
+import {
+  isDeleteInstanceResultMessage,
+  isLogMessage,
+  isModuleInterfaceMessage,
+  isPropertiesResultMessage,
+  isReparentInstanceResultMessage,
+  isSetPropertyResultMessage,
+  isTeleportToResultMessage,
+  parseClientMessage,
+  type GameTreeNode,
+  type ModuleInterface,
+  type ModuleReference,
+  type PropertyEntry,
+  type RuntimeError,
+  type ServerMessage,
+} from './protocol';
 
 /**
  * Represents the result of executing Luau code on a connected executor.
@@ -19,6 +34,84 @@ export interface ExecuteResult {
   readonly result?: string;
   /** Error details if the execution failed */
   readonly error?: RuntimeError;
+}
+
+/**
+ * Represents a log entry received from the executor
+ */
+export interface LogEntry {
+  /** The log level (info, warn, or error) */
+  readonly level: 'info' | 'warn' | 'error';
+  /** The log message content */
+  readonly message: string;
+  /** Optional stack trace for errors */
+  readonly stack?: string | undefined;
+  /** Unix timestamp when the log was generated */
+  readonly timestamp: number;
+}
+
+/**
+ * Represents the result of a property request
+ */
+export interface PropertiesResult {
+  /** Whether the properties were successfully retrieved */
+  readonly success: boolean;
+  /** The property values if successful */
+  readonly properties?: ReadonlyArray<PropertyEntry> | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of a module interface request
+ */
+export interface ModuleInterfaceResult {
+  /** Whether the module interface was successfully retrieved */
+  readonly success: boolean;
+  /** The module interface if successful */
+  readonly interface?: ModuleInterface | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of setting a property
+ */
+export interface SetPropertyResult {
+  /** Whether the property was successfully set */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of a teleport operation
+ */
+export interface TeleportResult {
+  /** Whether the teleport was successful */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of a delete operation
+ */
+export interface DeleteResult {
+  /** Whether the deletion was successful */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of a reparent operation
+ */
+export interface ReparentResult {
+  /** Whether the reparent was successful */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
 }
 
 /**
@@ -54,6 +147,52 @@ export interface ExecutorBridge {
    */
   requestGameTree: () => void;
   /**
+   * Requests property values from an instance in the game.
+   * @param path - Path segments to the instance
+   * @param properties - Optional list of specific properties to fetch
+   * @returns A promise that resolves with the property values
+   */
+  requestProperties: (path: ReadonlyArray<string>, properties?: ReadonlyArray<string>) => Promise<PropertiesResult>;
+  /**
+   * Requests the public interface of a module.
+   * @param moduleRef - Reference to the module (path or asset ID)
+   * @returns A promise that resolves with the module interface
+   */
+  requestModuleInterface: (moduleRef: ModuleReference) => Promise<ModuleInterfaceResult>;
+  /**
+   * Sets a property value on an instance.
+   * @param path - Path segments to the instance
+   * @param property - Name of the property to set
+   * @param value - The new value as a string
+   * @param valueType - The type of the value
+   * @returns A promise that resolves with the result
+   */
+  setProperty: (
+    path: ReadonlyArray<string>,
+    property: string,
+    value: string,
+    valueType: string,
+  ) => Promise<SetPropertyResult>;
+  /**
+   * Teleports the local player to an instance's position.
+   * @param path - Path segments to the target instance
+   * @returns A promise that resolves with the result
+   */
+  teleportTo: (path: ReadonlyArray<string>) => Promise<TeleportResult>;
+  /**
+   * Deletes an instance from the game.
+   * @param path - Path segments to the instance to delete
+   * @returns A promise that resolves with the result
+   */
+  deleteInstance: (path: ReadonlyArray<string>) => Promise<DeleteResult>;
+  /**
+   * Reparents an instance to a new parent.
+   * @param sourcePath - Path segments to the instance to move
+   * @param targetPath - Path segments to the new parent
+   * @returns A promise that resolves with the result
+   */
+  reparentInstance: (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>) => Promise<ReparentResult>;
+  /**
    * Registers a callback to be invoked when the bridge status changes.
    * @param callback - Function to call with the new status
    */
@@ -68,6 +207,11 @@ export interface ExecutorBridge {
    * @param callback - Function to call with the new game tree nodes
    */
   onGameTreeUpdate: (callback: (nodes: GameTreeNode[]) => void) => void;
+  /**
+   * Registers a callback to be invoked when a log message is received.
+   * @param callback - Function to call with the log entry
+   */
+  onLog: (callback: (log: LogEntry) => void) => void;
 }
 
 /**
@@ -93,6 +237,60 @@ interface PendingExecution {
 }
 
 /**
+ * Internal interface for tracking pending properties requests.
+ */
+interface PendingPropertiesRequest {
+  readonly resolve: (result: PropertiesResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending module interface requests.
+ */
+interface PendingModuleInterfaceRequest {
+  readonly resolve: (result: ModuleInterfaceResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending set property requests.
+ */
+interface PendingSetPropertyRequest {
+  readonly resolve: (result: SetPropertyResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending teleport requests.
+ */
+interface PendingTeleportRequest {
+  readonly resolve: (result: TeleportResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending delete requests.
+ */
+interface PendingDeleteRequest {
+  readonly resolve: (result: DeleteResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending reparent requests.
+ */
+interface PendingReparentRequest {
+  readonly resolve: (result: ReparentResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
  * Creates a new executor bridge instance for managing WebSocket connections with Roblox executors.
  * The bridge handles connection lifecycle, code execution, and game tree synchronization.
  * @param log - Logging function to output status and debug messages
@@ -105,9 +303,16 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   let status: BridgeStatus = 'stopped';
 
   const pendingExecutions = new Map<string, PendingExecution>();
+  const pendingProperties = new Map<string, PendingPropertiesRequest>();
+  const pendingModuleInterfaces = new Map<string, PendingModuleInterfaceRequest>();
+  const pendingSetProperties = new Map<string, PendingSetPropertyRequest>();
+  const pendingTeleports = new Map<string, PendingTeleportRequest>();
+  const pendingDeletes = new Map<string, PendingDeleteRequest>();
+  const pendingReparents = new Map<string, PendingReparentRequest>();
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
+  const logCallbacks: Array<(log: LogEntry) => void> = [];
 
   const { 'model': liveGameModel, 'update': updateGameModel, setConnected } = createLiveGameModel();
 
@@ -193,6 +398,93 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
           callback(message.error);
         }
         break;
+      }
+    }
+
+    // Handle new message types separately using type guards
+    if (isLogMessage(message)) {
+      const entry: LogEntry = {
+        'level': message.level,
+        'message': message.message,
+        'stack': message.stack ?? undefined,
+        'timestamp': message.timestamp,
+      };
+      for (const callback of logCallbacks) {
+        callback(entry);
+      }
+    }
+
+    if (isPropertiesResultMessage(message)) {
+      const pending = pendingProperties.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingProperties.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'properties': message.properties ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isModuleInterfaceMessage(message)) {
+      const pending = pendingModuleInterfaces.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingModuleInterfaces.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'interface': message.interface ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isSetPropertyResultMessage(message)) {
+      const pending = pendingSetProperties.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingSetProperties.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isTeleportToResultMessage(message)) {
+      const pending = pendingTeleports.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingTeleports.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isDeleteInstanceResultMessage(message)) {
+      const pending = pendingDeletes.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingDeletes.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isReparentInstanceResultMessage(message)) {
+      const pending = pendingReparents.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingReparents.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
       }
     }
   };
@@ -331,6 +623,167 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     gameTreeCallbacks.push(callback);
   };
 
+  /**
+   * Registers a callback function to be notified when a log message is received.
+   * @param callback - Function to invoke with the LogEntry
+   */
+  const onLog = (callback: (log: LogEntry) => void): void => {
+    logCallbacks.push(callback);
+  };
+
+  /**
+   * Requests property values from an instance in the game.
+   * @param path - Path segments to the instance
+   * @param properties - Optional list of specific properties to fetch
+   * @returns A promise that resolves with the property values
+   */
+  const requestProperties = (
+    path: ReadonlyArray<string>,
+    properties?: ReadonlyArray<string>,
+  ): Promise<PropertiesResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingProperties.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 500); // Short timeout for hover responsiveness
+
+      pendingProperties.set(id, { resolve, reject, timeout });
+      send({
+        'type': 'requestProperties',
+        id,
+        'path': [...path],
+        ...(properties !== undefined ? { 'properties': properties as ReadonlyArray<string> } : {}),
+      });
+    });
+
+  /**
+   * Requests the public interface of a module.
+   * @param moduleRef - Reference to the module (path or asset ID)
+   * @returns A promise that resolves with the module interface
+   */
+  const requestModuleInterface = (moduleRef: ModuleReference): Promise<ModuleInterfaceResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingModuleInterfaces.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000); // Longer timeout for module loading
+
+      pendingModuleInterfaces.set(id, { resolve, reject, timeout });
+      send({ 'type': 'requestModuleInterface', id, moduleRef });
+    });
+
+  /**
+   * Sets a property value on an instance in the game.
+   * @param path - Path segments to the instance
+   * @param property - Name of the property to set
+   * @param value - The new value as a string
+   * @param valueType - The type of the value
+   * @returns A promise that resolves with the result
+   */
+  const setProperty = (
+    path: ReadonlyArray<string>,
+    property: string,
+    value: string,
+    valueType: string,
+  ): Promise<SetPropertyResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingSetProperties.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingSetProperties.set(id, { resolve, reject, timeout });
+      send({ 'type': 'setProperty', id, 'path': [...path], property, value, valueType });
+    });
+
+  /**
+   * Teleports the local player to an instance's position.
+   * @param path - Path segments to the target instance
+   * @returns A promise that resolves with the result
+   */
+  const teleportTo = (path: ReadonlyArray<string>): Promise<TeleportResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingTeleports.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingTeleports.set(id, { resolve, reject, timeout });
+      send({ 'type': 'teleportTo', id, 'path': [...path] });
+    });
+
+  /**
+   * Deletes an instance from the game.
+   * @param path - Path segments to the instance to delete
+   * @returns A promise that resolves with the result
+   */
+  const deleteInstance = (path: ReadonlyArray<string>): Promise<DeleteResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingDeletes.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingDeletes.set(id, { resolve, reject, timeout });
+      send({ 'type': 'deleteInstance', id, 'path': [...path] });
+    });
+
+  /**
+   * Reparents an instance to a new parent.
+   * @param sourcePath - Path segments to the instance to move
+   * @param targetPath - Path segments to the new parent
+   * @returns A promise that resolves with the result
+   */
+  const reparentInstance = (
+    sourcePath: ReadonlyArray<string>,
+    targetPath: ReadonlyArray<string>,
+  ): Promise<ReparentResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingReparents.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingReparents.set(id, { resolve, reject, timeout });
+      send({ 'type': 'reparentInstance', id, 'sourcePath': [...sourcePath], 'targetPath': [...targetPath] });
+    });
+
   return {
     get 'isRunning'() {
       return server !== undefined;
@@ -346,8 +799,15 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     stop,
     execute,
     requestGameTree,
+    requestProperties,
+    requestModuleInterface,
+    setProperty,
+    teleportTo,
+    deleteInstance,
+    reparentInstance,
     onStatusChange,
     onRuntimeError,
     onGameTreeUpdate,
+    onLog,
   };
 };

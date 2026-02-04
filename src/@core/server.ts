@@ -183,10 +183,82 @@ export const startServer = (state: ServerState): void => {
     return { 'success': true };
   });
 
+  connection.onRequest('custom/requestProperties', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.requestProperties(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest(
+    'custom/setProperty',
+    async (params: { path: string[]; property: string; value: string; valueType: string }) => {
+      if (executorBridge.isConnected === false) {
+        return { 'success': false, 'error': 'No executor connected' };
+      }
+      try {
+        const result = await executorBridge.setProperty(params.path, params.property, params.value, params.valueType);
+        return result;
+      } catch (err) {
+        return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+      }
+    },
+  );
+
+  connection.onRequest('custom/teleportTo', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.teleportTo(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/deleteInstance', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.deleteInstance(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/reparentInstance', async (params: { sourcePath: string[]; targetPath: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.reparentInstance(params.sourcePath, params.targetPath);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  // Forward executor bridge events to client
+  executorBridge.onLog(log => {
+    connection.sendNotification('custom/log', log);
+  });
+
+  executorBridge.onGameTreeUpdate(nodes => {
+    connection.sendNotification('custom/gameTreeUpdate', nodes);
+  });
+
   // Setup LSP handlers
   setupDiagnosticsHandler(connection, documents, documentManager, executorBridge.liveGameModel);
-  setupCompletionHandler(connection, documents, documentManager, executorBridge.liveGameModel);
-  setupHoverHandler(connection, documentManager);
+  setupCompletionHandler(connection, documents, documentManager, executorBridge);
+  setupHoverHandler(connection, documentManager, executorBridge);
   setupSignatureHelpHandler(connection, documentManager);
   setupColorHandler(connection, documents);
   setupCodeActionHandler(connection, documents, documentManager);

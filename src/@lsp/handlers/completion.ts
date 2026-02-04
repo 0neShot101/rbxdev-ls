@@ -4,6 +4,7 @@
  */
 
 import { COMMON_CHILDREN, getCommonChildType } from '@definitions/commonChildren';
+import { type ExecutorBridge } from '@executor';
 import { formatDocCommentForDisplay } from '@parser/docComment';
 import { typeToString } from '@typings/types';
 import { generateRequirePath } from '@workspace/moduleIndex';
@@ -18,6 +19,7 @@ import {
 } from 'vscode-languageserver';
 
 import type { LiveGameModel } from '@executor/gameTree';
+import type { ModuleReference } from '@executor/protocol';
 import type { DocumentManager, ParsedDocument } from '@lsp/documents';
 import type { DocComment } from '@parser/docComment';
 import type { ClassType, FunctionType, LuauType, TableType } from '@typings/types';
@@ -2633,26 +2635,98 @@ const parseGameTreePath = (expression: string): string[] | undefined => {
 };
 
 /**
+ * Extracts a require() expression from a member access chain.
+ * Returns the module reference if the expression is a require().member pattern.
+ * @param beforeCursor - The text before the cursor
+ * @returns The module reference, or undefined if not a require expression
+ */
+const extractRequireExpression = (beforeCursor: string): ModuleReference | undefined => {
+  // Match patterns like:
+  // require(game.ReplicatedStorage.Module).
+  // require(game.ReplicatedStorage.Module):
+  const requireMatch = beforeCursor.match(/require\s*\(\s*game\.([^)]+)\s*\)[.:]\s*$/);
+  if (requireMatch === null) return undefined;
+
+  const pathStr = requireMatch[1];
+  if (pathStr === undefined) return undefined;
+
+  const pathParts = pathStr
+    .split('.')
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+  if (pathParts.length === 0) return undefined;
+
+  return { 'kind': 'path', 'path': pathParts };
+};
+
+/**
+ * Gets completions for a require() expression by querying the executor bridge.
+ * @param beforeCursor - The text before the cursor
+ * @param executorBridge - The executor bridge for module interface queries
+ * @returns Completion items for the module's exports, or undefined
+ */
+const getRequireModuleCompletions = async (
+  beforeCursor: string,
+  executorBridge: ExecutorBridge,
+): Promise<CompletionItem[] | undefined> => {
+  if (executorBridge.isConnected === false) return undefined;
+
+  const moduleRef = extractRequireExpression(beforeCursor);
+  if (moduleRef === undefined) return undefined;
+
+  try {
+    const result = await executorBridge.requestModuleInterface(moduleRef);
+    if (result.success === false || result.interface === undefined) return undefined;
+
+    const items: CompletionItem[] = [];
+    const moduleInterface = result.interface;
+
+    if (moduleInterface.kind === 'table' && moduleInterface.properties !== undefined) {
+      for (const prop of moduleInterface.properties) {
+        const item: CompletionItem = {
+          'label': prop.name,
+          'kind': prop.valueKind === 'function' ? CompletionItemKind.Function : CompletionItemKind.Field,
+          'detail': `(runtime) ${prop.valueKind}`,
+          'sortText': `0_${prop.name}`,
+        };
+
+        if (prop.valueKind === 'function' && prop.functionArity !== undefined) {
+          item.detail = `(runtime) function (${prop.functionArity} params)`;
+        }
+
+        items.push(item);
+      }
+    }
+
+    return items.length > 0 ? items : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
  * Sets up the completion handler for the LSP connection.
  * Registers a handler that provides intelligent autocompletion for Luau code.
  * @param connection - The LSP connection to register the handler on
  * @param documents - The TextDocuments manager for accessing live document content
  * @param documentManager - The document manager for type information and workspace state
- * @param liveGameModel - The live game model for connected game tree completions
+ * @param executorBridge - The executor bridge for live game and module interface completions
  * @returns void
  */
 export const setupCompletionHandler = (
   connection: Connection,
   documents: TextDocuments<TextDocument>,
   documentManager: DocumentManager,
-  liveGameModel: LiveGameModel,
+  executorBridge: ExecutorBridge,
 ): void => {
+  const liveGameModel = executorBridge.liveGameModel;
+
   // Use connection.console.log for debugging (shows in VS Code Output panel)
   const log = (msg: string): void => {
     if (DEBUG_COMPLETION) connection.console.log(`[completion] ${msg}`);
   };
 
-  connection.onCompletion((params: CompletionParams): CompletionList => {
+  connection.onCompletion(async (params: CompletionParams): Promise<CompletionList> => {
     // Get LIVE document content directly from VS Code (not cached/debounced)
     const liveDoc = documents.get(params.textDocument.uri);
     if (liveDoc === undefined) return { 'isIncomplete': false, 'items': [] };
@@ -2685,6 +2759,10 @@ export const setupCompletionHandler = (
     // Check for Enum completions
     const enumCompletions = getEnumCompletions(beforeCursor, documentManager);
     if (enumCompletions !== undefined) return { 'isIncomplete': true, 'items': enumCompletions };
+
+    // Check for require() module completions (fetches from connected executor)
+    const requireModuleCompletions = await getRequireModuleCompletions(beforeCursor, executorBridge);
+    if (requireModuleCompletions !== undefined) return { 'isIncomplete': true, 'items': requireModuleCompletions };
 
     // Check for table field completions (inside a table literal passed to a function)
     const tableContext = detectTableFieldContext(beforeCursor);
