@@ -4,13 +4,18 @@
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/index.js",
   "bin": {
-    "rbxdev-ls": "./dist/index.js"
+    "rbxdev-ls": "./dist/index.js",
+    "rbxdev-mcp": "./dist/mcp.js"
   },
   "type": "module",
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node",
+    "build:mcp": "bun build src/mcp.ts --outdir dist --target node",
+    "build:all": "bun build src/index.ts src/mcp.ts --outdir dist --target node",
     "start": "bun dist/index.js",
+    "start:mcp": "bun dist/mcp.js",
     "dev": "bun --watch src/index.ts",
+    "dev:mcp": "bun --watch src/mcp.ts",
     "clean": "rm -rf dist",
     "lint": "eslint src --ext .ts --fix",
     "lint:check": "eslint src --ext .ts",
@@ -30,6 +35,7 @@
   "author": "Andrew Tandy <andrewtandy12@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "vscode-jsonrpc": "^8.2.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-protocol": "^3.17.5",

@@ -410,7 +410,11 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     );
     item.description = element.className;
     item.tooltip = `${element.className}\nPath: game.${element.path.join('.')}`;
-    item.contextValue = element.isService ? 'service' : 'instance';
+
+    // Set contextValue for context menu conditions
+    const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
+    item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
+
     item.iconPath = this.getIconForClass(element.className);
     return item;
   };
