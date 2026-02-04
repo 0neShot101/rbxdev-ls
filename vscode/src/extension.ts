@@ -97,18 +97,21 @@ const pollExecutorStatus = async (): Promise<void> => {
 };
 
 export function activate(context: ExtensionContext) {
+  // IMMEDIATE popup to prove activate() was called
+  window.showInformationMessage('rbxdev-ls: ACTIVATE CALLED!');
   console.log('[rbxdev-ls] Extension activating...');
 
-  // Path to the server module (bundled inside extension)
-  const serverModule = context.asAbsolutePath(path.join('server', 'index.js'));
+  try {
+    // Path to the server module (bundled inside extension)
+    const serverModule = context.asAbsolutePath(path.join('server', 'index.js'));
 
-  // Check if server exists
-  if (!fs.existsSync(serverModule)) {
-    console.error('[rbxdev-ls] Server module not found:', serverModule);
-    window.showErrorMessage(`rbxdev-ls: Server not found at ${serverModule}`);
-    return;
-  }
-  console.log('[rbxdev-ls] Server module found:', serverModule);
+    // Check if server exists
+    if (!fs.existsSync(serverModule)) {
+      console.error('[rbxdev-ls] Server module not found:', serverModule);
+      window.showErrorMessage(`rbxdev-ls: Server not found at ${serverModule}`);
+      return;
+    }
+    console.log('[rbxdev-ls] Server module found:', serverModule);
 
   // Server options - run the language server
   const serverOptions: ServerOptions = {
@@ -1259,6 +1262,11 @@ export function activate(context: ExtensionContext) {
   setTimeout(() => pollExecutorStatus(), 1000);
 
   console.log('rbxdev-ls extension activated');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[rbxdev-ls] FATAL ERROR IN ACTIVATE:', err);
+    window.showErrorMessage(`rbxdev-ls CRASHED: ${msg}`);
+  }
 }
 
 export async function deactivate(): Promise<void> {
