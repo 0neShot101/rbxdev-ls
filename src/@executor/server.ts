@@ -8,19 +8,25 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { createLiveGameModel, type LiveGameModel } from './gameTree';
 import {
   isChildrenResultMessage,
+  isCloneInstanceResultMessage,
+  isCreateInstanceResultMessage,
   isDeleteInstanceResultMessage,
   isLogMessage,
   isModuleInterfaceMessage,
   isPropertiesResultMessage,
+  isRemoteSpyMessage,
   isReparentInstanceResultMessage,
   isScriptSourceResultMessage,
   isSetPropertyResultMessage,
+  isSetRemoteSpyEnabledResultMessage,
+  isSetRemoteSpyFilterResultMessage,
   isTeleportToResultMessage,
   parseClientMessage,
   type GameTreeNode,
   type ModuleInterface,
   type ModuleReference,
   type PropertyEntry,
+  type RemoteSpyCall,
   type RuntimeError,
   type ServerMessage,
 } from './protocol';
@@ -143,6 +149,55 @@ export interface ScriptSourceResult {
 }
 
 /**
+ * Represents the result of creating a new instance
+ */
+export interface CreateInstanceResult {
+  /** Whether the instance was successfully created */
+  readonly success: boolean;
+  /** The name of the created instance */
+  readonly instanceName?: string | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of cloning an instance
+ */
+export interface CloneInstanceResult {
+  /** Whether the instance was successfully cloned */
+  readonly success: boolean;
+  /** The name of the cloned instance */
+  readonly cloneName?: string | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of setting remote spy enabled state
+ */
+export interface SetRemoteSpyEnabledResult {
+  /** Whether the operation was successful */
+  readonly success: boolean;
+  /** The current enabled state */
+  readonly enabled?: boolean | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
+ * Represents the result of setting remote spy filter
+ */
+export interface SetRemoteSpyFilterResult {
+  /** Whether the operation was successful */
+  readonly success: boolean;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/** Re-export RemoteSpyCall for convenience */
+export type { RemoteSpyCall } from './protocol';
+
+/**
  * The main interface for interacting with the executor bridge.
  * Provides methods to start/stop the server, execute code, and subscribe to events.
  */
@@ -233,6 +288,40 @@ export interface ExecutorBridge {
    */
   requestScriptSource: (path: ReadonlyArray<string>) => Promise<ScriptSourceResult>;
   /**
+   * Creates a new instance in the game.
+   * @param className - The class name of the instance to create
+   * @param parentPath - Path segments to the parent instance
+   * @param name - Optional name for the new instance
+   * @returns A promise that resolves with the result
+   */
+  createInstance: (
+    className: string,
+    parentPath: ReadonlyArray<string>,
+    name?: string,
+  ) => Promise<CreateInstanceResult>;
+  /**
+   * Clones an existing instance.
+   * @param path - Path segments to the instance to clone
+   * @returns A promise that resolves with the result
+   */
+  cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
+  /**
+   * Enables or disables the remote spy feature.
+   * @param enabled - Whether to enable or disable remote spy
+   * @returns A promise that resolves with the result
+   */
+  setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
+  /**
+   * Sets a filter for remote spy (only show remotes matching the filter).
+   * @param filter - Filter pattern (empty string = no filter)
+   * @returns A promise that resolves with the result
+   */
+  setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
+  /** Whether remote spy is currently enabled */
+  readonly isRemoteSpyEnabled: boolean;
+  /** Recent remote spy calls buffer */
+  readonly remoteSpyCalls: ReadonlyArray<RemoteSpyCall>;
+  /**
    * Registers a callback to be invoked when the bridge status changes.
    * @param callback - Function to call with the new status
    */
@@ -252,6 +341,11 @@ export interface ExecutorBridge {
    * @param callback - Function to call with the log entry
    */
   onLog: (callback: (log: LogEntry) => void) => void;
+  /**
+   * Registers a callback to be invoked when a remote spy call is captured.
+   * @param callback - Function to call with the remote spy call data
+   */
+  onRemoteSpy: (callback: (call: RemoteSpyCall) => void) => void;
 }
 
 /**
@@ -350,6 +444,45 @@ interface PendingScriptSourceRequest {
 }
 
 /**
+ * Internal interface for tracking pending create instance requests.
+ */
+interface PendingCreateInstanceRequest {
+  readonly resolve: (result: CreateInstanceResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending clone instance requests.
+ */
+interface PendingCloneInstanceRequest {
+  readonly resolve: (result: CloneInstanceResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending remote spy enabled requests.
+ */
+interface PendingSetRemoteSpyEnabledRequest {
+  readonly resolve: (result: SetRemoteSpyEnabledResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Internal interface for tracking pending remote spy filter requests.
+ */
+interface PendingSetRemoteSpyFilterRequest {
+  readonly resolve: (result: SetRemoteSpyFilterResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/** Maximum number of remote spy calls to buffer */
+const MAX_REMOTE_SPY_BUFFER = 500;
+
+/**
  * Creates a new executor bridge instance for managing WebSocket connections with Roblox executors.
  * The bridge handles connection lifecycle, code execution, and game tree synchronization.
  * @param log - Logging function to output status and debug messages
@@ -370,10 +503,19 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   const pendingReparents = new Map<string, PendingReparentRequest>();
   const pendingChildren = new Map<string, PendingChildrenRequest>();
   const pendingScriptSources = new Map<string, PendingScriptSourceRequest>();
+  const pendingCreateInstances = new Map<string, PendingCreateInstanceRequest>();
+  const pendingCloneInstances = new Map<string, PendingCloneInstanceRequest>();
+  const pendingSetRemoteSpyEnabled = new Map<string, PendingSetRemoteSpyEnabledRequest>();
+  const pendingSetRemoteSpyFilter = new Map<string, PendingSetRemoteSpyFilterRequest>();
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
   const logCallbacks: Array<(log: LogEntry) => void> = [];
+  const remoteSpyCallbacks: Array<(call: RemoteSpyCall) => void> = [];
+
+  /** Remote spy state */
+  let remoteSpyEnabled = false;
+  const remoteSpyCallsBuffer: RemoteSpyCall[] = [];
 
   const { 'model': liveGameModel, 'update': updateGameModel, 'mergeChildren': mergeChildrenIntoModel, setConnected } = createLiveGameModel();
 
@@ -578,6 +720,73 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
           'scriptType': message.scriptType ?? undefined,
           'error': message.error ?? undefined,
         });
+      }
+    }
+
+    if (isCreateInstanceResultMessage(message)) {
+      const pending = pendingCreateInstances.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingCreateInstances.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'instanceName': message.instanceName ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isCloneInstanceResultMessage(message)) {
+      const pending = pendingCloneInstances.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingCloneInstances.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'cloneName': message.cloneName ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isSetRemoteSpyEnabledResultMessage(message)) {
+      const pending = pendingSetRemoteSpyEnabled.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingSetRemoteSpyEnabled.delete(message.id);
+        if (message.success && message.enabled !== undefined) {
+          remoteSpyEnabled = message.enabled;
+        }
+        pending.resolve({
+          'success': message.success,
+          'enabled': message.enabled ?? undefined,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isSetRemoteSpyFilterResultMessage(message)) {
+      const pending = pendingSetRemoteSpyFilter.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingSetRemoteSpyFilter.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isRemoteSpyMessage(message)) {
+      // Add to buffer
+      remoteSpyCallsBuffer.push(message.call);
+      if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) {
+        remoteSpyCallsBuffer.shift();
+      }
+
+      // Notify callbacks
+      for (const callback of remoteSpyCallbacks) {
+        callback(message.call);
       }
     }
   };
@@ -921,6 +1130,114 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       send({ 'type': 'requestScriptSource', id, 'path': [...path] });
     });
 
+  /**
+   * Creates a new instance in the game.
+   * @param className - The class name of the instance to create
+   * @param parentPath - Path segments to the parent instance
+   * @param name - Optional name for the new instance
+   * @returns A promise that resolves with the result
+   */
+  const createInstance = (
+    className: string,
+    parentPath: ReadonlyArray<string>,
+    name?: string,
+  ): Promise<CreateInstanceResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingCreateInstances.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingCreateInstances.set(id, { resolve, reject, timeout });
+      send({
+        'type': 'createInstance',
+        id,
+        className,
+        'parentPath': [...parentPath],
+        ...(name !== undefined ? { name } : {}),
+      });
+    });
+
+  /**
+   * Clones an existing instance.
+   * @param path - Path segments to the instance to clone
+   * @returns A promise that resolves with the result
+   */
+  const cloneInstance = (path: ReadonlyArray<string>): Promise<CloneInstanceResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingCloneInstances.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingCloneInstances.set(id, { resolve, reject, timeout });
+      send({ 'type': 'cloneInstance', id, 'path': [...path] });
+    });
+
+  /**
+   * Enables or disables remote spy.
+   * @param enabled - Whether to enable or disable remote spy
+   * @returns A promise that resolves with the result
+   */
+  const setRemoteSpyEnabled = (enabled: boolean): Promise<SetRemoteSpyEnabledResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingSetRemoteSpyEnabled.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingSetRemoteSpyEnabled.set(id, { resolve, reject, timeout });
+      send({ 'type': 'setRemoteSpyEnabled', id, enabled });
+    });
+
+  /**
+   * Sets a filter for remote spy.
+   * @param filter - Filter pattern (empty string = no filter)
+   * @returns A promise that resolves with the result
+   */
+  const setRemoteSpyFilter = (filter: string): Promise<SetRemoteSpyFilterResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingSetRemoteSpyFilter.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingSetRemoteSpyFilter.set(id, { resolve, reject, timeout });
+      send({ 'type': 'setRemoteSpyFilter', id, filter });
+    });
+
+  /**
+   * Registers a callback for remote spy call notifications.
+   * @param callback - Function to invoke with the RemoteSpyCall data
+   */
+  const onRemoteSpy = (callback: (call: RemoteSpyCall) => void): void => {
+    remoteSpyCallbacks.push(callback);
+  };
+
   return {
     get 'isRunning'() {
       return server !== undefined;
@@ -944,9 +1261,20 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     reparentInstance,
     requestChildren,
     requestScriptSource,
+    createInstance,
+    cloneInstance,
+    setRemoteSpyEnabled,
+    setRemoteSpyFilter,
+    get 'isRemoteSpyEnabled'() {
+      return remoteSpyEnabled;
+    },
+    get 'remoteSpyCalls'() {
+      return remoteSpyCallsBuffer;
+    },
     onStatusChange,
     onRuntimeError,
     onGameTreeUpdate,
     onLog,
+    onRemoteSpy,
   };
 };

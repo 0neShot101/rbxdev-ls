@@ -13,10 +13,20 @@ let client: LanguageClient;
 let statusBarItem: StatusBarItem;
 let executeButton: StatusBarItem;
 let outputChannel: OutputChannel;
+let remoteSpyChannel: OutputChannel;
 let gameTreeProvider: GameTreeDataProvider;
 let propertiesProvider: PropertiesWebviewProvider;
 let lastConnectedState: boolean = false;
 let lastExecutorName: string | undefined;
+let remoteSpyStatusBar: StatusBarItem;
+let lastRemoteCalls: Array<{
+  remoteName: string;
+  remotePath: string[];
+  remoteType: string;
+  method: string;
+  arguments: string;
+  timestamp: number;
+}> = [];
 
 type BridgeStatus = 'stopped' | 'waiting' | 'connected' | 'error';
 
@@ -122,6 +132,10 @@ export function activate(context: ExtensionContext) {
   // Create Output Channel for Roblox Console
   outputChannel = window.createOutputChannel('Roblox Console');
   context.subscriptions.push(outputChannel);
+
+  // Create Output Channel for Remote Spy
+  remoteSpyChannel = window.createOutputChannel('Roblox Remote Spy');
+  context.subscriptions.push(remoteSpyChannel);
 
   // Create Game Tree view (before client starts so it's ready)
   console.log('[rbxdev-ls] Creating Game Tree view...');
@@ -376,6 +390,36 @@ export function activate(context: ExtensionContext) {
       }
       gameTreeProvider.refresh(nodes);
     });
+
+    // Handle remote spy notifications
+    client.onNotification('custom/remoteSpy', (call: {
+      remoteName: string;
+      remotePath: string[];
+      remoteType: string;
+      method: string;
+      arguments: string;
+      timestamp: number;
+    }) => {
+      // Store for copy functionality (keep last 100)
+      lastRemoteCalls.push(call);
+      if (lastRemoteCalls.length > 100) {
+        lastRemoteCalls.shift();
+      }
+
+      const timestamp = new Date(call.timestamp * 1000).toLocaleTimeString();
+
+      // Generate copyable Lua code
+      const luaCode = call.arguments !== ''
+        ? `game.${call.remotePath.join('.')}:${call.method}(${call.arguments})`
+        : `game.${call.remotePath.join('.')}:${call.method}()`;
+
+      // SimpleSpy-style output format
+      remoteSpyChannel.appendLine('─'.repeat(60));
+      remoteSpyChannel.appendLine(`[${timestamp}] ${call.method} → ${call.remoteName} (${call.remoteType})`);
+      remoteSpyChannel.appendLine('');
+      remoteSpyChannel.appendLine(luaCode);
+      remoteSpyChannel.appendLine('');
+    });
   });
 
   // Create status bar item for connection status
@@ -392,6 +436,14 @@ export function activate(context: ExtensionContext) {
   executeButton.command = 'rbxdev-ls.execute';
   executeButton.show();
   context.subscriptions.push(executeButton);
+
+  // Create remote spy status bar
+  remoteSpyStatusBar = window.createStatusBarItem(StatusBarAlignment.Right, 99);
+  remoteSpyStatusBar.text = '$(eye-closed) Spy OFF';
+  remoteSpyStatusBar.tooltip = 'Toggle Remote Spy';
+  remoteSpyStatusBar.command = 'rbxdev-ls.toggleRemoteSpy';
+  remoteSpyStatusBar.show();
+  context.subscriptions.push(remoteSpyStatusBar);
 
   // Register commands
   context.subscriptions.push(
@@ -880,6 +932,307 @@ export function activate(context: ExtensionContext) {
         console.error('[rbxdev-ls] viewScript error:', err);
         window.showErrorMessage(`Failed to get script source: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }),
+
+    commands.registerCommand('rbxdev-ls.createInstance', async (item: GameTreeItem) => {
+      // Common Roblox classes organized by category
+      const classCategories = [
+        { 'label': '$(folder) Containers', 'kind': -1 },
+        { 'label': 'Folder', 'description': 'Generic container', 'className': 'Folder' },
+        { 'label': 'Model', 'description': 'Group of parts', 'className': 'Model' },
+        { 'label': 'Configuration', 'description': 'Store configuration values', 'className': 'Configuration' },
+
+        { 'label': '$(code) Scripts', 'kind': -1 },
+        { 'label': 'Script', 'description': 'Server-side script', 'className': 'Script' },
+        { 'label': 'LocalScript', 'description': 'Client-side script', 'className': 'LocalScript' },
+        { 'label': 'ModuleScript', 'description': 'Reusable module', 'className': 'ModuleScript' },
+
+        { 'label': '$(primitive-square) Parts', 'kind': -1 },
+        { 'label': 'Part', 'description': 'Basic brick part', 'className': 'Part' },
+        { 'label': 'WedgePart', 'description': 'Wedge-shaped part', 'className': 'WedgePart' },
+        { 'label': 'CornerWedgePart', 'description': 'Corner wedge part', 'className': 'CornerWedgePart' },
+        { 'label': 'MeshPart', 'description': 'Custom mesh part', 'className': 'MeshPart' },
+        { 'label': 'SpawnLocation', 'description': 'Player spawn point', 'className': 'SpawnLocation' },
+
+        { 'label': '$(layout) UI', 'kind': -1 },
+        { 'label': 'ScreenGui', 'description': 'Screen overlay GUI', 'className': 'ScreenGui' },
+        { 'label': 'BillboardGui', 'description': '3D world GUI', 'className': 'BillboardGui' },
+        { 'label': 'SurfaceGui', 'description': 'Surface-attached GUI', 'className': 'SurfaceGui' },
+        { 'label': 'Frame', 'description': 'GUI container', 'className': 'Frame' },
+        { 'label': 'TextLabel', 'description': 'Display text', 'className': 'TextLabel' },
+        { 'label': 'TextButton', 'description': 'Clickable text', 'className': 'TextButton' },
+        { 'label': 'TextBox', 'description': 'Text input', 'className': 'TextBox' },
+        { 'label': 'ImageLabel', 'description': 'Display image', 'className': 'ImageLabel' },
+        { 'label': 'ImageButton', 'description': 'Clickable image', 'className': 'ImageButton' },
+
+        { 'label': '$(symbol-value) Values', 'kind': -1 },
+        { 'label': 'StringValue', 'description': 'Store a string', 'className': 'StringValue' },
+        { 'label': 'NumberValue', 'description': 'Store a number', 'className': 'NumberValue' },
+        { 'label': 'IntValue', 'description': 'Store an integer', 'className': 'IntValue' },
+        { 'label': 'BoolValue', 'description': 'Store a boolean', 'className': 'BoolValue' },
+        { 'label': 'ObjectValue', 'description': 'Store an instance reference', 'className': 'ObjectValue' },
+
+        { 'label': '$(zap) Events & Communication', 'kind': -1 },
+        { 'label': 'RemoteEvent', 'description': 'Client-server event', 'className': 'RemoteEvent' },
+        { 'label': 'RemoteFunction', 'description': 'Client-server function', 'className': 'RemoteFunction' },
+        { 'label': 'BindableEvent', 'description': 'Same-context event', 'className': 'BindableEvent' },
+        { 'label': 'BindableFunction', 'description': 'Same-context function', 'className': 'BindableFunction' },
+      ];
+
+      const selected = await window.showQuickPick(
+        classCategories.map(c => ({
+          'label': c.label,
+          'description': c.description ?? '',
+          'kind': c.kind as number | undefined,
+          'className': (c as { className?: string }).className,
+        })),
+        {
+          'title': 'Create Instance',
+          'placeHolder': 'Select a class to create',
+        }
+      );
+
+      if (selected === undefined || selected.className === undefined) return;
+
+      // Ask for instance name
+      const name = await window.showInputBox({
+        'title': 'Instance Name',
+        'prompt': `Name for new ${selected.className}`,
+        'value': selected.className,
+        'validateInput': (v) => {
+          if (v.trim() === '') return 'Name cannot be empty';
+          return undefined;
+        },
+      });
+
+      if (name === undefined) return;
+
+      try {
+        const result = await client.sendRequest<{
+          success: boolean;
+          instanceName?: string;
+          error?: string;
+        }>('custom/createInstance', {
+          'className': selected.className,
+          'parentPath': item.path,
+          'name': name.trim(),
+        });
+
+        if (result.success) {
+          window.showInformationMessage(`Created ${result.instanceName} in ${item.name}`);
+          await client.sendRequest('custom/requestGameTree');
+        } else {
+          window.showErrorMessage(`Create failed: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        window.showErrorMessage(`Create failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+
+    commands.registerCommand('rbxdev-ls.cloneInstance', async (item: GameTreeItem) => {
+      try {
+        const result = await client.sendRequest<{
+          success: boolean;
+          cloneName?: string;
+          error?: string;
+        }>('custom/cloneInstance', { 'path': item.path });
+
+        if (result.success) {
+          window.showInformationMessage(`Cloned ${item.name} as ${result.cloneName}`);
+          await client.sendRequest('custom/requestGameTree');
+        } else {
+          window.showErrorMessage(`Clone failed: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        window.showErrorMessage(`Clone failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+
+    commands.registerCommand('rbxdev-ls.searchGameTree', async () => {
+      const searchTypes = [
+        { 'label': '$(symbol-string) By Name', 'description': 'Search instances by name', 'byName': true, 'byClass': false },
+        { 'label': '$(symbol-class) By Class', 'description': 'Search instances by class name', 'byName': false, 'byClass': true },
+        { 'label': '$(search) By Name or Class', 'description': 'Search by both name and class', 'byName': true, 'byClass': true },
+      ];
+
+      const searchType = await window.showQuickPick(searchTypes, {
+        'title': 'Search Game Tree',
+        'placeHolder': 'Select search type',
+      });
+
+      if (searchType === undefined) return;
+
+      const query = await window.showInputBox({
+        'title': 'Search Game Tree',
+        'prompt': `Enter ${searchType.byName && searchType.byClass ? 'name or class' : searchType.byName ? 'name' : 'class'} to search for`,
+        'placeHolder': searchType.byClass ? 'e.g., Part, Script, Folder' : 'e.g., MyFolder, PlayerScript',
+      });
+
+      if (query === undefined || query.trim() === '') return;
+
+      gameTreeProvider.setSearchFilter(query.trim(), {
+        'byName': searchType.byName,
+        'byClass': searchType.byClass,
+      });
+
+      commands.executeCommand('setContext', 'rbxdev-ls:searchActive', true);
+    }),
+
+    commands.registerCommand('rbxdev-ls.clearGameTreeSearch', () => {
+      gameTreeProvider.clearSearch();
+      commands.executeCommand('setContext', 'rbxdev-ls:searchActive', false);
+    }),
+
+    commands.registerCommand('rbxdev-ls.toggleRemoteSpy', async () => {
+      if (lastConnectedState === false) {
+        window.showErrorMessage('No executor connected');
+        return;
+      }
+
+      try {
+        // Get current status
+        const status = await client.sendRequest<{ isEnabled: boolean }>('custom/getRemoteSpyStatus');
+        const newEnabled = status.isEnabled === false;
+
+        const result = await client.sendRequest<{
+          success: boolean;
+          enabled?: boolean;
+          error?: string;
+        }>('custom/setRemoteSpyEnabled', { 'enabled': newEnabled });
+
+        if (result.success) {
+          if (result.enabled === true) {
+            remoteSpyStatusBar.text = '$(eye) Spy ON';
+            remoteSpyStatusBar.backgroundColor = undefined;
+            remoteSpyChannel.show(true);
+            window.showInformationMessage('Remote Spy enabled - monitoring remote calls');
+          } else {
+            remoteSpyStatusBar.text = '$(eye-closed) Spy OFF';
+            remoteSpyStatusBar.backgroundColor = undefined;
+          }
+        } else {
+          window.showErrorMessage(`Failed to toggle Remote Spy: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        window.showErrorMessage(`Remote Spy error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+
+    commands.registerCommand('rbxdev-ls.setRemoteSpyFilter', async () => {
+      const filter = await window.showInputBox({
+        'title': 'Remote Spy Filter',
+        'prompt': 'Enter a filter pattern (empty to show all)',
+        'placeHolder': 'e.g., Chat, Event, Server',
+      });
+
+      if (filter === undefined) return;
+
+      try {
+        const result = await client.sendRequest<{
+          success: boolean;
+          error?: string;
+        }>('custom/setRemoteSpyFilter', { 'filter': filter });
+
+        if (result.success) {
+          window.showInformationMessage(filter === '' ? 'Remote Spy filter cleared' : `Remote Spy filter set to: ${filter}`);
+        } else {
+          window.showErrorMessage(`Failed to set filter: ${result.error ?? 'Unknown error'}`);
+        }
+      } catch (err) {
+        window.showErrorMessage(`Filter error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+
+    commands.registerCommand('rbxdev-ls.clearRemoteSpyOutput', () => {
+      remoteSpyChannel.clear();
+    }),
+
+    commands.registerCommand('rbxdev-ls.showRemoteSpy', () => {
+      remoteSpyChannel.show(true);
+    }),
+
+    commands.registerCommand('rbxdev-ls.copyLastRemoteCall', async () => {
+      if (lastRemoteCalls.length === 0) {
+        window.showWarningMessage('No remote calls captured yet');
+        return;
+      }
+
+      // Show quick pick of recent calls
+      const items = lastRemoteCalls.slice(-20).reverse().map((call, index) => {
+        const luaCode = call.arguments !== ''
+          ? `game.${call.remotePath.join('.')}:${call.method}(${call.arguments})`
+          : `game.${call.remotePath.join('.')}:${call.method}()`;
+        return {
+          'label': `${call.remoteName}`,
+          'description': call.method,
+          'detail': luaCode,
+          'luaCode': luaCode,
+        };
+      });
+
+      const selected = await window.showQuickPick(items, {
+        'title': 'Copy Remote Call',
+        'placeHolder': 'Select a remote call to copy',
+      });
+
+      if (selected === undefined) return;
+
+      await env.clipboard.writeText(selected.luaCode);
+      window.showInformationMessage(`Copied: ${selected.luaCode}`);
+    }),
+
+    commands.registerCommand('rbxdev-ls.insertLastRemoteCall', async () => {
+      const editor = window.activeTextEditor;
+      if (editor === undefined) {
+        window.showErrorMessage('No active editor');
+        return;
+      }
+
+      if (lastRemoteCalls.length === 0) {
+        window.showWarningMessage('No remote calls captured yet');
+        return;
+      }
+
+      // Show quick pick of recent calls
+      const items = lastRemoteCalls.slice(-20).reverse().map((call) => {
+        const luaCode = call.arguments !== ''
+          ? `game.${call.remotePath.join('.')}:${call.method}(${call.arguments})`
+          : `game.${call.remotePath.join('.')}:${call.method}()`;
+        return {
+          'label': `${call.remoteName}`,
+          'description': call.method,
+          'detail': luaCode,
+          'luaCode': luaCode,
+        };
+      });
+
+      const selected = await window.showQuickPick(items, {
+        'title': 'Insert Remote Call',
+        'placeHolder': 'Select a remote call to insert',
+      });
+
+      if (selected === undefined) return;
+
+      await editor.edit(editBuilder => {
+        editBuilder.insert(editor.selection.active, selected.luaCode);
+      });
+    }),
+
+    commands.registerCommand('rbxdev-ls.copyQuickRemote', async () => {
+      if (lastRemoteCalls.length === 0) {
+        window.showWarningMessage('No remote calls captured yet');
+        return;
+      }
+
+      const call = lastRemoteCalls[lastRemoteCalls.length - 1];
+      if (call === undefined) return;
+
+      const luaCode = call.arguments !== ''
+        ? `game.${call.remotePath.join('.')}:${call.method}(${call.arguments})`
+        : `game.${call.remotePath.join('.')}:${call.method}()`;
+
+      await env.clipboard.writeText(luaCode);
+      window.showInformationMessage(`Copied: ${call.remoteName}`);
     })
   );
 

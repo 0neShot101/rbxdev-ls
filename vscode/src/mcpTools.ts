@@ -497,5 +497,162 @@ export const registerMcpTools = (
     })
   );
 
+  // Create Instance Tool
+  context.subscriptions.push(
+    vscode.lm.registerTool('rbxdev_create_instance', {
+      async invoke(options, _token) {
+        if (getConnectionStatus() === false) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: No executor connected'),
+          ]);
+        }
+
+        const input = options.input as {
+          className?: string;
+          parentPath?: string[];
+          name?: string;
+        } | undefined;
+
+        if (typeof input?.className !== 'string' || input.className.trim() === '') {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: className parameter is required'),
+          ]);
+        }
+
+        if (Array.isArray(input?.parentPath) === false || input!.parentPath!.length === 0) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: parentPath parameter is required'),
+          ]);
+        }
+
+        try {
+          const result = await client.sendRequest<{
+            success: boolean;
+            instanceName?: string;
+            error?: string;
+          }>('custom/createInstance', {
+            className: input.className,
+            parentPath: input.parentPath,
+            name: input.name,
+          });
+
+          if (result.success) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(
+                `Successfully created ${result.instanceName} (${input.className}) in ${input.parentPath!.join('.')}`
+              ),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to create instance'}`),
+          ]);
+        } catch (err) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
+          ]);
+        }
+      },
+    })
+  );
+
+  // Clone Instance Tool
+  context.subscriptions.push(
+    vscode.lm.registerTool('rbxdev_clone_instance', {
+      async invoke(options, _token) {
+        if (getConnectionStatus() === false) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: No executor connected'),
+          ]);
+        }
+
+        const input = options.input as { path?: string[] } | undefined;
+
+        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: path parameter is required'),
+          ]);
+        }
+
+        try {
+          const result = await client.sendRequest<{
+            success: boolean;
+            cloneName?: string;
+            error?: string;
+          }>('custom/cloneInstance', { path: input!.path });
+
+          if (result.success) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(
+                `Successfully cloned ${input!.path!.join('.')} as ${result.cloneName}`
+              ),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to clone instance'}`),
+          ]);
+        } catch (err) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
+          ]);
+        }
+      },
+    })
+  );
+
+  // Get Remote Spy Calls Tool
+  context.subscriptions.push(
+    vscode.lm.registerTool('rbxdev_get_remote_calls', {
+      async invoke(options, _token) {
+        if (getConnectionStatus() === false) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: No executor connected'),
+          ]);
+        }
+
+        const input = options.input as { limit?: number } | undefined;
+        const limit = input?.limit ?? 50;
+
+        try {
+          const result = await client.sendRequest<{
+            success: boolean;
+            calls?: Array<{
+              remoteName: string;
+              remotePath: string[];
+              remoteType: string;
+              method: string;
+              arguments: string;
+              timestamp: number;
+            }>;
+          }>('custom/getRemoteSpyCalls', { limit });
+
+          if (result.success && result.calls !== undefined) {
+            if (result.calls.length === 0) {
+              return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart('No remote calls captured. Make sure Remote Spy is enabled.'),
+              ]);
+            }
+
+            const formatted = result.calls.map(call => {
+              const time = new Date(call.timestamp * 1000).toLocaleTimeString();
+              const path = `game.${call.remotePath.join('.')}`;
+              return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Path: ${path}\n  Args: ${call.arguments || '(none)'}`;
+            }).join('\n\n');
+
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(`Recent remote calls (${result.calls.length}):\n\n${formatted}`),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Failed to get remote calls'),
+          ]);
+        } catch (err) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
+          ]);
+        }
+      },
+    })
+  );
+
   console.log('[rbxdev-ls] MCP tools registered with VS Code Language Model API');
 };
