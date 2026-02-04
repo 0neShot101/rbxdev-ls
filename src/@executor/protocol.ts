@@ -155,6 +155,18 @@ export interface RequestChildrenMessage {
 }
 
 /**
+ * Message sent from the server to request decompiled script source
+ */
+export interface RequestScriptSourceMessage {
+  /** Message type identifier */
+  readonly type: 'requestScriptSource';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** Path segments to the script instance */
+  readonly path: ReadonlyArray<string>;
+}
+
+/**
  * Union type representing all possible messages sent from the server to the executor client
  */
 export type ServerMessage =
@@ -166,7 +178,8 @@ export type ServerMessage =
   | TeleportToMessage
   | DeleteInstanceMessage
   | ReparentInstanceMessage
-  | RequestChildrenMessage;
+  | RequestChildrenMessage
+  | RequestScriptSourceMessage;
 
 /**
  * Message sent from the executor client upon successful WebSocket connection
@@ -383,6 +396,24 @@ export interface ChildrenResultMessage {
 }
 
 /**
+ * Message sent from the executor client containing decompiled script source
+ */
+export interface ScriptSourceResultMessage {
+  /** Message type identifier */
+  readonly type: 'scriptSourceResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the script source was successfully retrieved */
+  readonly success: boolean;
+  /** The decompiled script source if successful */
+  readonly source?: string;
+  /** The script class name (LocalScript, ModuleScript, Script) */
+  readonly scriptType?: string;
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
  * Union type representing all possible messages sent from the executor client to the server
  */
 export type ClientMessage =
@@ -397,7 +428,8 @@ export type ClientMessage =
   | TeleportToResultMessage
   | DeleteInstanceResultMessage
   | ReparentInstanceResultMessage
-  | ChildrenResultMessage;
+  | ChildrenResultMessage
+  | ScriptSourceResultMessage;
 
 /**
  * Type guard to check if an unknown value is a ConnectedMessage
@@ -540,6 +572,18 @@ export const isChildrenResultMessage = (msg: unknown): msg is ChildrenResultMess
   typeof (msg as ChildrenResultMessage).success === 'boolean';
 
 /**
+ * Type guard to check if an unknown value is a ScriptSourceResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid ScriptSourceResultMessage
+ */
+export const isScriptSourceResultMessage = (msg: unknown): msg is ScriptSourceResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as ScriptSourceResultMessage).type === 'scriptSourceResult' &&
+  typeof (msg as ScriptSourceResultMessage).id === 'string' &&
+  typeof (msg as ScriptSourceResultMessage).success === 'boolean';
+
+/**
  * Parses a JSON string and validates it as a ClientMessage
  * @param data - The raw JSON string to parse
  * @returns The parsed ClientMessage if valid, or undefined if parsing fails or the message type is unrecognized
@@ -559,6 +603,7 @@ export const parseClientMessage = (data: string): ClientMessage | undefined => {
     if (isDeleteInstanceResultMessage(parsed)) return parsed;
     if (isReparentInstanceResultMessage(parsed)) return parsed;
     if (isChildrenResultMessage(parsed)) return parsed;
+    if (isScriptSourceResultMessage(parsed)) return parsed;
     return undefined;
   } catch {
     return undefined;

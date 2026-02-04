@@ -183,6 +183,28 @@ export const startServer = (state: ServerState): void => {
     return { 'success': true };
   });
 
+  connection.onRequest('custom/getGameTree', (params?: { path?: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+
+    const model = executorBridge.liveGameModel;
+
+    if (params?.path !== undefined && params.path.length > 0) {
+      const node = model.getNode(params.path);
+      if (node === undefined) {
+        return { 'success': false, 'error': `Node not found: ${params.path.join('.')}` };
+      }
+      return { 'success': true, 'node': node };
+    }
+
+    const nodes: Array<{ name: string; className: string; children?: unknown[]; hasChildren?: boolean }> = [];
+    for (const [, node] of model.services) {
+      nodes.push(node);
+    }
+    return { 'success': true, 'nodes': nodes };
+  });
+
   connection.onRequest('custom/requestProperties', async (params: { path: string[] }) => {
     if (executorBridge.isConnected === false) {
       return { 'success': false, 'error': 'No executor connected' };
@@ -252,6 +274,18 @@ export const startServer = (state: ServerState): void => {
     }
     try {
       const result = await executorBridge.requestChildren(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
+  connection.onRequest('custom/getScriptSource', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.requestScriptSource(params.path);
       return result;
     } catch (err) {
       return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };

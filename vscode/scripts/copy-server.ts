@@ -14,9 +14,12 @@ if (!existsSync(serverDir)) {
   mkdirSync(serverDir, { recursive: true });
 }
 
-// Copy the bundled server
+// Copy the bundled servers
 cpSync(join(rootDir, 'dist', 'index.js'), join(serverDir, 'index.js'));
 console.log('Copied dist/index.js -> server/index.js');
+
+cpSync(join(rootDir, 'dist', 'mcp.js'), join(serverDir, 'mcp.js'));
+console.log('Copied dist/mcp.js -> server/mcp.js');
 
 // Copy the data directory
 const dataSource = join(rootDir, 'data');

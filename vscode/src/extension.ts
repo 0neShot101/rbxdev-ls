@@ -1,11 +1,13 @@
 import * as path from 'path';
+import * as fs from 'fs';
 
-import { commands, env, ExtensionContext, OutputChannel, StatusBarAlignment, StatusBarItem, window, workspace } from 'vscode';
+import { commands, env, ExtensionContext, OutputChannel, StatusBarAlignment, StatusBarItem, Uri, window, workspace } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
 import { GameTreeDataProvider, type GameTreeItem, type GameTreeNode } from './gameTreeProvider';
 import { type PropertyEntry, type PropertyItem } from './propertiesProvider';
 import { PropertiesWebviewProvider } from './propertiesWebview';
+import { registerMcpTools } from './mcpTools';
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;
@@ -339,6 +341,9 @@ export function activate(context: ExtensionContext) {
 
   // Start the client (also starts the server)
   client.start().then(() => {
+    // Register MCP tools for GitHub Copilot
+    registerMcpTools(context, client, () => lastConnectedState);
+
     // Handle log notifications from executor bridge
     client.onNotification('custom/log', (log: { level: string; message: string; stack?: string; timestamp: number }) => {
       const prefix = log.level === 'error' ? '[ERROR]' : log.level === 'warn' ? '[WARN]' : '[INFO]';
@@ -710,6 +715,97 @@ export function activate(context: ExtensionContext) {
       }
     }),
 
+    commands.registerCommand('rbxdev-ls.setupMcp', async () => {
+      const mcpServerPath = context.asAbsolutePath(path.join('server', 'mcp.js'));
+      const config = workspace.getConfiguration('rbxdev-ls');
+      const port = config.get<number>('executorBridge.port', 21324);
+
+      const choices = [
+        { 'label': '$(folder) Add to Workspace', 'description': 'Create .vscode/mcp.json in current workspace', 'action': 'workspace' },
+        { 'label': '$(home) Add to User Settings', 'description': 'Add to your global VS Code MCP configuration', 'action': 'user' },
+        { 'label': '$(clippy) Copy Configuration', 'description': 'Copy the MCP config to clipboard', 'action': 'copy' },
+      ];
+
+      const selected = await window.showQuickPick(choices, {
+        'title': 'Setup MCP Server for GitHub Copilot',
+        'placeHolder': 'Choose how to configure the MCP server',
+      });
+
+      if (selected === undefined) return;
+
+      const mcpConfig = {
+        'servers': {
+          'rbxdev-roblox': {
+            'type': 'stdio',
+            'command': 'node',
+            'args': [mcpServerPath],
+            'env': {
+              'RBXDEV_BRIDGE_PORT': String(port),
+            },
+          },
+        },
+      };
+
+      if (selected.action === 'workspace') {
+        const workspaceFolders = workspace.workspaceFolders;
+        if (workspaceFolders === undefined || workspaceFolders.length === 0) {
+          window.showErrorMessage('No workspace folder open');
+          return;
+        }
+
+        const vscodeDir = path.join(workspaceFolders[0]!.uri.fsPath, '.vscode');
+        const mcpJsonPath = path.join(vscodeDir, 'mcp.json');
+
+        try {
+          if (fs.existsSync(vscodeDir) === false) {
+            fs.mkdirSync(vscodeDir, { 'recursive': true });
+          }
+
+          let existingConfig: Record<string, unknown> = {};
+          if (fs.existsSync(mcpJsonPath)) {
+            const content = fs.readFileSync(mcpJsonPath, 'utf-8');
+            existingConfig = JSON.parse(content);
+          }
+
+          const servers = (existingConfig['servers'] as Record<string, unknown>) ?? {};
+          servers['rbxdev-roblox'] = mcpConfig.servers['rbxdev-roblox'];
+          existingConfig['servers'] = servers;
+
+          fs.writeFileSync(mcpJsonPath, JSON.stringify(existingConfig, null, 2));
+
+          const doc = await workspace.openTextDocument(mcpJsonPath);
+          await window.showTextDocument(doc);
+
+          window.showInformationMessage(
+            'MCP server configured! Click "Start" in the mcp.json file to activate it for Copilot.',
+            'Open Copilot Chat'
+          ).then((action) => {
+            if (action === 'Open Copilot Chat') {
+              commands.executeCommand('workbench.action.chat.open');
+            }
+          });
+        } catch (err) {
+          window.showErrorMessage(`Failed to create mcp.json: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+      } else if (selected.action === 'user') {
+        await commands.executeCommand('workbench.action.openSettingsJson');
+        window.showInformationMessage(
+          'Add the MCP server to your settings. Run "MCP: Open User Configuration" for the dedicated MCP config file.',
+          'Copy Config'
+        ).then((action) => {
+          if (action === 'Copy Config') {
+            env.clipboard.writeText(JSON.stringify(mcpConfig, null, 2));
+            window.showInformationMessage('MCP configuration copied to clipboard');
+          }
+        });
+
+      } else if (selected.action === 'copy') {
+        await env.clipboard.writeText(JSON.stringify(mcpConfig, null, 2));
+        window.showInformationMessage('MCP configuration copied to clipboard. Paste it into .vscode/mcp.json or your user MCP config.');
+      }
+    }),
+
     commands.registerCommand('rbxdev-ls.deleteInstance', async (item: GameTreeItem) => {
       // Confirm deletion
       const confirm = await window.showWarningMessage(
@@ -735,6 +831,54 @@ export function activate(context: ExtensionContext) {
         }
       } catch (err) {
         window.showErrorMessage(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+
+    commands.registerCommand('rbxdev-ls.viewScript', async (item: GameTreeItem) => {
+      console.log('[rbxdev-ls] viewScript called with:', item);
+
+      // Check if item was passed (context menu should pass it)
+      if (item === undefined) {
+        window.showErrorMessage('No script selected');
+        return;
+      }
+
+      // Validate this is a script type
+      const scriptTypes = ['Script', 'LocalScript', 'ModuleScript'];
+      if (scriptTypes.includes(item.className) === false) {
+        window.showErrorMessage(`${item.className} is not a script type`);
+        return;
+      }
+
+      try {
+        await window.withProgress({
+          'location': { 'viewId': 'rbxdev-gameTree' },
+          'title': 'Fetching script source...',
+        }, async () => {
+          console.log('[rbxdev-ls] Requesting script source for:', item.path);
+          const result = await client.sendRequest<{
+            success: boolean;
+            source?: string;
+            scriptType?: string;
+            error?: string;
+          }>('custom/getScriptSource', { 'path': item.path });
+
+          console.log('[rbxdev-ls] Script source result:', result.success, result.error);
+
+          if (result.success && result.source !== undefined) {
+            // Create a new untitled document with the script source
+            const doc = await workspace.openTextDocument({
+              'content': result.source,
+              'language': 'luau',
+            });
+            await window.showTextDocument(doc);
+          } else {
+            window.showErrorMessage(`Failed to get script source: ${result.error ?? 'Unknown error'}`);
+          }
+        });
+      } catch (err) {
+        console.error('[rbxdev-ls] viewScript error:', err);
+        window.showErrorMessage(`Failed to get script source: ${err instanceof Error ? err.message : String(err)}`);
       }
     })
   );
