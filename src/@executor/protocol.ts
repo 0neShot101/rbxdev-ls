@@ -13,6 +13,8 @@ export interface GameTreeNode {
   readonly className: string;
   /** Child nodes in the hierarchy */
   readonly children?: GameTreeNode[];
+  /** Indicates unexpanded children exist (for lazy loading) */
+  readonly hasChildren?: boolean;
 }
 
 /**
@@ -141,6 +143,18 @@ export interface ReparentInstanceMessage {
 }
 
 /**
+ * Message sent from the server to request children of an instance (lazy loading)
+ */
+export interface RequestChildrenMessage {
+  /** Message type identifier */
+  readonly type: 'requestChildren';
+  /** Unique identifier for tracking the request and its response */
+  readonly id: string;
+  /** Path segments to the parent instance */
+  readonly path: ReadonlyArray<string>;
+}
+
+/**
  * Union type representing all possible messages sent from the server to the executor client
  */
 export type ServerMessage =
@@ -151,7 +165,8 @@ export type ServerMessage =
   | SetPropertyMessage
   | TeleportToMessage
   | DeleteInstanceMessage
-  | ReparentInstanceMessage;
+  | ReparentInstanceMessage
+  | RequestChildrenMessage;
 
 /**
  * Message sent from the executor client upon successful WebSocket connection
@@ -352,6 +367,22 @@ export interface ReparentInstanceResultMessage {
 }
 
 /**
+ * Message sent from the executor client containing children of an instance (lazy loading)
+ */
+export interface ChildrenResultMessage {
+  /** Message type identifier */
+  readonly type: 'childrenResult';
+  /** The unique identifier matching the original request */
+  readonly id: string;
+  /** Whether the children were successfully retrieved */
+  readonly success: boolean;
+  /** The child nodes if successful */
+  readonly children?: GameTreeNode[];
+  /** Error message if unsuccessful */
+  readonly error?: string;
+}
+
+/**
  * Union type representing all possible messages sent from the executor client to the server
  */
 export type ClientMessage =
@@ -365,7 +396,8 @@ export type ClientMessage =
   | SetPropertyResultMessage
   | TeleportToResultMessage
   | DeleteInstanceResultMessage
-  | ReparentInstanceResultMessage;
+  | ReparentInstanceResultMessage
+  | ChildrenResultMessage;
 
 /**
  * Type guard to check if an unknown value is a ConnectedMessage
@@ -496,6 +528,18 @@ export const isReparentInstanceResultMessage = (msg: unknown): msg is ReparentIn
   typeof (msg as ReparentInstanceResultMessage).success === 'boolean';
 
 /**
+ * Type guard to check if an unknown value is a ChildrenResultMessage
+ * @param msg - The value to check
+ * @returns True if the value is a valid ChildrenResultMessage
+ */
+export const isChildrenResultMessage = (msg: unknown): msg is ChildrenResultMessage =>
+  typeof msg === 'object' &&
+  msg !== null &&
+  (msg as ChildrenResultMessage).type === 'childrenResult' &&
+  typeof (msg as ChildrenResultMessage).id === 'string' &&
+  typeof (msg as ChildrenResultMessage).success === 'boolean';
+
+/**
  * Parses a JSON string and validates it as a ClientMessage
  * @param data - The raw JSON string to parse
  * @returns The parsed ClientMessage if valid, or undefined if parsing fails or the message type is unrecognized
@@ -514,6 +558,7 @@ export const parseClientMessage = (data: string): ClientMessage | undefined => {
     if (isTeleportToResultMessage(parsed)) return parsed;
     if (isDeleteInstanceResultMessage(parsed)) return parsed;
     if (isReparentInstanceResultMessage(parsed)) return parsed;
+    if (isChildrenResultMessage(parsed)) return parsed;
     return undefined;
   } catch {
     return undefined;
