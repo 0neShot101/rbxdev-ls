@@ -246,6 +246,18 @@ export const startServer = (state: ServerState): void => {
     }
   });
 
+  connection.onRequest('custom/requestChildren', async (params: { path: string[] }) => {
+    if (executorBridge.isConnected === false) {
+      return { 'success': false, 'error': 'No executor connected' };
+    }
+    try {
+      const result = await executorBridge.requestChildren(params.path);
+      return result;
+    } catch (err) {
+      return { 'success': false, 'error': err instanceof Error ? err.message : 'Unknown error' };
+    }
+  });
+
   // Forward executor bridge events to client
   executorBridge.onLog(log => {
     connection.sendNotification('custom/log', log);
