@@ -87,7 +87,7 @@ export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } =>
   const server = new Server(
     {
       'name': 'rbxdev-ls',
-      'version': '0.1.4',
+      'version': '0.1.5',
     },
     {
       'capabilities': {
