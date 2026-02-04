@@ -97,8 +97,18 @@ const pollExecutorStatus = async (): Promise<void> => {
 };
 
 export function activate(context: ExtensionContext) {
+  console.log('[rbxdev-ls] Extension activating...');
+
   // Path to the server module (bundled inside extension)
   const serverModule = context.asAbsolutePath(path.join('server', 'index.js'));
+
+  // Check if server exists
+  if (!fs.existsSync(serverModule)) {
+    console.error('[rbxdev-ls] Server module not found:', serverModule);
+    window.showErrorMessage(`rbxdev-ls: Server not found at ${serverModule}`);
+    return;
+  }
+  console.log('[rbxdev-ls] Server module found:', serverModule);
 
   // Server options - run the language server
   const serverOptions: ServerOptions = {
@@ -354,7 +364,9 @@ export function activate(context: ExtensionContext) {
   };
 
   // Start the client (also starts the server)
+  console.log('[rbxdev-ls] Starting language client...');
   client.start().then(() => {
+    console.log('[rbxdev-ls] Language client started successfully');
     // Register MCP tools for GitHub Copilot
     registerMcpTools(context, client, () => lastConnectedState);
 
@@ -420,6 +432,9 @@ export function activate(context: ExtensionContext) {
       remoteSpyChannel.appendLine(luaCode);
       remoteSpyChannel.appendLine('');
     });
+  }).catch((err) => {
+    console.error('[rbxdev-ls] Failed to start language client:', err);
+    window.showErrorMessage(`rbxdev-ls: Failed to start - ${err instanceof Error ? err.message : String(err)}`);
   });
 
   // Create status bar item for connection status

@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "rbxdev-ls": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/dist/mcp.js"],
+      "env": {
+        "RBXDEV_BRIDGE_PORT": "${config:rbxdev-ls.executorBridge.port}"
+      },
+      "description": "Roblox game interaction - execute code, view game tree, modify instances"
+    }
+  }
+}

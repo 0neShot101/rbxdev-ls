@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/anthropics/claude-code/main/mcp-config.schema.json",
+  "mcpServers": {
+    "rbxdev-roblox": {
+      "command": "node",
+      "args": ["/path/to/rbxdev-ls/dist/mcp.js"],
+      "env": {
+        "RBXDEV_BRIDGE_PORT": "21324"
+      }
+    }
+  }
+}
