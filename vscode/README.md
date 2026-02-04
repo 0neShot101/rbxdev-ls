@@ -79,10 +79,13 @@ You can pass a config table to customize the bridge:
 loadstring(game:HttpGetAsync'https://raw.githubusercontent.com/0neShot101/rbxdev-ls/main/scripts/executor-bridge.lua')({
     host = 'ws://127.0.0.1:21324';  -- WebSocket host
     reconnectDelay = 5;              -- Seconds between reconnect attempts
-    initialTreeDepth = 5;            -- How deep to load game tree initially
-    expandedTreeDepth = 3;           -- How deep to load when expanding nodes
+    firstConnectDepth = 999;         -- Full tree dump on first connect (for completions)
+    updateTreeDepth = 2;             -- Shallow updates after (for performance)
+    expandedTreeDepth = 2;           -- Depth when expanding nodes in tree view
 })
 ```
+
+The default behavior sends a full tree dump on first connect for autocomplete, then uses shallow updates for performance.
 
 ## License
 
