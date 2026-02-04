@@ -152,6 +152,27 @@ export function activate(context: ExtensionContext) {
     }
   });
 
+  // Handle lazy loading of children
+  gameTreeProvider.onRequestChildren(async (path) => {
+    console.log('[rbxdev-ls] Requesting children for path:', path);
+    try {
+      const result = await client.sendRequest<{
+        success: boolean;
+        children?: GameTreeNode[];
+        error?: string;
+      }>('custom/requestChildren', { 'path': path });
+
+      console.log('[rbxdev-ls] Children request result:', result.success, 'children:', result.children?.length ?? 'undefined', 'error:', result.error);
+      if (result.success && result.children !== undefined) {
+        return result.children;
+      }
+      return undefined;
+    } catch (err) {
+      console.log('[rbxdev-ls] Children request error:', err);
+      return undefined;
+    }
+  });
+
   console.log('[rbxdev-ls] Game Tree view created');
 
   // Create Properties webview
@@ -342,6 +363,12 @@ export function activate(context: ExtensionContext) {
 
     // Handle game tree update notifications
     client.onNotification('custom/gameTreeUpdate', (nodes: GameTreeNode[]) => {
+      console.log('[rbxdev-ls] Game tree update received:', nodes.length, 'services');
+      // Log first service's first child to see hasChildren
+      if (nodes.length > 0 && nodes[0]?.children && nodes[0].children.length > 0) {
+        const firstChild = nodes[0].children[0];
+        console.log('[rbxdev-ls] First child sample:', firstChild?.name, 'hasChildren:', firstChild?.hasChildren);
+      }
       gameTreeProvider.refresh(nodes);
     });
   });

@@ -25,6 +25,7 @@ export interface GameTreeNode {
   readonly name: string;
   readonly className: string;
   readonly children?: ReadonlyArray<GameTreeNode>;
+  readonly hasChildren?: boolean; // For lazy loading - indicates unexpanded children exist
 }
 
 /**
@@ -35,6 +36,7 @@ export interface GameTreeItem {
   readonly className: string;
   readonly path: ReadonlyArray<string>;
   readonly children?: ReadonlyArray<GameTreeNode>;
+  readonly hasChildren?: boolean; // For lazy loading
   readonly isService: boolean;
 }
 
@@ -45,6 +47,11 @@ const GAME_TREE_MIME_TYPE = 'application/vnd.code.tree.rbxdev-gametree';
  * Callback type for handling reparent operations
  */
 export type ReparentCallback = (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>) => Promise<void>;
+
+/**
+ * Callback type for requesting children of a node (lazy loading)
+ */
+export type RequestChildrenCallback = (path: ReadonlyArray<string>) => Promise<ReadonlyArray<GameTreeNode> | undefined>;
 
 /** Map of class names to icon file names */
 const CLASS_ICON_MAP: Record<string, string> = {
@@ -345,7 +352,10 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
 
   private rootNodes: ReadonlyArray<GameTreeNode> = [];
   private reparentCallback: ReparentCallback | undefined;
+  private requestChildrenCallback: RequestChildrenCallback | undefined;
   private extensionPath: string;
+  /** Cache of fetched children by path (joined with '.') */
+  private childrenCache: Map<string, ReadonlyArray<GameTreeNode>> = new Map();
 
   /** Drag and drop MIME types */
   readonly dropMimeTypes = [GAME_TREE_MIME_TYPE];
@@ -364,11 +374,20 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   /**
+   * Registers a callback for requesting children of a node (lazy loading)
+   * @param callback - Function to call when children need to be fetched
+   */
+  onRequestChildren = (callback: RequestChildrenCallback): void => {
+    this.requestChildrenCallback = callback;
+  };
+
+  /**
    * Refreshes the tree with new game tree data
    * @param nodes - Array of root-level game tree nodes (services)
    */
   refresh = (nodes: ReadonlyArray<GameTreeNode>): void => {
     this.rootNodes = nodes;
+    this.childrenCache.clear();
     this._onDidChangeTreeData.fire(undefined);
   };
 
@@ -377,11 +396,14 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    */
   clear = (): void => {
     this.rootNodes = [];
+    this.childrenCache.clear();
     this._onDidChangeTreeData.fire(undefined);
   };
 
   getTreeItem = (element: GameTreeItem): TreeItem => {
-    const hasChildren = element.children !== undefined && element.children.length > 0;
+    // Support lazy loading: show expand arrow if hasChildren is true OR if children array has items
+    const hasChildren = element.hasChildren === true ||
+      (element.children !== undefined && element.children.length > 0);
     const item = new TreeItem(
       element.name,
       hasChildren ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None
@@ -393,26 +415,70 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     return item;
   };
 
-  getChildren = (element?: GameTreeItem): GameTreeItem[] => {
+  getChildren = async (element?: GameTreeItem): Promise<GameTreeItem[]> => {
     if (element === undefined) {
       return this.rootNodes.map(node => ({
         'name': node.name,
         'className': node.className,
         'path': [node.name],
         'children': node.children,
+        'hasChildren': node.hasChildren,
         'isService': true,
       }));
     }
 
-    if (element.children === undefined) return [];
+    console.log('[GameTree] getChildren called for:', element.name, 'hasChildren:', element.hasChildren, 'children:', element.children?.length ?? 'undefined');
 
-    return element.children.map(child => ({
-      'name': child.name,
-      'className': child.className,
-      'path': [...element.path, child.name],
-      'children': child.children,
-      'isService': false,
-    }));
+    // Check if children are available in the element
+    if (element.children !== undefined && element.children.length > 0) {
+      console.log('[GameTree] Returning existing children:', element.children.length);
+      return element.children.map(child => ({
+        'name': child.name,
+        'className': child.className,
+        'path': [...element.path, child.name],
+        'children': child.children,
+        'hasChildren': child.hasChildren,
+        'isService': false,
+      }));
+    }
+
+    // Check if we have cached children for this path
+    const pathKey = element.path.join('.');
+    const cachedChildren = this.childrenCache.get(pathKey);
+    if (cachedChildren !== undefined) {
+      console.log('[GameTree] Returning cached children:', cachedChildren.length);
+      return cachedChildren.map(child => ({
+        'name': child.name,
+        'className': child.className,
+        'path': [...element.path, child.name],
+        'children': child.children,
+        'hasChildren': child.hasChildren,
+        'isService': false,
+      }));
+    }
+
+    // If hasChildren is true but no children yet, fetch them via callback
+    console.log('[GameTree] Checking lazy load: hasChildren=', element.hasChildren, 'callback=', this.requestChildrenCallback !== undefined);
+    if (element.hasChildren === true && this.requestChildrenCallback !== undefined) {
+      console.log('[GameTree] Fetching children for path:', element.path);
+      const fetchedChildren = await this.requestChildrenCallback(element.path);
+      console.log('[GameTree] Fetched children result:', fetchedChildren?.length ?? 'undefined');
+      if (fetchedChildren !== undefined && fetchedChildren.length > 0) {
+        // Cache the fetched children
+        this.childrenCache.set(pathKey, fetchedChildren);
+        return fetchedChildren.map(child => ({
+          'name': child.name,
+          'className': child.className,
+          'path': [...element.path, child.name],
+          'children': child.children,
+          'hasChildren': child.hasChildren,
+          'isService': false,
+        }));
+      }
+    }
+
+    console.log('[GameTree] Returning empty array');
+    return [];
   };
 
   /**

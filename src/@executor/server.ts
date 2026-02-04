@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { createLiveGameModel, type LiveGameModel } from './gameTree';
 import {
+  isChildrenResultMessage,
   isDeleteInstanceResultMessage,
   isLogMessage,
   isModuleInterfaceMessage,
@@ -115,6 +116,18 @@ export interface ReparentResult {
 }
 
 /**
+ * Represents the result of a children request (lazy loading)
+ */
+export interface ChildrenResult {
+  /** Whether the children were successfully retrieved */
+  readonly success: boolean;
+  /** The child nodes if successful */
+  readonly children?: ReadonlyArray<GameTreeNode> | undefined;
+  /** Error message if unsuccessful */
+  readonly error?: string | undefined;
+}
+
+/**
  * The main interface for interacting with the executor bridge.
  * Provides methods to start/stop the server, execute code, and subscribe to events.
  */
@@ -192,6 +205,12 @@ export interface ExecutorBridge {
    * @returns A promise that resolves with the result
    */
   reparentInstance: (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>) => Promise<ReparentResult>;
+  /**
+   * Requests children of an instance for lazy loading.
+   * @param path - Path segments to the parent instance
+   * @returns A promise that resolves with the children
+   */
+  requestChildren: (path: ReadonlyArray<string>) => Promise<ChildrenResult>;
   /**
    * Registers a callback to be invoked when the bridge status changes.
    * @param callback - Function to call with the new status
@@ -291,6 +310,15 @@ interface PendingReparentRequest {
 }
 
 /**
+ * Internal interface for tracking pending children requests (lazy loading).
+ */
+interface PendingChildrenRequest {
+  readonly resolve: (result: ChildrenResult) => void;
+  readonly reject: (error: Error) => void;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
  * Creates a new executor bridge instance for managing WebSocket connections with Roblox executors.
  * The bridge handles connection lifecycle, code execution, and game tree synchronization.
  * @param log - Logging function to output status and debug messages
@@ -309,6 +337,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   const pendingTeleports = new Map<string, PendingTeleportRequest>();
   const pendingDeletes = new Map<string, PendingDeleteRequest>();
   const pendingReparents = new Map<string, PendingReparentRequest>();
+  const pendingChildren = new Map<string, PendingChildrenRequest>();
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
@@ -483,6 +512,19 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         pendingReparents.delete(message.id);
         pending.resolve({
           'success': message.success,
+          'error': message.error ?? undefined,
+        });
+      }
+    }
+
+    if (isChildrenResultMessage(message)) {
+      const pending = pendingChildren.get(message.id);
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pendingChildren.delete(message.id);
+        pending.resolve({
+          'success': message.success,
+          'children': message.children ?? undefined,
           'error': message.error ?? undefined,
         });
       }
@@ -784,6 +826,28 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       send({ 'type': 'reparentInstance', id, 'sourcePath': [...sourcePath], 'targetPath': [...targetPath] });
     });
 
+  /**
+   * Requests children of an instance for lazy loading.
+   * @param path - Path segments to the parent instance
+   * @returns A promise that resolves with the children
+   */
+  const requestChildren = (path: ReadonlyArray<string>): Promise<ChildrenResult> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingChildren.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' });
+      }, 2000);
+
+      pendingChildren.set(id, { resolve, reject, timeout });
+      send({ 'type': 'requestChildren', id, 'path': [...path] });
+    });
+
   return {
     get 'isRunning'() {
       return server !== undefined;
@@ -805,6 +869,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     teleportTo,
     deleteInstance,
     reparentInstance,
+    requestChildren,
     onStatusChange,
     onRuntimeError,
     onGameTreeUpdate,
