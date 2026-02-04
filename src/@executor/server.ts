@@ -316,6 +316,7 @@ interface PendingChildrenRequest {
   readonly resolve: (result: ChildrenResult) => void;
   readonly reject: (error: Error) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
+  readonly path: ReadonlyArray<string>;
 }
 
 /**
@@ -343,7 +344,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
   const logCallbacks: Array<(log: LogEntry) => void> = [];
 
-  const { 'model': liveGameModel, 'update': updateGameModel, setConnected } = createLiveGameModel();
+  const { 'model': liveGameModel, 'update': updateGameModel, 'mergeChildren': mergeChildrenIntoModel, setConnected } = createLiveGameModel();
 
   /**
    * Generates a unique identifier for tracking execution requests.
@@ -522,6 +523,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       if (pending !== undefined) {
         clearTimeout(pending.timeout);
         pendingChildren.delete(message.id);
+
+        // Merge children into the live game model for completions
+        if (message.success && message.children !== undefined) {
+          mergeChildrenIntoModel(pending.path, message.children);
+        }
+
         pending.resolve({
           'success': message.success,
           'children': message.children ?? undefined,
@@ -844,7 +851,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         resolve({ 'success': false, 'error': 'Request timed out' });
       }, 2000);
 
-      pendingChildren.set(id, { resolve, reject, timeout });
+      pendingChildren.set(id, { resolve, reject, timeout, path });
       send({ 'type': 'requestChildren', id, 'path': [...path] });
     });
 

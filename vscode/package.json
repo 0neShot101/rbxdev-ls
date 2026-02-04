@@ -2,8 +2,17 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "publisher": "rbxdev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0neShot101/rbxdev-ls"
+  },
+  "homepage": "https://github.com/0neShot101/rbxdev-ls#readme",
+  "bugs": {
+    "url": "https://github.com/0neShot101/rbxdev-ls/issues"
+  },
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.75.0"

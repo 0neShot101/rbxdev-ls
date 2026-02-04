@@ -63,6 +63,22 @@ const findNode = (root: GameTreeNode, path: string[]): GameTreeNode | undefined 
 };
 
 /**
+ * Recursively searches for a mutable node within a game tree by following a path.
+ * Returns the node cast to a mutable type for internal modifications.
+ */
+const findMutableNode = (root: GameTreeNode, path: string[]): GameTreeNode | undefined => {
+  if (path.length === 0) return root;
+
+  const [first, ...rest] = path;
+  if (root.children === undefined) return undefined;
+
+  const child = root.children.find(c => c.name === first);
+  if (child === undefined) return undefined;
+
+  return rest.length === 0 ? child : findMutableNode(child, rest);
+};
+
+/**
  * Converts the children array of a game tree node into a Map for efficient name-based lookup.
  * @param node - The parent node whose children should be converted to a map
  * @returns A Map where keys are child instance names and values are the corresponding GameTreeNode objects
@@ -90,6 +106,12 @@ export const createLiveGameModel = (): {
    * @param nodes - Array of top-level game tree nodes (services) to store
    */
   update: (nodes: GameTreeNode[]) => void;
+  /**
+   * Merges lazily-loaded children into the tree at the specified path.
+   * @param path - Path to the parent node
+   * @param children - Children to merge into the node
+   */
+  mergeChildren: (path: ReadonlyArray<string>, children: GameTreeNode[]) => void;
   /**
    * Sets the connection status of the model.
    * When set to false, also clears the stored game tree data.
@@ -183,6 +205,29 @@ export const createLiveGameModel = (): {
     state.lastUpdate = 0;
   };
 
+  /**
+   * Merges lazily-loaded children into the tree at the specified path.
+   * This allows completions to use children that were fetched via UI expansion.
+   * @param path - Path to the parent node (e.g., ["Workspace", "Folder"])
+   * @param children - Children to merge into the node
+   */
+  const mergeChildren = (path: ReadonlyArray<string>, children: GameTreeNode[]): void => {
+    if (path.length === 0) return;
+
+    const [serviceName, ...rest] = path;
+    if (serviceName === undefined) return;
+
+    const service = state.services.get(serviceName);
+    if (service === undefined) return;
+
+    const targetNode = rest.length === 0 ? service : findMutableNode(service, rest);
+    if (targetNode === undefined) return;
+
+    // Mutate the node to add children (cast to mutable)
+    (targetNode as { children?: GameTreeNode[] }).children = children;
+    (targetNode as { hasChildren?: boolean }).hasChildren = undefined;
+  };
+
   const model: LiveGameModel = {
     get 'isConnected'() {
       return state.isConnected;
@@ -197,5 +242,5 @@ export const createLiveGameModel = (): {
     getChildren,
   };
 
-  return { model, update, setConnected, clear };
+  return { model, update, mergeChildren, setConnected, clear };
 };

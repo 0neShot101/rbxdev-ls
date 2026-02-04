@@ -1,17 +1,25 @@
+return function(userConfig)
 local HttpService = game:GetService'HttpService';
 local Players = game:GetService'Players';
 
-local CONFIG = {
+local DEFAULT_CONFIG = {
 	host = 'ws://127.0.0.1:21324';
 	reconnectDelay = 5;
-	initialTreeDepth = 2;  -- Only serialize 2 levels deep initially (fast)
-	expandedTreeDepth = 1; -- When expanding, get 1 more level
+	initialTreeDepth = 5;  -- Serialize 5 levels deep for completions
+	expandedTreeDepth = 3; -- When expanding, get 3 more levels
 	gameTreeServices = {
 		'Workspace'; 'Players'; 'ReplicatedStorage'; 'ReplicatedFirst';
 		'StarterGui'; 'StarterPack'; 'StarterPlayer'; 'Lighting';
 		'SoundService'; 'Chat'; 'Teams';
 	};
 };
+
+-- Merge user config with defaults
+local CONFIG = {};
+for k, v in pairs(DEFAULT_CONFIG) do CONFIG[k] = v; end
+if userConfig ~= nil then
+	for k, v in pairs(userConfig) do CONFIG[k] = v; end
+end
 
 local DEFAULT_PROPERTIES = {
 	BasePart = { 'Name'; 'Transparency'; 'Color'; 'Material'; 'Anchored'; 'CanCollide'; 'Position'; 'Size' };
@@ -753,3 +761,4 @@ setupEventListeners();
 
 print'[rbxdev-bridge] Bridge script loaded successfully';
 print'[rbxdev-bridge] Press Ctrl+Shift+E in VS Code to execute code';
+end
