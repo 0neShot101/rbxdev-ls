@@ -6,8 +6,9 @@ local userConfig = (...) or {};
 local CONFIG = {
 	host = 'ws://127.0.0.1:21324';
 	reconnectDelay = 5;
-	initialTreeDepth = 2;  -- Shallow for performance, lazy load deeper
-	expandedTreeDepth = 2; -- When expanding, get 2 more levels
+	firstConnectDepth = 5; -- Deep dump on first connect for completions
+	updateTreeDepth = 2;   -- Shallow for subsequent updates (performance)
+	expandedTreeDepth = 2; -- When expanding nodes, get 2 more levels
 	gameTreeServices = {
 		'Workspace'; 'Players'; 'ReplicatedStorage'; 'ReplicatedFirst';
 		'StarterGui'; 'StarterPack'; 'StarterPlayer'; 'Lighting';
@@ -333,7 +334,7 @@ end;
 
 local getGameTree = function(services, depth)
 	local tree = {};
-	local treeDepth = depth or CONFIG.initialTreeDepth;
+	local treeDepth = depth or CONFIG.updateTreeDepth;
 
 	for _, serviceName in ipairs(services or CONFIG.gameTreeServices) do
 		local success, service = pcall(game.GetService, game, serviceName);
@@ -442,7 +443,7 @@ MESSAGE_HANDLERS.execute = function(message)
 end;
 
 MESSAGE_HANDLERS.requestGameTree = function(message)
-	local depth = message.depth or CONFIG.initialTreeDepth;
+	local depth = message.depth or CONFIG.updateTreeDepth;
 	send{ type = 'gameTree'; data = getGameTree(message.services, depth) };
 end;
 
@@ -736,6 +737,11 @@ connect = function()
 	};
 
 	print('[rbxdev-bridge] Connected! Executor: ' .. executorName .. ' v' .. executorVersion);
+
+	-- Send deep tree dump on first connect for completions
+	print('[rbxdev-bridge] Sending initial game tree (depth ' .. CONFIG.firstConnectDepth .. ')...');
+	send{ type = 'gameTree'; data = getGameTree(nil, CONFIG.firstConnectDepth) };
+	print('[rbxdev-bridge] Initial game tree sent!');
 
 	ws.OnMessage:Connect(handleMessage);
 
