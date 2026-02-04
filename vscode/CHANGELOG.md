@@ -2,6 +2,17 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.1.3] - 2026-02-03
+
+### Fixed
+- Full game tree now loads on first connect for complete autocomplete
+- Auto-updates no longer overwrite deep tree with shallow data
+
+### Changed
+- `firstConnectDepth = 999` - Full tree dump on connect
+- `updateTreeDepth = 2` - Shallow updates for performance
+- Disabled automatic tree updates (use refresh button instead)
+
 ## [0.1.2] - 2026-02-03
 
 ### Fixed
