@@ -347,19 +347,12 @@ local getGameTree = function(services, depth)
 	return tree;
 end;
 
--- Debounced game tree update (event-driven, no polling)
+-- Debounced game tree update (disabled - initial deep dump + lazy loading is sufficient)
+-- Re-enabling would overwrite the deep tree with shallow updates
 local sendGameTreeUpdate;
 sendGameTreeUpdate = function()
-	if connected == false then return; end
-	if pendingUpdate == true then return; end
-
-	pendingUpdate = true;
-	task.delay(updateDebounce, function()
-		pendingUpdate = false;
-		if connected == false then return; end
-
-		send{ type = 'gameTree'; data = getGameTree() };
-	end);
+	-- Disabled: lazy loading handles updates, don't overwrite deep tree
+	-- If you want real-time updates, use the refresh button in VS Code
 end;
 
 local getInstanceProperties = function(instance, requestedProps)
