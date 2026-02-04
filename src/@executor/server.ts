@@ -393,8 +393,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         setConnected(true);
         setStatus('connected');
         log(`[bridge] Executor connected: ${message.executorName} v${message.version}`);
-        // Request game tree on connect
-        send({ 'type': 'requestGameTree' });
+        // Client sends deep tree proactively, no need to request
         break;
       }
 
