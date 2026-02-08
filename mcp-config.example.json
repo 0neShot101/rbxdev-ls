@@ -5,7 +5,7 @@
       "command": "node",
       "args": ["/path/to/rbxdev-ls/dist/mcp.js"],
       "env": {
-        "RBXDEV_BRIDGE_PORT": "21324"
+        "RBXDEV_BRIDGE_PORT": "21325"
       }
     }
   }
