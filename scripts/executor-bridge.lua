@@ -4,7 +4,7 @@ local Players = game:GetService'Players';
 local userConfig = (...) or {};
 
 local CONFIG = {
-	host = 'ws://127.0.0.1:21324';
+	host = 'ws://127.0.0.1:21325';
 	reconnectDelay = 5;
 	firstConnectDepth = 999;
 	updateTreeDepth = 2;
