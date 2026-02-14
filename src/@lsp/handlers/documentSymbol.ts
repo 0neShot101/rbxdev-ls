@@ -19,6 +19,20 @@ const convertRange = (range: { start: { line: number; column: number }; end: { l
   'end': { 'line': range.end.line - 1, 'character': range.end.column - 1 },
 });
 
+const posBefore = (a: { line: number; character: number }, b: { line: number; character: number }): boolean =>
+  a.line < b.line || (a.line === b.line && a.character < b.character);
+
+const posAfter = (a: { line: number; character: number }, b: { line: number; character: number }): boolean =>
+  a.line > b.line || (a.line === b.line && a.character > b.character);
+
+const ensureContained = (
+  selection: ReturnType<typeof convertRange>,
+  full: ReturnType<typeof convertRange>,
+): ReturnType<typeof convertRange> => {
+  if (posBefore(selection.start, full.start) || posAfter(selection.end, full.end)) return full;
+  return selection;
+};
+
 /**
  * Extracts document symbols from a function body, including parameters
  * and nested declarations.
@@ -31,11 +45,12 @@ const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
   // Add parameters as symbols
   for (const param of func.params) {
     if (param.name !== undefined) {
+      const paramFull = convertRange(param.range);
       symbols.push({
         'name': param.name.name,
         'kind': SymbolKind.Variable,
-        'range': convertRange(param.range),
-        'selectionRange': convertRange(param.name.range),
+        'range': paramFull,
+        'selectionRange': ensureContained(convertRange(param.name.range), paramFull),
       });
     }
   }
@@ -68,11 +83,12 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         const value = stmt.values[i];
         const isFunction = value?.kind === 'FunctionExpression';
 
+        const declFull = convertRange(stmt.range);
         const symbol: DocumentSymbol = {
           'name': name.name,
           'kind': isFunction ? SymbolKind.Function : SymbolKind.Variable,
-          'range': convertRange(stmt.range),
-          'selectionRange': convertRange(name.range),
+          'range': declFull,
+          'selectionRange': ensureContained(convertRange(name.range), declFull),
         };
 
         // If it's a function, add nested symbols
@@ -86,11 +102,12 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'LocalFunction': {
+      const funcFull = convertRange(stmt.range);
       const symbol: DocumentSymbol = {
         'name': stmt.name.name,
         'kind': SymbolKind.Function,
-        'range': convertRange(stmt.range),
-        'selectionRange': convertRange(stmt.name.range),
+        'range': funcFull,
+        'selectionRange': ensureContained(convertRange(stmt.name.range), funcFull),
         'children': collectFunctionSymbols(stmt.func),
       };
       symbols.push(symbol);
@@ -107,11 +124,12 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         fullName += ':' + stmt.name.method.name;
       }
 
+      const funcDeclFull = convertRange(stmt.range);
       const symbol: DocumentSymbol = {
         'name': fullName,
         'kind': stmt.name.method !== undefined ? SymbolKind.Method : SymbolKind.Function,
-        'range': convertRange(stmt.range),
-        'selectionRange': convertRange(stmt.name.base.range),
+        'range': funcDeclFull,
+        'selectionRange': ensureContained(convertRange(stmt.name.base.range), funcDeclFull),
         'children': collectFunctionSymbols(stmt.func),
       };
       symbols.push(symbol);
@@ -119,11 +137,12 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'TypeAlias': {
+      const typeFull = convertRange(stmt.range);
       const symbol: DocumentSymbol = {
         'name': stmt.name.name,
         'kind': SymbolKind.TypeParameter,
-        'range': convertRange(stmt.range),
-        'selectionRange': convertRange(stmt.name.range),
+        'range': typeFull,
+        'selectionRange': ensureContained(convertRange(stmt.name.range), typeFull),
       };
       symbols.push(symbol);
       break;

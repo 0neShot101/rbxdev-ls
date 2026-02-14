@@ -46,10 +46,11 @@ const createParam = (name: string, type: LuauType, optional = false): FunctionPa
  * @param params - Array of function parameters
  * @param returnType - The return type of the method
  * @param isVariadic - Whether the method accepts variadic arguments (defaults to false)
+ * @param description - A short description of the method for documentation
  * @returns A FunctionType representing the method
  */
-const createMethod = (params: FunctionParam[], returnType: LuauType, isVariadic = false) =>
-  createFunctionType(params, returnType, { isVariadic });
+const createMethod = (params: FunctionParam[], returnType: LuauType, isVariadic = false, description?: string) =>
+  createFunctionType(params, returnType, { isVariadic, ...(description !== undefined ? { description } : {}) });
 
 /**
  * Creates the Luau math library type definition.
@@ -71,31 +72,76 @@ export const createMathLibrary = (): LuauType =>
     new Map([
       [
         'abs',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the absolute value of x'),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'acos',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the arc cosine of x in radians',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'asin',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the arc sine of x in radians',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'atan',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the arc tangent of x in radians',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'atan2',
         {
-          'type': createMethod([createParam('y', NumberType), createParam('x', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('y', NumberType), createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the arc tangent of y/x in radians, using the signs of both to determine the quadrant',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'ceil',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the smallest integer greater than or equal to x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'clamp',
@@ -103,6 +149,8 @@ export const createMathLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('x', NumberType), createParam('min', NumberType), createParam('max', NumberType)],
             NumberType,
+            false,
+            'Returns x clamped between min and max',
           ),
           'readonly': true,
           'optional': false,
@@ -110,41 +158,105 @@ export const createMathLibrary = (): LuauType =>
       ],
       [
         'cos',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the cosine of x (in radians)',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'cosh',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the hyperbolic cosine of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'deg',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Converts angle x from radians to degrees',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'exp',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns e raised to the power x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'floor',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the largest integer less than or equal to x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'fmod',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('y', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('y', NumberType)],
+            NumberType,
+            false,
+            'Returns the remainder of x divided by y',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'frexp',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns m and e such that x = m * 2^e',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       ['huge', { 'type': NumberType, 'readonly': true, 'optional': false }],
       [
         'ldexp',
         {
-          'type': createMethod([createParam('m', NumberType), createParam('e', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('m', NumberType), createParam('e', NumberType)],
+            NumberType,
+            false,
+            'Returns m * 2^e',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -152,26 +264,68 @@ export const createMathLibrary = (): LuauType =>
       [
         'log',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('base', NumberType, true)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('base', NumberType, true)],
+            NumberType,
+            false,
+            'Returns the logarithm of x in the given base (default e)',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'log10',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the base-10 logarithm of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'max',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType, true), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            true,
+            'Returns the maximum value among the arguments',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
+      ['maxinteger', { 'type': NumberType, 'readonly': true, 'optional': false }],
       [
         'min',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType, true), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            true,
+            'Returns the minimum value among the arguments',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'modf',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the integer and fractional parts of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'noise',
@@ -179,6 +333,8 @@ export const createMathLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('x', NumberType), createParam('y', NumberType, true), createParam('z', NumberType, true)],
             NumberType,
+            false,
+            'Returns a Perlin noise value for the given coordinates',
           ),
           'readonly': true,
           'optional': false,
@@ -188,54 +344,145 @@ export const createMathLibrary = (): LuauType =>
       [
         'pow',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('y', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('y', NumberType)],
+            NumberType,
+            false,
+            'Returns x raised to the power y',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'rad',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Converts angle x from degrees to radians',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'random',
         {
-          'type': createMethod([createParam('m', NumberType, true), createParam('n', NumberType, true)], NumberType),
+          'type': createMethod(
+            [createParam('m', NumberType, true), createParam('n', NumberType, true)],
+            NumberType,
+            false,
+            'Returns a pseudo-random number. With no arguments returns [0,1), with one argument returns [1,n], with two returns [m,n]',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'randomseed',
-        { 'type': createMethod([createParam('x', NumberType)], NilType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NilType,
+            false,
+            'Sets the seed for the pseudo-random number generator',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'round',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns x rounded to the nearest integer',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'sign',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns -1, 0, or 1 depending on the sign of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'sin',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the sine of x (in radians)',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'sinh',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the hyperbolic sine of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'sqrt',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the square root of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'tan',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the tangent of x (in radians)',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'tanh',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the hyperbolic tangent of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
     ]),
   );
@@ -265,6 +512,7 @@ export const createStringLibrary = (): LuauType =>
             [createParam('s', StringType), createParam('i', NumberType, true), createParam('j', NumberType, true)],
             NumberType,
             true,
+            'Returns the numeric byte codes of characters in the string',
           ),
           'readonly': true,
           'optional': false,
@@ -273,7 +521,12 @@ export const createStringLibrary = (): LuauType =>
       [
         'char',
         {
-          'type': createMethod([createParam('codes', NumberType)], StringType, true),
+          'type': createMethod(
+            [createParam('codes', NumberType)],
+            StringType,
+            true,
+            'Returns a string from the given byte values',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -289,6 +542,8 @@ export const createStringLibrary = (): LuauType =>
               createParam('plain', BooleanType, true),
             ],
             { 'kind': 'Union', 'types': [NumberType, NilType] },
+            false,
+            'Searches for the first match of pattern in string s',
           ),
           'readonly': true,
           'optional': false,
@@ -297,7 +552,12 @@ export const createStringLibrary = (): LuauType =>
       [
         'format',
         {
-          'type': createMethod([createParam('formatstring', StringType)], StringType, true),
+          'type': createMethod(
+            [createParam('formatstring', StringType)],
+            StringType,
+            true,
+            'Returns a formatted string following the format string',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -308,6 +568,8 @@ export const createStringLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('pattern', StringType)],
             createFunctionType([], StringType),
+            false,
+            'Returns an iterator function that returns the next match from string s each time it is called',
           ),
           'readonly': true,
           'optional': false,
@@ -327,6 +589,8 @@ export const createStringLibrary = (): LuauType =>
               createParam('n', NumberType, true),
             ],
             StringType,
+            false,
+            'Returns a copy of s with all occurrences of pattern replaced by repl',
           ),
           'readonly': true,
           'optional': false,
@@ -334,11 +598,29 @@ export const createStringLibrary = (): LuauType =>
       ],
       [
         'len',
-        { 'type': createMethod([createParam('s', StringType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            NumberType,
+            false,
+            'Returns the length of the string',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'lower',
-        { 'type': createMethod([createParam('s', StringType)], StringType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            StringType,
+            false,
+            'Returns a copy of the string with all uppercase letters changed to lowercase',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'match',
@@ -346,6 +628,8 @@ export const createStringLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('pattern', StringType), createParam('init', NumberType, true)],
             { 'kind': 'Union', 'types': [StringType, NilType] },
+            false,
+            'Looks for the first match of pattern in string s',
           ),
           'readonly': true,
           'optional': false,
@@ -354,14 +638,28 @@ export const createStringLibrary = (): LuauType =>
       [
         'pack',
         {
-          'type': createMethod([createParam('fmt', StringType)], StringType, true),
+          'type': createMethod(
+            [createParam('fmt', StringType)],
+            StringType,
+            true,
+            'Returns a binary string containing the values packed according to the format string',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'packsize',
-        { 'type': createMethod([createParam('fmt', StringType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('fmt', StringType)],
+            NumberType,
+            false,
+            'Returns the size of a string resulting from string.pack with the given format',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'rep',
@@ -369,6 +667,8 @@ export const createStringLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('n', NumberType), createParam('sep', StringType, true)],
             StringType,
+            false,
+            'Returns a string that is n copies of string s separated by sep',
           ),
           'readonly': true,
           'optional': false,
@@ -376,7 +676,16 @@ export const createStringLibrary = (): LuauType =>
       ],
       [
         'reverse',
-        { 'type': createMethod([createParam('s', StringType)], StringType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            StringType,
+            false,
+            'Returns a reversed copy of the string',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'split',
@@ -384,6 +693,8 @@ export const createStringLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('separator', StringType, true)],
             createTableType(new Map(), { 'indexer': { 'keyType': NumberType, 'valueType': StringType } }),
+            false,
+            'Splits the string by the given separator and returns a table of substrings',
           ),
           'readonly': true,
           'optional': false,
@@ -395,6 +706,8 @@ export const createStringLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('i', NumberType), createParam('j', NumberType, true)],
             StringType,
+            false,
+            'Returns a substring from index i to j',
           ),
           'readonly': true,
           'optional': false,
@@ -407,6 +720,7 @@ export const createStringLibrary = (): LuauType =>
             [createParam('fmt', StringType), createParam('s', StringType), createParam('pos', NumberType, true)],
             AnyType,
             true,
+            'Returns the values packed in the binary string according to the format string',
           ),
           'readonly': true,
           'optional': false,
@@ -414,7 +728,16 @@ export const createStringLibrary = (): LuauType =>
       ],
       [
         'upper',
-        { 'type': createMethod([createParam('s', StringType)], StringType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            StringType,
+            false,
+            'Returns a copy of the string with all lowercase letters changed to uppercase',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
     ]),
   );
@@ -438,7 +761,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'clear',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], NilType),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            NilType,
+            false,
+            'Removes all elements from a table',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -446,7 +774,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'clone',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], createTableType(new Map())),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            createTableType(new Map()),
+            false,
+            'Returns a shallow copy of the table',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -462,6 +795,8 @@ export const createTableLibrary = (): LuauType =>
               createParam('j', NumberType, true),
             ],
             StringType,
+            false,
+            'Returns a string with table elements joined by the separator',
           ),
           'readonly': true,
           'optional': false,
@@ -473,6 +808,8 @@ export const createTableLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('count', NumberType), createParam('value', AnyType, true)],
             createTableType(new Map()),
+            false,
+            'Creates a new table with count array elements, optionally initialized to value',
           ),
           'readonly': true,
           'optional': false,
@@ -488,6 +825,8 @@ export const createTableLibrary = (): LuauType =>
               createParam('init', NumberType, true),
             ],
             { 'kind': 'Union', 'types': [NumberType, NilType] },
+            false,
+            'Returns the index of the first occurrence of value in the table',
           ),
           'readonly': true,
           'optional': false,
@@ -496,7 +835,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'freeze',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], createTableType(new Map())),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            createTableType(new Map()),
+            false,
+            'Makes a table read-only, preventing any modifications',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -504,7 +848,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'getn',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], NumberType),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            NumberType,
+            false,
+            'Returns the number of elements in the array portion of the table',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -519,6 +868,8 @@ export const createTableLibrary = (): LuauType =>
               createParam('value', AnyType, true),
             ],
             NilType,
+            false,
+            'Inserts value at position pos in the table',
           ),
           'readonly': true,
           'optional': false,
@@ -527,7 +878,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'isfrozen',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], BooleanType),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            BooleanType,
+            false,
+            'Returns true if the table is frozen (read-only)',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -535,7 +891,12 @@ export const createTableLibrary = (): LuauType =>
       [
         'maxn',
         {
-          'type': createMethod([createParam('t', createTableType(new Map()))], NumberType),
+          'type': createMethod(
+            [createParam('t', createTableType(new Map()))],
+            NumberType,
+            false,
+            'Returns the largest positive numeric index of the table',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -552,18 +913,34 @@ export const createTableLibrary = (): LuauType =>
               createParam('dst', createTableType(new Map()), true),
             ],
             createTableType(new Map()),
+            false,
+            'Copies elements from table a1 to table a2',
           ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['pack', { 'type': createMethod([], createTableType(new Map()), true), 'readonly': true, 'optional': false }],
+      [
+        'pack',
+        {
+          'type': createMethod(
+            [],
+            createTableType(new Map()),
+            true,
+            'Returns a new table with all arguments stored into keys 1, 2, etc.',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'remove',
         {
           'type': createMethod(
             [createParam('t', createTableType(new Map())), createParam('pos', NumberType, true)],
             AnyType,
+            false,
+            'Removes and returns the element at position pos',
           ),
           'readonly': true,
           'optional': false,
@@ -582,6 +959,8 @@ export const createTableLibrary = (): LuauType =>
               ),
             ],
             NilType,
+            false,
+            'Sorts table elements in place using the given comparison function',
           ),
           'readonly': true,
           'optional': false,
@@ -598,6 +977,7 @@ export const createTableLibrary = (): LuauType =>
             ],
             AnyType,
             true,
+            'Returns the elements from the table',
           ),
           'readonly': true,
           'optional': false,
@@ -623,7 +1003,12 @@ export const createCoroutineLibrary = (): LuauType =>
       [
         'close',
         {
-          'type': createMethod([createParam('co', { 'kind': 'Primitive', 'name': 'thread' })], BooleanType),
+          'type': createMethod(
+            [createParam('co', { 'kind': 'Primitive', 'name': 'thread' })],
+            BooleanType,
+            false,
+            'Closes a coroutine, preventing it from being resumed',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -631,31 +1016,64 @@ export const createCoroutineLibrary = (): LuauType =>
       [
         'create',
         {
-          'type': createMethod([createParam('f', createFunctionType([], AnyType, { 'isVariadic': true }))], {
-            'kind': 'Primitive',
-            'name': 'thread',
-          }),
+          'type': createMethod(
+            [createParam('f', createFunctionType([], AnyType, { 'isVariadic': true }))],
+            { 'kind': 'Primitive', 'name': 'thread' },
+            false,
+            'Creates a new coroutine from the given function',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['isyieldable', { 'type': createMethod([], BooleanType), 'readonly': true, 'optional': false }],
+      [
+        'isyieldable',
+        {
+          'type': createMethod(
+            [],
+            BooleanType,
+            false,
+            'Returns true if the running coroutine can yield',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'resume',
         {
-          'type': createMethod([createParam('co', { 'kind': 'Primitive', 'name': 'thread' })], AnyType, true),
+          'type': createMethod(
+            [createParam('co', { 'kind': 'Primitive', 'name': 'thread' })],
+            AnyType,
+            true,
+            'Starts or resumes execution of a coroutine',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
       [
         'running',
-        { 'type': createMethod([], { 'kind': 'Primitive', 'name': 'thread' }), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [],
+            { 'kind': 'Primitive', 'name': 'thread' },
+            false,
+            'Returns the running coroutine and a boolean indicating if it is the main thread',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'status',
         {
-          'type': createMethod([createParam('co', { 'kind': 'Primitive', 'name': 'thread' })], StringType),
+          'type': createMethod(
+            [createParam('co', { 'kind': 'Primitive', 'name': 'thread' })],
+            StringType,
+            false,
+            'Returns the status of a coroutine as a string',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -666,12 +1084,26 @@ export const createCoroutineLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('f', createFunctionType([], AnyType, { 'isVariadic': true }))],
             createFunctionType([], AnyType, { 'isVariadic': true }),
+            false,
+            'Creates a coroutine and returns a function that resumes it each time it is called',
           ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['yield', { 'type': createMethod([], AnyType, true), 'readonly': true, 'optional': false }],
+      [
+        'yield',
+        {
+          'type': createMethod(
+            [],
+            AnyType,
+            true,
+            'Suspends execution of the calling coroutine',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
     ]),
   );
 
@@ -694,26 +1126,106 @@ export const createBit32Library = (): LuauType =>
       [
         'arshift',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('disp', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('disp', NumberType)],
+            NumberType,
+            false,
+            'Returns x shifted arithmetically right by disp bits',
+          ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['band', { 'type': createMethod([], NumberType, true), 'readonly': true, 'optional': false }],
+      [
+        'band',
+        {
+          'type': createMethod(
+            [],
+            NumberType,
+            true,
+            'Returns the bitwise AND of its arguments',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'bnot',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the bitwise NOT of x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
-      ['bor', { 'type': createMethod([], NumberType, true), 'readonly': true, 'optional': false }],
-      ['btest', { 'type': createMethod([], BooleanType, true), 'readonly': true, 'optional': false }],
-      ['bxor', { 'type': createMethod([], NumberType, true), 'readonly': true, 'optional': false }],
+      [
+        'bor',
+        {
+          'type': createMethod(
+            [],
+            NumberType,
+            true,
+            'Returns the bitwise OR of its arguments',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
+      [
+        'btest',
+        {
+          'type': createMethod(
+            [],
+            BooleanType,
+            true,
+            'Returns true if the bitwise AND of its arguments is not zero',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
+      [
+        'bxor',
+        {
+          'type': createMethod(
+            [],
+            NumberType,
+            true,
+            'Returns the bitwise XOR of its arguments',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'countlz',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the number of consecutive leading zero bits in x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'countrz',
-        { 'type': createMethod([createParam('x', NumberType)], NumberType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('x', NumberType)],
+            NumberType,
+            false,
+            'Returns the number of consecutive trailing zero bits in x',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'extract',
@@ -721,6 +1233,8 @@ export const createBit32Library = (): LuauType =>
           'type': createMethod(
             [createParam('n', NumberType), createParam('field', NumberType), createParam('width', NumberType, true)],
             NumberType,
+            false,
+            'Extracts bits from x at field position with width',
           ),
           'readonly': true,
           'optional': false,
@@ -729,7 +1243,12 @@ export const createBit32Library = (): LuauType =>
       [
         'lrotate',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('disp', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('disp', NumberType)],
+            NumberType,
+            false,
+            'Returns x rotated left by disp bits',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -737,7 +1256,12 @@ export const createBit32Library = (): LuauType =>
       [
         'lshift',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('disp', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('disp', NumberType)],
+            NumberType,
+            false,
+            'Returns x shifted left by disp bits',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -753,6 +1277,8 @@ export const createBit32Library = (): LuauType =>
               createParam('width', NumberType, true),
             ],
             NumberType,
+            false,
+            'Returns x with the bits at field position replaced by v',
           ),
           'readonly': true,
           'optional': false,
@@ -761,7 +1287,12 @@ export const createBit32Library = (): LuauType =>
       [
         'rrotate',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('disp', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('disp', NumberType)],
+            NumberType,
+            false,
+            'Returns x rotated right by disp bits',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -769,7 +1300,12 @@ export const createBit32Library = (): LuauType =>
       [
         'rshift',
         {
-          'type': createMethod([createParam('x', NumberType), createParam('disp', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('x', NumberType), createParam('disp', NumberType)],
+            NumberType,
+            false,
+            'Returns x shifted right by disp bits',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -794,7 +1330,19 @@ export const createBit32Library = (): LuauType =>
 export const createUtf8Library = (): LuauType =>
   createTableType(
     new Map([
-      ['char', { 'type': createMethod([], StringType, true), 'readonly': true, 'optional': false }],
+      [
+        'char',
+        {
+          'type': createMethod(
+            [],
+            StringType,
+            true,
+            'Returns a string from the given Unicode code points',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       ['charpattern', { 'type': StringType, 'readonly': true, 'optional': false }],
       [
         'codepoint',
@@ -803,6 +1351,7 @@ export const createUtf8Library = (): LuauType =>
             [createParam('s', StringType), createParam('i', NumberType, true), createParam('j', NumberType, true)],
             NumberType,
             true,
+            'Returns the code points of all characters in the string',
           ),
           'readonly': true,
           'optional': false,
@@ -814,6 +1363,8 @@ export const createUtf8Library = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType)],
             createFunctionType([], { 'kind': 'Union', 'types': [NumberType, NilType] }),
+            false,
+            'Returns an iterator for all code points in the string',
           ),
           'readonly': true,
           'optional': false,
@@ -825,6 +1376,8 @@ export const createUtf8Library = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('i', NumberType, true), createParam('j', NumberType, true)],
             createFunctionType([], { 'kind': 'Union', 'types': [NumberType, NilType] }),
+            false,
+            'Returns an iterator for grapheme clusters in the string',
           ),
           'readonly': true,
           'optional': false,
@@ -836,6 +1389,8 @@ export const createUtf8Library = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('i', NumberType, true), createParam('j', NumberType, true)],
             { 'kind': 'Union', 'types': [NumberType, NilType] },
+            false,
+            'Returns the number of UTF-8 characters in the string',
           ),
           'readonly': true,
           'optional': false,
@@ -843,11 +1398,29 @@ export const createUtf8Library = (): LuauType =>
       ],
       [
         'nfcnormalize',
-        { 'type': createMethod([createParam('s', StringType)], StringType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            StringType,
+            false,
+            'Returns the NFC normalized form of the string',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'nfdnormalize',
-        { 'type': createMethod([createParam('s', StringType)], StringType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('s', StringType)],
+            StringType,
+            false,
+            'Returns the NFD normalized form of the string',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
       [
         'offset',
@@ -855,6 +1428,8 @@ export const createUtf8Library = (): LuauType =>
           'type': createMethod(
             [createParam('s', StringType), createParam('n', NumberType), createParam('i', NumberType, true)],
             { 'kind': 'Union', 'types': [NumberType, NilType] },
+            false,
+            'Returns the byte position of the nth character',
           ),
           'readonly': true,
           'optional': false,
@@ -878,14 +1453,28 @@ export const createUtf8Library = (): LuauType =>
 export const createOsLibrary = (): LuauType =>
   createTableType(
     new Map([
-      ['clock', { 'type': createMethod([], NumberType), 'readonly': true, 'optional': false }],
+      [
+        'clock',
+        {
+          'type': createMethod(
+            [],
+            NumberType,
+            false,
+            'Returns the CPU time used by the program in seconds',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'date',
         {
-          'type': createMethod([createParam('format', StringType, true), createParam('time', NumberType, true)], {
-            'kind': 'Union',
-            'types': [StringType, createTableType(new Map())],
-          }),
+          'type': createMethod(
+            [createParam('format', StringType, true), createParam('time', NumberType, true)],
+            { 'kind': 'Union', 'types': [StringType, createTableType(new Map())] },
+            false,
+            'Returns a formatted date/time string or table',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -893,7 +1482,12 @@ export const createOsLibrary = (): LuauType =>
       [
         'difftime',
         {
-          'type': createMethod([createParam('t2', NumberType), createParam('t1', NumberType)], NumberType),
+          'type': createMethod(
+            [createParam('t2', NumberType), createParam('t1', NumberType)],
+            NumberType,
+            false,
+            'Returns the difference in seconds between two time values',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -901,7 +1495,12 @@ export const createOsLibrary = (): LuauType =>
       [
         'time',
         {
-          'type': createMethod([createParam('table', createTableType(new Map()), true)], NumberType),
+          'type': createMethod(
+            [createParam('table', createTableType(new Map()), true)],
+            NumberType,
+            false,
+            'Returns the current time as a number',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -928,7 +1527,12 @@ export const createBufferLibrary = (): LuauType =>
       [
         'create',
         {
-          'type': createMethod([createParam('size', NumberType)], { 'kind': 'Primitive', 'name': 'buffer' }),
+          'type': createMethod(
+            [createParam('size', NumberType)],
+            { 'kind': 'Primitive', 'name': 'buffer' },
+            false,
+            'Creates a new buffer with the specified size in bytes',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -936,7 +1540,12 @@ export const createBufferLibrary = (): LuauType =>
       [
         'fromstring',
         {
-          'type': createMethod([createParam('str', StringType)], { 'kind': 'Primitive', 'name': 'buffer' }),
+          'type': createMethod(
+            [createParam('str', StringType)],
+            { 'kind': 'Primitive', 'name': 'buffer' },
+            false,
+            'Creates a new buffer from a string',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -944,7 +1553,12 @@ export const createBufferLibrary = (): LuauType =>
       [
         'tostring',
         {
-          'type': createMethod([createParam('b', { 'kind': 'Primitive', 'name': 'buffer' })], StringType),
+          'type': createMethod(
+            [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' })],
+            StringType,
+            false,
+            'Converts the buffer contents to a string',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -952,7 +1566,12 @@ export const createBufferLibrary = (): LuauType =>
       [
         'len',
         {
-          'type': createMethod([createParam('b', { 'kind': 'Primitive', 'name': 'buffer' })], NumberType),
+          'type': createMethod(
+            [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' })],
+            NumberType,
+            false,
+            'Returns the size of the buffer in bytes',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -969,6 +1588,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('count', NumberType, true),
             ],
             NilType,
+            false,
+            'Copies bytes from one buffer region to another',
           ),
           'readonly': true,
           'optional': false,
@@ -985,6 +1606,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('count', NumberType, true),
             ],
             NilType,
+            false,
+            'Fills a region of the buffer with a byte value',
           ),
           'readonly': true,
           'optional': false,
@@ -996,6 +1619,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads a signed 8-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1007,6 +1632,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads an unsigned 8-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1018,6 +1645,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads a signed 16-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1029,6 +1658,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads an unsigned 16-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1040,6 +1671,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads a signed 32-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1051,6 +1684,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads an unsigned 32-bit integer from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1062,6 +1697,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads a 32-bit floating point value from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1073,6 +1710,8 @@ export const createBufferLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('b', { 'kind': 'Primitive', 'name': 'buffer' }), createParam('offset', NumberType)],
             NumberType,
+            false,
+            'Reads a 64-bit floating point value from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1088,6 +1727,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('count', NumberType),
             ],
             StringType,
+            false,
+            'Reads a string of count bytes from the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1103,6 +1744,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes a signed 8-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1118,6 +1761,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes an unsigned 8-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1133,6 +1778,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes a signed 16-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1148,6 +1795,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes an unsigned 16-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1163,6 +1812,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes a signed 32-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1178,6 +1829,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes an unsigned 32-bit integer to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1193,6 +1846,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes a 32-bit floating point value to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1208,6 +1863,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('value', NumberType),
             ],
             NilType,
+            false,
+            'Writes a 64-bit floating point value to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1224,6 +1881,8 @@ export const createBufferLibrary = (): LuauType =>
               createParam('count', NumberType, true),
             ],
             NilType,
+            false,
+            'Writes a string to the buffer at the given offset',
           ),
           'readonly': true,
           'optional': false,
@@ -1252,7 +1911,12 @@ export const createTaskLibrary = (): LuauType =>
       [
         'cancel',
         {
-          'type': createMethod([createParam('thread', { 'kind': 'Primitive', 'name': 'thread' })], NilType),
+          'type': createMethod(
+            [createParam('thread', { 'kind': 'Primitive', 'name': 'thread' })],
+            NilType,
+            false,
+            'Cancels a scheduled thread, preventing it from resuming',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -1264,6 +1928,7 @@ export const createTaskLibrary = (): LuauType =>
             [createParam('f', createFunctionType([], AnyType, { 'isVariadic': true }))],
             { 'kind': 'Primitive', 'name': 'thread' },
             true,
+            'Schedules a function to run after the current resumption cycle',
           ),
           'readonly': true,
           'optional': false,
@@ -1279,12 +1944,25 @@ export const createTaskLibrary = (): LuauType =>
             ],
             { 'kind': 'Primitive', 'name': 'thread' },
             true,
+            'Schedules a function to run after the specified delay in seconds',
           ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['desynchronize', { 'type': createMethod([], NilType), 'readonly': true, 'optional': false }],
+      [
+        'desynchronize',
+        {
+          'type': createMethod(
+            [],
+            NilType,
+            false,
+            'Causes the following code to run in parallel execution',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'spawn',
         {
@@ -1292,16 +1970,34 @@ export const createTaskLibrary = (): LuauType =>
             [createParam('f', createFunctionType([], AnyType, { 'isVariadic': true }))],
             { 'kind': 'Primitive', 'name': 'thread' },
             true,
+            'Schedules a function to run immediately in a new thread',
           ),
           'readonly': true,
           'optional': false,
         },
       ],
-      ['synchronize', { 'type': createMethod([], NilType), 'readonly': true, 'optional': false }],
+      [
+        'synchronize',
+        {
+          'type': createMethod(
+            [],
+            NilType,
+            false,
+            'Causes the following code to run in serial execution',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'wait',
         {
-          'type': createMethod([createParam('duration', NumberType, true)], NumberType),
+          'type': createMethod(
+            [createParam('duration', NumberType, true)],
+            NumberType,
+            false,
+            'Yields the current thread for at least the given duration, returns elapsed time',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -1329,7 +2025,12 @@ export const createDebugLibrary = (): LuauType =>
       [
         'info',
         {
-          'type': createMethod([createParam('level', NumberType), createParam('what', StringType)], AnyType, true),
+          'type': createMethod(
+            [createParam('level', NumberType), createParam('what', StringType)],
+            AnyType,
+            true,
+            'Returns information about the given function or stack level',
+          ),
           'readonly': true,
           'optional': false,
         },
@@ -1340,6 +2041,8 @@ export const createDebugLibrary = (): LuauType =>
           'type': createMethod(
             [createParam('message', StringType, true), createParam('level', NumberType, true)],
             StringType,
+            false,
+            'Returns a string with a traceback of the call stack',
           ),
           'readonly': true,
           'optional': false,
@@ -1347,14 +2050,56 @@ export const createDebugLibrary = (): LuauType =>
       ],
       [
         'profilebegin',
-        { 'type': createMethod([createParam('label', StringType)], NilType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('label', StringType)],
+            NilType,
+            false,
+            'Starts a profiler label for MicroProfiler timing',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
-      ['profileend', { 'type': createMethod([], NilType), 'readonly': true, 'optional': false }],
+      [
+        'profileend',
+        {
+          'type': createMethod(
+            [],
+            NilType,
+            false,
+            'Ends the most recent MicroProfiler profiler label',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'setmemorycategory',
-        { 'type': createMethod([createParam('tag', StringType)], NilType), 'readonly': true, 'optional': false },
+        {
+          'type': createMethod(
+            [createParam('tag', StringType)],
+            NilType,
+            false,
+            'Sets the current memory category for memory profiling',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
       ],
-      ['resetmemorycategory', { 'type': createMethod([], NilType), 'readonly': true, 'optional': false }],
+      [
+        'resetmemorycategory',
+        {
+          'type': createMethod(
+            [],
+            NilType,
+            false,
+            'Resets the memory category to the default',
+          ),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
     ]),
   );
 

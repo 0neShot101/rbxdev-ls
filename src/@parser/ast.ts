@@ -771,8 +771,8 @@ export interface TypeReference extends BaseNode {
 export interface TypeLiteral extends BaseNode {
   /** Discriminator for the TypeLiteral node type */
   readonly kind: 'TypeLiteral';
-  /** The literal value (string or boolean) */
-  readonly value: string | boolean;
+  /** The literal value (string, boolean, or number) */
+  readonly value: string | boolean | number;
 }
 
 /**

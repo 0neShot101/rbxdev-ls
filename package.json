@@ -1,6 +1,6 @@
 {
   "name": "rbxdev-ls",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/index.js",
   "bin": {
@@ -13,9 +13,9 @@
     "build:mcp": "bun build src/mcp.ts --outdir dist --target node",
     "build:all": "bun build src/index.ts src/mcp.ts --outdir dist --target node",
     "start": "bun dist/index.js",
-    "start:mcp": "bun dist/mcp.js",
+    "start:mcp": "node dist/mcp.js",
     "dev": "bun --watch src/index.ts",
-    "dev:mcp": "bun --watch src/mcp.ts",
+    "dev:mcp": "node --watch dist/mcp.js",
     "clean": "rm -rf dist",
     "lint": "eslint src --ext .ts --fix",
     "lint:check": "eslint src --ext .ts",

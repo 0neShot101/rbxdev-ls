@@ -21,8 +21,19 @@
       "problemMatcher": ["$tsc"]
     },
     {
+      "label": "copy-server",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "copy-server"],
+      "options": {
+        "cwd": "${workspaceFolder}/vscode"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
       "label": "build-all",
-      "dependsOn": ["build-server", "build-extension"],
+      "dependsOn": ["build-server", "copy-server", "build-extension"],
       "dependsOrder": "sequence",
       "group": {
         "kind": "build",
