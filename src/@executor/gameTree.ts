@@ -225,7 +225,7 @@ export const createLiveGameModel = (): {
 
     // Mutate the node to add children (cast to mutable)
     (targetNode as { children?: GameTreeNode[] }).children = children;
-    (targetNode as { hasChildren?: boolean }).hasChildren = undefined;
+    delete (targetNode as { hasChildren?: boolean }).hasChildren;
   };
 
   const model: LiveGameModel = {
