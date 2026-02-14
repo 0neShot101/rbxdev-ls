@@ -616,8 +616,21 @@ export const setupHoverHandler = (
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
-              'value':
-                '```lua\n' + formatTypeDoc(memberAccess.memberName, memberProp.type) + '\n```' + liveValueMarkdown,
+              'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
+            },
+          };
+        }
+      }
+
+      // Check global symbols that are tables (standard libraries like math, string, table, and constructors like Vector3, CFrame, etc.)
+      const globalSymbol = documentManager.globalEnv.env.globalScope.symbols.get(memberAccess.objectName);
+      if (globalSymbol !== undefined && globalSymbol.type.kind === 'Table') {
+        const memberProp = globalSymbol.type.properties.get(memberAccess.memberName);
+        if (memberProp !== undefined) {
+          return {
+            'contents': {
+              'kind': MarkupKind.Markdown,
+              'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
             },
           };
         }
