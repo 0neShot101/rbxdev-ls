@@ -172,12 +172,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'cosh',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the hyperbolic cosine of x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the hyperbolic cosine of x'),
           'readonly': true,
           'optional': false,
         },
@@ -198,12 +193,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'exp',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns e raised to the power x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns e raised to the power x'),
           'readonly': true,
           'optional': false,
         },
@@ -277,12 +267,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'log10',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the base-10 logarithm of x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the base-10 logarithm of x'),
           'readonly': true,
           'optional': false,
         },
@@ -422,12 +407,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'sin',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the sine of x (in radians)',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the sine of x (in radians)'),
           'readonly': true,
           'optional': false,
         },
@@ -435,12 +415,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'sinh',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the hyperbolic sine of x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the hyperbolic sine of x'),
           'readonly': true,
           'optional': false,
         },
@@ -448,12 +423,7 @@ export const createMathLibrary = (): LuauType =>
       [
         'sqrt',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the square root of x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the square root of x'),
           'readonly': true,
           'optional': false,
         },
@@ -599,12 +569,7 @@ export const createStringLibrary = (): LuauType =>
       [
         'len',
         {
-          'type': createMethod(
-            [createParam('s', StringType)],
-            NumberType,
-            false,
-            'Returns the length of the string',
-          ),
+          'type': createMethod([createParam('s', StringType)], NumberType, false, 'Returns the length of the string'),
           'readonly': true,
           'optional': false,
         },
@@ -1029,12 +994,7 @@ export const createCoroutineLibrary = (): LuauType =>
       [
         'isyieldable',
         {
-          'type': createMethod(
-            [],
-            BooleanType,
-            false,
-            'Returns true if the running coroutine can yield',
-          ),
+          'type': createMethod([], BooleanType, false, 'Returns true if the running coroutine can yield'),
           'readonly': true,
           'optional': false,
         },
@@ -1094,12 +1054,7 @@ export const createCoroutineLibrary = (): LuauType =>
       [
         'yield',
         {
-          'type': createMethod(
-            [],
-            AnyType,
-            true,
-            'Suspends execution of the calling coroutine',
-          ),
+          'type': createMethod([], AnyType, true, 'Suspends execution of the calling coroutine'),
           'readonly': true,
           'optional': false,
         },
@@ -1139,12 +1094,7 @@ export const createBit32Library = (): LuauType =>
       [
         'band',
         {
-          'type': createMethod(
-            [],
-            NumberType,
-            true,
-            'Returns the bitwise AND of its arguments',
-          ),
+          'type': createMethod([], NumberType, true, 'Returns the bitwise AND of its arguments'),
           'readonly': true,
           'optional': false,
         },
@@ -1152,12 +1102,7 @@ export const createBit32Library = (): LuauType =>
       [
         'bnot',
         {
-          'type': createMethod(
-            [createParam('x', NumberType)],
-            NumberType,
-            false,
-            'Returns the bitwise NOT of x',
-          ),
+          'type': createMethod([createParam('x', NumberType)], NumberType, false, 'Returns the bitwise NOT of x'),
           'readonly': true,
           'optional': false,
         },
@@ -1165,12 +1110,7 @@ export const createBit32Library = (): LuauType =>
       [
         'bor',
         {
-          'type': createMethod(
-            [],
-            NumberType,
-            true,
-            'Returns the bitwise OR of its arguments',
-          ),
+          'type': createMethod([], NumberType, true, 'Returns the bitwise OR of its arguments'),
           'readonly': true,
           'optional': false,
         },
@@ -1178,12 +1118,7 @@ export const createBit32Library = (): LuauType =>
       [
         'btest',
         {
-          'type': createMethod(
-            [],
-            BooleanType,
-            true,
-            'Returns true if the bitwise AND of its arguments is not zero',
-          ),
+          'type': createMethod([], BooleanType, true, 'Returns true if the bitwise AND of its arguments is not zero'),
           'readonly': true,
           'optional': false,
         },
@@ -1191,12 +1126,7 @@ export const createBit32Library = (): LuauType =>
       [
         'bxor',
         {
-          'type': createMethod(
-            [],
-            NumberType,
-            true,
-            'Returns the bitwise XOR of its arguments',
-          ),
+          'type': createMethod([], NumberType, true, 'Returns the bitwise XOR of its arguments'),
           'readonly': true,
           'optional': false,
         },
@@ -1333,12 +1263,7 @@ export const createUtf8Library = (): LuauType =>
       [
         'char',
         {
-          'type': createMethod(
-            [],
-            StringType,
-            true,
-            'Returns a string from the given Unicode code points',
-          ),
+          'type': createMethod([], StringType, true, 'Returns a string from the given Unicode code points'),
           'readonly': true,
           'optional': false,
         },
@@ -1456,12 +1381,7 @@ export const createOsLibrary = (): LuauType =>
       [
         'clock',
         {
-          'type': createMethod(
-            [],
-            NumberType,
-            false,
-            'Returns the CPU time used by the program in seconds',
-          ),
+          'type': createMethod([], NumberType, false, 'Returns the CPU time used by the program in seconds'),
           'readonly': true,
           'optional': false,
         },
@@ -1953,12 +1873,7 @@ export const createTaskLibrary = (): LuauType =>
       [
         'desynchronize',
         {
-          'type': createMethod(
-            [],
-            NilType,
-            false,
-            'Causes the following code to run in parallel execution',
-          ),
+          'type': createMethod([], NilType, false, 'Causes the following code to run in parallel execution'),
           'readonly': true,
           'optional': false,
         },
@@ -1979,12 +1894,7 @@ export const createTaskLibrary = (): LuauType =>
       [
         'synchronize',
         {
-          'type': createMethod(
-            [],
-            NilType,
-            false,
-            'Causes the following code to run in serial execution',
-          ),
+          'type': createMethod([], NilType, false, 'Causes the following code to run in serial execution'),
           'readonly': true,
           'optional': false,
         },
@@ -2064,12 +1974,7 @@ export const createDebugLibrary = (): LuauType =>
       [
         'profileend',
         {
-          'type': createMethod(
-            [],
-            NilType,
-            false,
-            'Ends the most recent MicroProfiler profiler label',
-          ),
+          'type': createMethod([], NilType, false, 'Ends the most recent MicroProfiler profiler label'),
           'readonly': true,
           'optional': false,
         },
@@ -2090,12 +1995,7 @@ export const createDebugLibrary = (): LuauType =>
       [
         'resetmemorycategory',
         {
-          'type': createMethod(
-            [],
-            NilType,
-            false,
-            'Resets the memory category to the default',
-          ),
+          'type': createMethod([], NilType, false, 'Resets the memory category to the default'),
           'readonly': true,
           'optional': false,
         },
