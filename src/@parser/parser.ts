@@ -1002,6 +1002,7 @@ const parseIntersectionType = (state: ParserState): TypeAnnotation => {
  */
 const parsePrimaryType = (state: ParserState): TypeAnnotation => {
   const start = current(state);
+  let type: TypeAnnotation;
 
   // typeof
   if (check(state, TokenKind.Typeof)) {
@@ -1009,67 +1010,73 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
     consume(state, TokenKind.LeftParen, 'Expected (');
     const expression = parseExpression(state);
     const end = consume(state, TokenKind.RightParen, 'Expected )');
-    return {
+    type = {
       'kind': 'TypeofType',
       expression,
       'range': createRange(start.start, end.end),
     };
-  }
-
-  // Parenthesized type or function type
-  if (check(state, TokenKind.LeftParen)) {
-    return parseFunctionOrParenType(state);
-  }
-
-  // Table type
-  if (check(state, TokenKind.LeftBrace)) {
-    return parseTableType(state);
-  }
-
-  // Variadic type
-  if (check(state, TokenKind.Vararg)) {
+  } else if (check(state, TokenKind.LeftParen)) {
+    type = parseFunctionOrParenType(state);
+  } else if (check(state, TokenKind.LeftBrace)) {
+    type = parseTableType(state);
+  } else if (check(state, TokenKind.Vararg)) {
     advance(state);
-    const type = parsePrimaryType(state);
-    return {
+    const inner = parsePrimaryType(state);
+    type = {
       'kind': 'VariadicType',
-      type,
-      'range': createRange(start.start, type.range.end),
+      'type': inner,
+      'range': createRange(start.start, inner.range.end),
     };
-  }
-
-  // String literal type
-  if (check(state, TokenKind.String)) {
+  } else if (check(state, TokenKind.String)) {
     const token = advance(state);
-    return {
+    type = {
       'kind': 'TypeLiteral',
       'value': parseStringValue(token.value),
       'range': createRange(start.start, token.end),
     };
-  }
-
-  // Boolean literal type
-  if (check(state, TokenKind.True)) {
+  } else if (check(state, TokenKind.Number)) {
+    const token = advance(state);
+    type = {
+      'kind': 'TypeLiteral',
+      'value': Number(token.value),
+      'range': createRange(start.start, token.end),
+    };
+  } else if (check(state, TokenKind.True)) {
     advance(state);
-    return { 'kind': 'TypeLiteral', 'value': true, 'range': createRange(start.start, start.end) };
-  }
-
-  if (check(state, TokenKind.False)) {
+    type = { 'kind': 'TypeLiteral', 'value': true, 'range': createRange(start.start, start.end) };
+  } else if (check(state, TokenKind.False)) {
     advance(state);
-    return { 'kind': 'TypeLiteral', 'value': false, 'range': createRange(start.start, start.end) };
+    type = { 'kind': 'TypeLiteral', 'value': false, 'range': createRange(start.start, start.end) };
+  } else if (check(state, TokenKind.Nil)) {
+    advance(state);
+    type = {
+      'kind': 'TypeReference',
+      'name': 'nil',
+      'module': undefined,
+      'typeArgs': undefined,
+      'range': createRange(start.start, start.end),
+    };
+  } else if (check(state, TokenKind.Identifier)) {
+    type = parseTypeReference(state);
+  } else {
+    state.errors.push({
+      'message': `Unexpected token in type: ${current(state).kind}`,
+      'range': createRange(start.start, start.end),
+    });
+    advance(state);
+    return { 'kind': 'ErrorType', 'message': 'Unexpected token', 'range': createRange(start.start, start.end) };
   }
 
-  // Type reference (identifier with optional generics)
-  if (check(state, TokenKind.Identifier)) {
-    return parseTypeReference(state);
+  if (check(state, TokenKind.Question)) {
+    advance(state);
+    type = {
+      'kind': 'OptionalType',
+      type,
+      'range': createRange(start.start, current(state).start),
+    };
   }
 
-  // Error
-  state.errors.push({
-    'message': `Unexpected token in type: ${current(state).kind}`,
-    'range': createRange(start.start, start.end),
-  });
-  advance(state);
-  return { 'kind': 'ErrorType', 'message': 'Unexpected token', 'range': createRange(start.start, start.end) };
+  return type;
 };
 
 /**
@@ -1104,25 +1111,13 @@ const parseTypeReference = (state: ParserState): TypeAnnotation => {
     consume(state, TokenKind.Greater, 'Expected >');
   }
 
-  let type: TypeAnnotation = {
+  return {
     'kind': 'TypeReference',
     name,
     'module': moduleName,
     typeArgs,
     'range': createRange(start.start, current(state).start),
   };
-
-  // Check for optional type suffix
-  if (check(state, TokenKind.Question)) {
-    advance(state);
-    type = {
-      'kind': 'OptionalType',
-      type,
-      'range': createRange(start.start, current(state).start),
-    };
-  }
-
-  return type;
 };
 
 /**
@@ -1211,11 +1206,32 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  // Otherwise, if there's only one param with no name, it's a parenthesized type
+  // Empty parens () - represents nil/void return type
+  if (params.length === 0) {
+    return {
+      'kind': 'TypeReference',
+      'name': 'nil',
+      'module': undefined,
+      'typeArgs': undefined,
+      'range': createRange(start.start, current(state).start),
+    };
+  }
+
+  // Single unnamed param - parenthesized type (T)
   if (params.length === 1 && params[0]!.name === undefined) {
     return {
       'kind': 'ParenthesizedType',
       'type': params[0]!.type,
+      'range': createRange(start.start, current(state).start),
+    };
+  }
+
+  // Multiple params without -> is a tuple return type (T, U)
+  // Use the first type as the primary return type
+  if (params.length > 1 && params[0] !== undefined) {
+    return {
+      'kind': 'ParenthesizedType',
+      'type': params[0].type,
       'range': createRange(start.start, current(state).start),
     };
   }
@@ -1258,8 +1274,7 @@ const parseTableType = (state: ParserState): TypeAnnotation => {
         valueType,
         'range': createRange(propStart.start, valueType.range.end),
       };
-    } else if (check(state, TokenKind.Identifier)) {
-      // name: type
+    } else if (check(state, TokenKind.Identifier) && peek(state, 1).kind === TokenKind.Colon) {
       const name = advance(state).value;
       consume(state, TokenKind.Colon, 'Expected :');
       const type = parseTypeAnnotation(state);
@@ -1270,6 +1285,20 @@ const parseTableType = (state: ParserState): TypeAnnotation => {
         'isReadonly': false,
         'range': createRange(propStart.start, type.range.end),
       });
+    } else {
+      const elementType = parseTypeAnnotation(state);
+      indexer = {
+        'kind': 'TableTypeIndexer',
+        'keyType': {
+          'kind': 'TypeReference',
+          'name': 'number',
+          'module': undefined,
+          'typeArgs': undefined,
+          'range': elementType.range,
+        },
+        'valueType': elementType,
+        'range': createRange(propStart.start, elementType.range.end),
+      };
     }
 
     if (check(state, TokenKind.Comma) || check(state, TokenKind.Semicolon)) {

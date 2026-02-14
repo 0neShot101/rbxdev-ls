@@ -84,18 +84,17 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
     return exports;
   }
 
-  // If returning an identifier, look for it in local declarations
+  // If returning an identifier, look for it in local declarations and assignments
   if (returnValue.kind === 'Identifier') {
     const varName = returnValue.name;
 
-    // Find the local declaration
+    // Find the local declaration and extract initial table fields
     for (const stmt of chunk.body) {
       if (stmt.kind === 'LocalDeclaration') {
         const idx = stmt.names.findIndex(n => n.name === varName);
         if (idx !== -1) {
           const value = stmt.values[idx];
           if (value?.kind === 'TableExpression') {
-            // Extract table fields
             for (const field of value.fields) {
               if (field.kind === 'TableFieldKey') {
                 const name = field.key.name;
@@ -112,6 +111,39 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
             }
           }
           break;
+        }
+      }
+    }
+
+    // Scan for assignments like module.X = value (common Lua module pattern)
+    for (const stmt of chunk.body) {
+      if (stmt.kind === 'Assignment' && stmt.targets.length > 0 && stmt.values.length > 0) {
+        const target = stmt.targets[0]!;
+        if (
+          target.kind === 'MemberExpression' &&
+          target.object.kind === 'Identifier' &&
+          target.object.name === varName
+        ) {
+          const name = target.property.name;
+          const value = stmt.values[0];
+          let kind: ModuleExport['kind'] = 'value';
+
+          if (value?.kind === 'FunctionExpression') {
+            kind = 'function';
+          } else if (value?.kind === 'TableExpression') {
+            kind = 'table';
+          }
+
+          exports.push({ name, kind, modulePath, filePath });
+        }
+      }
+
+      // Also handle: function module.X(...) end or function module:X(...) end
+      if (stmt.kind === 'FunctionDeclaration' && stmt.name.base.name === varName) {
+        // function module.path.name() or function module:method()
+        const funcName = stmt.name.method?.name ?? stmt.name.path[stmt.name.path.length - 1]?.name;
+        if (funcName !== undefined) {
+          exports.push({ 'name': funcName, 'kind': 'function', modulePath, filePath });
         }
       }
     }
@@ -348,4 +380,116 @@ export const searchExports = (modules: Map<string, ModuleInfo>, query: string, l
   }
 
   return results;
+};
+
+/**
+ * Resolves a local module path (e.g., "./utils") relative to the current file.
+ * Tries extensions .lua, .luau, and init.lua/init.luau for directories.
+ * @param relativePath - The relative path string (starting with ./ or ../)
+ * @param currentFilePath - The absolute path of the file containing the require
+ * @returns ModuleInfo for the resolved module, or undefined if not found
+ */
+export const resolveLocalModule = (relativePath: string, currentFilePath: string): ModuleInfo | undefined => {
+  const currentDir = path.dirname(currentFilePath);
+  const resolved = path.resolve(currentDir, relativePath);
+
+  // Try direct file matches
+  const candidates = [
+    resolved,
+    `${resolved}.lua`,
+    `${resolved}.luau`,
+    path.join(resolved, 'init.lua'),
+    path.join(resolved, 'init.luau'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) === false) continue;
+
+    const stat = fs.statSync(candidate);
+    if (stat.isDirectory()) continue;
+
+    try {
+      const content = fs.readFileSync(candidate, 'utf-8');
+      const parseResult = parse(content);
+      if (parseResult.ast === undefined) continue;
+
+      const baseName = path.basename(resolved).replace(/\.(lua|luau)$/, '');
+      const dataModelPath = [baseName];
+      const exports = extractModuleExports(parseResult.ast, candidate, dataModelPath);
+
+      return {
+        'filePath': candidate,
+        dataModelPath,
+        exports,
+        'lastModified': stat.mtimeMs,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return undefined;
+};
+
+/**
+ * Represents a module file entry with metadata for completion display.
+ */
+export interface ModuleFileEntry {
+  readonly name: string;
+  readonly ext: '.lua' | '.luau';
+  readonly isFolder: boolean;
+  readonly filePath: string;
+  readonly exports: ModuleExport[];
+}
+
+/**
+ * Lists Lua/Luau files in a directory with metadata for require path completions.
+ * @param dirPath - The directory to list files from
+ * @returns Array of ModuleFileEntry objects with export info
+ */
+export const listModuleFiles = (dirPath: string): ModuleFileEntry[] => {
+  if (fs.existsSync(dirPath) === false) return [];
+
+  try {
+    const entries = fs.readdirSync(dirPath, { 'withFileTypes': true });
+    const results: ModuleFileEntry[] = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const initLua = path.join(dirPath, entry.name, 'init.lua');
+        const initLuau = path.join(dirPath, entry.name, 'init.luau');
+        const initPath = fs.existsSync(initLua) ? initLua : fs.existsSync(initLuau) ? initLuau : undefined;
+        if (initPath === undefined) continue;
+
+        const ext: '.lua' | '.luau' = initPath.endsWith('.luau') ? '.luau' : '.lua';
+        const exports = extractFileExports(initPath, [entry.name]);
+        results.push({ 'name': entry.name, ext, 'isFolder': true, 'filePath': initPath, exports });
+      } else if (entry.name.endsWith('.lua') || entry.name.endsWith('.luau')) {
+        if (entry.name === 'init.lua' || entry.name === 'init.luau') continue;
+        const baseName = entry.name.replace(/\.(lua|luau)$/, '');
+        const ext: '.lua' | '.luau' = entry.name.endsWith('.luau') ? '.luau' : '.lua';
+        const filePath = path.join(dirPath, entry.name);
+        const exports = extractFileExports(filePath, [baseName]);
+        results.push({ 'name': baseName, ext, 'isFolder': false, filePath, exports });
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Extracts exports from a file, returning empty array on failure.
+ */
+const extractFileExports = (filePath: string, dataModelPath: string[]): ModuleExport[] => {
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const parseResult = parse(content);
+    if (parseResult.ast === undefined) return [];
+    return extractModuleExports(parseResult.ast, filePath, dataModelPath);
+  } catch {
+    return [];
+  }
 };

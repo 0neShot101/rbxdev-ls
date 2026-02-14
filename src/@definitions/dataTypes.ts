@@ -57,10 +57,12 @@ const prop = (type: LuauType, readonly = true, deprecated?: { deprecated: true; 
 const methodProp = (
   params: Array<{ name: string; type: LuauType; optional?: boolean }>,
   returnType: LuauType,
+  description?: string,
 ): PropertyType => ({
   'type': createFunctionType(
     params.map(p => ({ 'name': p.name, 'type': p.type, 'optional': p.optional ?? false })),
     returnType,
+    description !== undefined ? { description } : undefined,
   ),
   'readonly': true,
   'optional': false,
@@ -79,7 +81,7 @@ export const createRBXScriptConnectionType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
       ['Connected', prop(BooleanType)],
-      ['Disconnect', methodProp([], NilType)],
+      ['Disconnect', methodProp([], NilType, 'Disconnects the connection from the signal')],
     ]),
   );
 
@@ -108,10 +110,10 @@ export const createRBXScriptSignalType = (callbackParams: Array<{ name: string; 
 
   return createTableType(
     new Map<string, PropertyType>([
-      ['Connect', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType)],
-      ['ConnectParallel', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType)],
-      ['Once', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType)],
-      ['Wait', methodProp([], waitReturnType)],
+      ['Connect', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType, 'Connects a callback function to the signal, returns a connection')],
+      ['ConnectParallel', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType, 'Connects a callback that runs in parallel, returns a connection')],
+      ['Once', methodProp([{ 'name': 'callback', 'type': callbackType }], connectionType, 'Connects a callback that fires only once, then disconnects')],
+      ['Wait', methodProp([], waitReturnType, 'Yields the current thread until the signal fires')],
     ]),
   );
 };
@@ -147,10 +149,10 @@ export const createVector2InstanceType = (): LuauType => {
       ['Y', prop(NumberType)],
       ['Magnitude', prop(NumberType)],
       ['Unit', prop(vector2Ref)],
-      ['Abs', methodProp([], vector2Ref)],
-      ['Ceil', methodProp([], vector2Ref)],
-      ['Floor', methodProp([], vector2Ref)],
-      ['Sign', methodProp([], vector2Ref)],
+      ['Abs', methodProp([], vector2Ref, 'Returns a new Vector2 with each component\'s absolute value')],
+      ['Ceil', methodProp([], vector2Ref, 'Returns a new Vector2 with each component rounded up')],
+      ['Floor', methodProp([], vector2Ref, 'Returns a new Vector2 with each component rounded down')],
+      ['Sign', methodProp([], vector2Ref, 'Returns a new Vector2 with each component\'s sign (-1, 0, or 1)')],
       [
         'Angle',
         methodProp(
@@ -159,10 +161,11 @@ export const createVector2InstanceType = (): LuauType => {
             { 'name': 'isSigned', 'type': BooleanType, 'optional': true },
           ],
           NumberType,
+          'Returns the angle in radians between two vectors',
         ),
       ],
-      ['Cross', methodProp([{ 'name': 'other', 'type': vector2Ref }], NumberType)],
-      ['Dot', methodProp([{ 'name': 'other', 'type': vector2Ref }], NumberType)],
+      ['Cross', methodProp([{ 'name': 'other', 'type': vector2Ref }], NumberType, 'Returns the cross product (scalar) of two 2D vectors')],
+      ['Dot', methodProp([{ 'name': 'other', 'type': vector2Ref }], NumberType, 'Returns the dot product of two vectors')],
       [
         'FuzzyEq',
         methodProp(
@@ -171,6 +174,7 @@ export const createVector2InstanceType = (): LuauType => {
             { 'name': 'epsilon', 'type': NumberType, 'optional': true },
           ],
           BooleanType,
+          'Returns true if the vectors are approximately equal within epsilon',
         ),
       ],
       [
@@ -181,10 +185,11 @@ export const createVector2InstanceType = (): LuauType => {
             { 'name': 'alpha', 'type': NumberType },
           ],
           vector2Ref,
+          'Returns a vector linearly interpolated between this and goal by alpha',
         ),
       ],
-      ['Max', methodProp([{ 'name': 'others', 'type': vector2Ref }], vector2Ref)],
-      ['Min', methodProp([{ 'name': 'others', 'type': vector2Ref }], vector2Ref)],
+      ['Max', methodProp([{ 'name': 'others', 'type': vector2Ref }], vector2Ref, 'Returns a vector with the maximum of each component')],
+      ['Min', methodProp([{ 'name': 'others', 'type': vector2Ref }], vector2Ref, 'Returns a vector with the minimum of each component')],
     ]),
   );
 };
@@ -211,10 +216,10 @@ export const createVector3InstanceType = (): LuauType => {
       ['Z', prop(NumberType)],
       ['Magnitude', prop(NumberType)],
       ['Unit', prop(vector3Ref)],
-      ['Abs', methodProp([], vector3Ref)],
-      ['Ceil', methodProp([], vector3Ref)],
-      ['Floor', methodProp([], vector3Ref)],
-      ['Sign', methodProp([], vector3Ref)],
+      ['Abs', methodProp([], vector3Ref, 'Returns a new Vector3 with each component\'s absolute value')],
+      ['Ceil', methodProp([], vector3Ref, 'Returns a new Vector3 with each component rounded up')],
+      ['Floor', methodProp([], vector3Ref, 'Returns a new Vector3 with each component rounded down')],
+      ['Sign', methodProp([], vector3Ref, 'Returns a new Vector3 with each component\'s sign (-1, 0, or 1)')],
       [
         'Angle',
         methodProp(
@@ -223,10 +228,11 @@ export const createVector3InstanceType = (): LuauType => {
             { 'name': 'axis', 'type': vector3Ref, 'optional': true },
           ],
           NumberType,
+          'Returns the angle in radians between two vectors',
         ),
       ],
-      ['Cross', methodProp([{ 'name': 'other', 'type': vector3Ref }], vector3Ref)],
-      ['Dot', methodProp([{ 'name': 'other', 'type': vector3Ref }], NumberType)],
+      ['Cross', methodProp([{ 'name': 'other', 'type': vector3Ref }], vector3Ref, 'Returns the cross product of two vectors')],
+      ['Dot', methodProp([{ 'name': 'other', 'type': vector3Ref }], NumberType, 'Returns the dot product of two vectors')],
       [
         'FuzzyEq',
         methodProp(
@@ -235,6 +241,7 @@ export const createVector3InstanceType = (): LuauType => {
             { 'name': 'epsilon', 'type': NumberType, 'optional': true },
           ],
           BooleanType,
+          'Returns true if the vectors are approximately equal within epsilon',
         ),
       ],
       [
@@ -245,10 +252,11 @@ export const createVector3InstanceType = (): LuauType => {
             { 'name': 'alpha', 'type': NumberType },
           ],
           vector3Ref,
+          'Returns a vector linearly interpolated between this and goal by alpha',
         ),
       ],
-      ['Max', methodProp([{ 'name': 'others', 'type': vector3Ref }], vector3Ref)],
-      ['Min', methodProp([{ 'name': 'others', 'type': vector3Ref }], vector3Ref)],
+      ['Max', methodProp([{ 'name': 'others', 'type': vector3Ref }], vector3Ref, 'Returns a vector with the maximum of each component')],
+      ['Min', methodProp([{ 'name': 'others', 'type': vector3Ref }], vector3Ref, 'Returns a vector with the minimum of each component')],
     ]),
   );
 };
@@ -287,7 +295,7 @@ export const createCFrameInstanceType = (): LuauType => {
       ['XVector', prop(vector3Ref)],
       ['YVector', prop(vector3Ref)],
       ['ZVector', prop(vector3Ref)],
-      ['Inverse', methodProp([], cframeRef)],
+      ['Inverse', methodProp([], cframeRef, 'Returns the inverse of this CFrame')],
       [
         'Lerp',
         methodProp(
@@ -296,20 +304,21 @@ export const createCFrameInstanceType = (): LuauType => {
             { 'name': 'alpha', 'type': NumberType },
           ],
           cframeRef,
+          'Returns a CFrame interpolated between this and goal by alpha',
         ),
       ],
-      ['Orthonormalize', methodProp([], cframeRef)],
-      ['ToWorldSpace', methodProp([{ 'name': 'cf', 'type': cframeRef }], cframeRef)],
-      ['ToObjectSpace', methodProp([{ 'name': 'cf', 'type': cframeRef }], cframeRef)],
-      ['PointToWorldSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref)],
-      ['PointToObjectSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref)],
-      ['VectorToWorldSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref)],
-      ['VectorToObjectSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref)],
-      ['GetComponents', methodProp([], AnyType)],
-      ['ToEulerAnglesXYZ', methodProp([], AnyType)],
-      ['ToEulerAnglesYXZ', methodProp([], AnyType)],
-      ['ToOrientation', methodProp([], AnyType)],
-      ['ToAxisAngle', methodProp([], AnyType)],
+      ['Orthonormalize', methodProp([], cframeRef, 'Returns a CFrame with a normalized rotation matrix')],
+      ['ToWorldSpace', methodProp([{ 'name': 'cf', 'type': cframeRef }], cframeRef, 'Transforms a CFrame from local space to world space')],
+      ['ToObjectSpace', methodProp([{ 'name': 'cf', 'type': cframeRef }], cframeRef, 'Transforms a CFrame from world space to local space')],
+      ['PointToWorldSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref, 'Transforms a Vector3 from local space to world space')],
+      ['PointToObjectSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref, 'Transforms a Vector3 from world space to local space')],
+      ['VectorToWorldSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref, 'Transforms a direction from local space to world space')],
+      ['VectorToObjectSpace', methodProp([{ 'name': 'v3', 'type': vector3Ref }], vector3Ref, 'Transforms a direction from world space to local space')],
+      ['GetComponents', methodProp([], AnyType, 'Returns the 12 components of the CFrame (position and rotation matrix)')],
+      ['ToEulerAnglesXYZ', methodProp([], AnyType, 'Returns the rotation as Euler angles in radians (X, Y, Z order)')],
+      ['ToEulerAnglesYXZ', methodProp([], AnyType, 'Returns the rotation as Euler angles in radians (Y, X, Z order)')],
+      ['ToOrientation', methodProp([], AnyType, 'Returns the rotation as orientation angles in radians')],
+      ['ToAxisAngle', methodProp([], AnyType, 'Returns the rotation as an axis and angle')],
       [
         'FuzzyEq',
         methodProp(
@@ -318,6 +327,7 @@ export const createCFrameInstanceType = (): LuauType => {
             { 'name': 'epsilon', 'type': NumberType, 'optional': true },
           ],
           BooleanType,
+          'Returns true if the CFrames are approximately equal within epsilon',
         ),
       ],
     ]),
@@ -351,10 +361,11 @@ export const createColor3InstanceType = (): LuauType => {
             { 'name': 'alpha', 'type': NumberType },
           ],
           color3Ref,
+          'Returns a Color3 interpolated between this and goal by alpha',
         ),
       ],
-      ['ToHSV', methodProp([], AnyType)],
-      ['ToHex', methodProp([], StringType)],
+      ['ToHSV', methodProp([], AnyType, 'Returns the hue, saturation, and value of the color')],
+      ['ToHex', methodProp([], StringType, 'Returns the color as a hex string')],
     ]),
   );
 };
@@ -406,6 +417,7 @@ export const createUDim2InstanceType = (): LuauType => {
             { 'name': 'alpha', 'type': NumberType },
           ],
           udim2Ref,
+          'Returns a UDim2 interpolated between this and goal by alpha',
         ),
       ],
     ]),
@@ -574,8 +586,8 @@ export const createRayInstanceType = (): LuauType => {
       ['Origin', prop(vector3Ref)],
       ['Direction', prop(vector3Ref)],
       ['Unit', prop(rayRef)],
-      ['ClosestPoint', methodProp([{ 'name': 'point', 'type': vector3Ref }], vector3Ref)],
-      ['Distance', methodProp([{ 'name': 'point', 'type': vector3Ref }], NumberType)],
+      ['ClosestPoint', methodProp([{ 'name': 'point', 'type': vector3Ref }], vector3Ref, 'Returns the closest point on the ray to a given point')],
+      ['Distance', methodProp([{ 'name': 'point', 'type': vector3Ref }], NumberType, 'Returns the distance from the ray to a given point')],
     ]),
   );
 };
@@ -600,7 +612,7 @@ export const createRegion3InstanceType = (): LuauType => {
     new Map<string, PropertyType>([
       ['CFrame', prop(cframeRef)],
       ['Size', prop(vector3Ref)],
-      ['ExpandToGrid', methodProp([{ 'name': 'resolution', 'type': NumberType }], region3Ref)],
+      ['ExpandToGrid', methodProp([{ 'name': 'resolution', 'type': NumberType }], region3Ref, 'Expands the region to align with a grid of the given resolution')],
     ]),
   );
 };
@@ -647,9 +659,9 @@ export const createDateTimeInstanceType = (): LuauType =>
     new Map<string, PropertyType>([
       ['UnixTimestamp', prop(NumberType)],
       ['UnixTimestampMillis', prop(NumberType)],
-      ['ToUniversalTime', methodProp([], AnyType)],
-      ['ToLocalTime', methodProp([], AnyType)],
-      ['ToIsoDate', methodProp([], StringType)],
+      ['ToUniversalTime', methodProp([], AnyType, 'Returns a table of date/time components in UTC')],
+      ['ToLocalTime', methodProp([], AnyType, 'Returns a table of date/time components in local time')],
+      ['ToIsoDate', methodProp([], StringType, 'Returns the date/time as an ISO 8601 string')],
       [
         'FormatUniversalTime',
         methodProp(
@@ -658,6 +670,7 @@ export const createDateTimeInstanceType = (): LuauType =>
             { 'name': 'locale', 'type': StringType, 'optional': true },
           ],
           StringType,
+          'Returns the date/time formatted as a UTC string',
         ),
       ],
       [
@@ -668,6 +681,7 @@ export const createDateTimeInstanceType = (): LuauType =>
             { 'name': 'locale', 'type': StringType, 'optional': true },
           ],
           StringType,
+          'Returns the date/time formatted as a local time string',
         ),
       ],
     ]),
@@ -699,6 +713,7 @@ export const createRandomInstanceType = (): LuauType => {
             { 'name': 'max', 'type': NumberType, 'optional': true },
           ],
           NumberType,
+          'Returns a random number between min and max (or 0 and 1)',
         ),
       ],
       [
@@ -709,11 +724,12 @@ export const createRandomInstanceType = (): LuauType => {
             { 'name': 'max', 'type': NumberType },
           ],
           NumberType,
+          'Returns a random integer between min and max inclusive',
         ),
       ],
-      ['NextUnitVector', methodProp([], vector3Ref)],
-      ['Shuffle', methodProp([{ 'name': 't', 'type': createArrayType(AnyType) }], NilType)],
-      ['Clone', methodProp([], randomRef)],
+      ['NextUnitVector', methodProp([], vector3Ref, 'Returns a random unit Vector3')],
+      ['Shuffle', methodProp([{ 'name': 't', 'type': createArrayType(AnyType) }], NilType, 'Randomly shuffles the elements in a table')],
+      ['Clone', methodProp([], randomRef, 'Creates a copy of the Random object')],
     ]),
   );
 };
@@ -748,6 +764,7 @@ export const createRaycastParamsInstanceType = (): LuauType => {
         methodProp(
           [{ 'name': 'instances', 'type': { 'kind': 'Union', 'types': [instanceRef, createArrayType(instanceRef)] } }],
           NilType,
+          'Adds instances to the filter list',
         ),
       ],
     ]),
@@ -784,6 +801,7 @@ export const createOverlapParamsInstanceType = (): LuauType => {
         methodProp(
           [{ 'name': 'instances', 'type': { 'kind': 'Union', 'types': [instanceRef, createArrayType(instanceRef)] } }],
           NilType,
+          'Adds instances to the filter list',
         ),
       ],
     ]),
@@ -1103,12 +1121,12 @@ export const createSharedTableInstanceType = (): LuauType =>
         methodProp([{ 'name': 'freezeClone', 'type': BooleanType, 'optional': true }], {
           'kind': 'TypeReference',
           'name': 'SharedTable',
-        }),
+        }, 'Creates a copy of the SharedTable'),
       ],
-      ['cloneAndFreeze', methodProp([], { 'kind': 'TypeReference', 'name': 'SharedTable' })],
-      ['isFrozen', methodProp([], BooleanType)],
-      ['size', methodProp([], NumberType)],
-      ['clear', methodProp([], NilType)],
+      ['cloneAndFreeze', methodProp([], { 'kind': 'TypeReference', 'name': 'SharedTable' }, 'Creates an immutable copy of the SharedTable')],
+      ['isFrozen', methodProp([], BooleanType, 'Returns true if the SharedTable is frozen')],
+      ['size', methodProp([], NumberType, 'Returns the number of entries in the SharedTable')],
+      ['clear', methodProp([], NilType, 'Removes all entries from the SharedTable')],
     ]),
     { 'indexer': { 'keyType': { 'kind': 'Union', 'types': [StringType, NumberType] }, 'valueType': AnyType } },
   );

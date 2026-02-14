@@ -231,20 +231,16 @@ const isTableSubtype = (sub: TableType, sup: TableType, ctx: SubtypeContext): bo
       continue;
     }
 
-    // Property types must be compatible (covariant for readonly, invariant otherwise)
-    if (supProp.readonly) {
-      if (isSubtype(subProp.type, supProp.type, ctx) === false) return false;
-    } else {
-      // Mutable properties are invariant
-      if (typesEqual(subProp.type, supProp.type) === false) return false;
-    }
+    // Property types must be compatible
+    if (isSubtype(subProp.type, supProp.type, ctx) === false) return false;
   }
 
   // Check indexer compatibility
   if (sup.indexer !== undefined) {
     if (sub.indexer === undefined) {
-      // Check if all sub properties satisfy the indexer
-      for (const [, subProp] of sub.properties) {
+      // Check sub properties that aren't already covered by named properties in sup
+      for (const [key, subProp] of sub.properties) {
+        if (sup.properties.has(key)) continue;
         if (isSubtype(subProp.type, sup.indexer.valueType, ctx) === false) return false;
       }
     } else {

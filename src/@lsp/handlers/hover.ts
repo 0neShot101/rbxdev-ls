@@ -145,13 +145,11 @@ const formatTableDoc = (name: string, table: TableType): string => {
   const memberCount = table.properties.size;
 
   // For libraries with many members, just show the count
-  if (memberCount > 5) {
+  if (memberCount > 10) {
     return `${name}: library (${memberCount} members)`;
   }
 
-  // For small tables, show the members
-  const members = [...table.properties.keys()].slice(0, 5).join(', ');
-  return `${name}: { ${members} }`;
+  return `local ${name}: ${typeToString(table)}`;
 };
 
 /**
@@ -169,7 +167,7 @@ const formatTypeDoc = (name: string, type: LuauType, deprecation?: DeprecationIn
 
   if (type.kind === 'Table') return formatTableDoc(name, type);
 
-  let result = `${name}: ${typeToString(type)}`;
+  let result = `local ${name}: ${typeToString(type)}`;
 
   if (deprecation?.deprecated === true) {
     result += '\n```\n\n**@deprecated**';
@@ -528,6 +526,13 @@ export const setupHoverHandler = (
 
     const word = getWordAtPosition(document.content, params.position.line, params.position.character);
     if (word === undefined) return null;
+
+    // Skip keyword usage of 'type' in type alias declarations (type Foo = ...)
+    if (word === 'type') {
+      const lines = document.content.split('\n');
+      const lineContent = lines[params.position.line];
+      if (lineContent !== undefined && /^\s*type\s+\w/.test(lineContent)) return null;
+    }
 
     // Check for member access (e.g., object.member or object:method)
     const memberAccess = getMemberAccessAtPosition(document.content, params.position.line, params.position.character);

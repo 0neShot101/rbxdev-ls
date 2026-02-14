@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "publisher": "rbxdev",
   "license": "MIT",
   "repository": {
@@ -323,13 +323,21 @@
         "id": "luau",
         "aliases": ["Luau", "luau"],
         "extensions": [".luau"],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/luau.svg",
+          "dark": "./images/luau.svg"
+        }
       },
       {
         "id": "lua",
         "aliases": ["Lua", "lua"],
         "extensions": [".lua"],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/lua.svg",
+          "dark": "./images/lua.svg"
+        }
       }
     ],
     "grammars": [

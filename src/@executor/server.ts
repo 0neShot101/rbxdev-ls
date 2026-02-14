@@ -492,7 +492,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   let server: WebSocketServer | undefined;
   let client: WebSocket | undefined;
   let executorName: string | undefined;
+  let handshakeTimeout: ReturnType<typeof setTimeout> | undefined;
   let status: BridgeStatus = 'stopped';
+
+  const HANDSHAKE_TIMEOUT_MS = 5000;
 
   const pendingExecutions = new Map<string, PendingExecution>();
   const pendingProperties = new Map<string, PendingPropertiesRequest>();
@@ -517,7 +520,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   let remoteSpyEnabled = false;
   const remoteSpyCallsBuffer: RemoteSpyCall[] = [];
 
-  const { 'model': liveGameModel, 'update': updateGameModel, 'mergeChildren': mergeChildrenIntoModel, setConnected } = createLiveGameModel();
+  const {
+    'model': liveGameModel,
+    'update': updateGameModel,
+    'mergeChildren': mergeChildrenIntoModel,
+    setConnected,
+  } = createLiveGameModel();
 
   /**
    * Generates a unique identifier for tracking execution requests.
@@ -562,6 +570,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
     switch (message.type) {
       case 'connected': {
+        if (handshakeTimeout !== undefined) {
+          clearTimeout(handshakeTimeout);
+          handshakeTimeout = undefined;
+        }
         executorName = message.executorName;
         setConnected(true);
         setStatus('connected');
@@ -813,6 +825,13 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         client = ws;
         log('[bridge] Client connecting...');
 
+        handshakeTimeout = setTimeout(() => {
+          if (executorName === undefined && client === ws) {
+            log('[bridge] Handshake timeout: client did not identify within 5s, disconnecting');
+            ws.close(1000, 'Handshake timeout');
+          }
+        }, HANDSHAKE_TIMEOUT_MS);
+
         ws.on('message', (data: Buffer | string) => {
           const str = typeof data === 'string' ? data : data.toString('utf-8');
           handleMessage(str);
@@ -820,6 +839,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
         ws.on('close', () => {
           log('[bridge] Client disconnected');
+          if (handshakeTimeout !== undefined) {
+            clearTimeout(handshakeTimeout);
+            handshakeTimeout = undefined;
+          }
           client = undefined;
           executorName = undefined;
           setConnected(false);
@@ -855,6 +878,11 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   const stop = (): void => {
     if (server === undefined) return;
 
+    if (handshakeTimeout !== undefined) {
+      clearTimeout(handshakeTimeout);
+      handshakeTimeout = undefined;
+    }
+
     // Close client connection
     if (client !== undefined) {
       client.close(1000, 'Server shutting down');
@@ -880,6 +908,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     new Promise((resolve, reject) => {
       if (client === undefined || client.readyState !== client.OPEN) {
         reject(new Error('No executor connected'));
+        return;
+      }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
         return;
       }
 
@@ -948,6 +980,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('No executor connected'));
         return;
       }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
 
       const id = generateId();
       const timeout = setTimeout(() => {
@@ -973,6 +1009,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     new Promise((resolve, reject) => {
       if (client === undefined || client.readyState !== client.OPEN) {
         reject(new Error('No executor connected'));
+        return;
+      }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
         return;
       }
 
@@ -1005,6 +1045,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('No executor connected'));
         return;
       }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
 
       const id = generateId();
       const timeout = setTimeout(() => {
@@ -1027,6 +1071,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('No executor connected'));
         return;
       }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
 
       const id = generateId();
       const timeout = setTimeout(() => {
@@ -1047,6 +1095,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     new Promise((resolve, reject) => {
       if (client === undefined || client.readyState !== client.OPEN) {
         reject(new Error('No executor connected'));
+        return;
+      }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
         return;
       }
 
@@ -1075,6 +1127,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('No executor connected'));
         return;
       }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
 
       const id = generateId();
       const timeout = setTimeout(() => {
@@ -1097,6 +1153,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('No executor connected'));
         return;
       }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
 
       const id = generateId();
       const timeout = setTimeout(() => {
@@ -1117,6 +1177,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     new Promise((resolve, reject) => {
       if (client === undefined || client.readyState !== client.OPEN) {
         reject(new Error('No executor connected'));
+        return;
+      }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
         return;
       }
 
@@ -1243,7 +1307,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       return server !== undefined;
     },
     get 'isConnected'() {
-      return client !== undefined && client.readyState === client.OPEN;
+      return client !== undefined && client.readyState === client.OPEN && executorName !== undefined;
     },
     get 'executorName'() {
       return executorName;

@@ -3,11 +3,29 @@
  * Provides autocompletion suggestions
  */
 
+import * as path from 'path';
+
 import { COMMON_CHILDREN, getCommonChildType } from '@definitions/commonChildren';
 import { type ExecutorBridge } from '@executor';
 import { formatDocCommentForDisplay } from '@parser/docComment';
-import { typeToString } from '@typings/types';
-import { generateRequirePath } from '@workspace/moduleIndex';
+import {
+  AnyType,
+  ClassType,
+  createFunctionType,
+  createTableType,
+  FunctionType,
+  LuauType,
+  TableType,
+  typeToString,
+  type PropertyType,
+} from '@typings/types';
+import {
+  generateRequirePath,
+  listModuleFiles,
+  resolveLocalModule,
+  type ModuleFileEntry,
+  type ModuleInfo,
+} from '@workspace/moduleIndex';
 import { getDataModelPath } from '@workspace/rojo';
 import {
   CompletionItemKind,
@@ -22,7 +40,6 @@ import type { LiveGameModel } from '@executor/gameTree';
 import type { ModuleReference } from '@executor/protocol';
 import type { DocumentManager, ParsedDocument } from '@lsp/documents';
 import type { DocComment } from '@parser/docComment';
-import type { ClassType, FunctionType, LuauType, TableType } from '@typings/types';
 import type {
   CompletionItem,
   CompletionList,
@@ -1790,6 +1807,137 @@ const debugLog = (...args: unknown[]): void => {
 };
 
 /**
+ * Resolves a require() argument to a module type using the workspace module index.
+ * Converts module exports into a Table type for completion purposes.
+ * @param requireArg - The require argument string (e.g., "game.ReplicatedStorage.Utils")
+ * @param documentManager - The document manager for module index access
+ * @returns A Table type representing the module's exports, or undefined
+ */
+/**
+ * Converts module exports into a Table type.
+ */
+const moduleExportsToTableType = (moduleInfo: ModuleInfo): LuauType => {
+  const properties = new Map<string, PropertyType>();
+  for (const exp of moduleInfo.exports) {
+    let propType: LuauType;
+    switch (exp.kind) {
+      case 'function':
+        propType = createFunctionType([], AnyType);
+        break;
+      case 'table':
+        propType = createTableType(new Map());
+        break;
+      default:
+        propType = AnyType;
+        break;
+    }
+    properties.set(exp.name, { 'type': propType, 'readonly': true, 'optional': false });
+  }
+  return createTableType(properties);
+};
+
+/** Regex fragment: optionally matches a type annotation between variable name and `=` (e.g., `: Workspace`) */
+const TYPE_ANNOT_RE = `(?:\\s*:[^=]+)?`;
+
+/**
+ * Traces a variable back through assignments to build the full expression.
+ * Follows chains like: local b = a.new() → local a = require(game.X) → "require(game.X).new()"
+ */
+const traceVarExpression = (varName: string, content: string, depth = 0): string | undefined => {
+  if (depth > 5) return undefined;
+
+  // Recognize global roots that don't have local assignments
+  if (varName === 'game' || varName === 'workspace') return varName;
+
+  const assignPattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(.+)`);
+  const assignMatch = content.match(assignPattern);
+  if (assignMatch === null || assignMatch[1] === undefined) return undefined;
+
+  const rhs = assignMatch[1].trim().replace(/;.*$/, '');
+
+  // Direct require: require(game.X) or require(game.X).new()
+  if (/^require\s*\(/.test(rhs)) return rhs;
+
+  // Indirect: otherVar.method() or otherVar:method() or otherVar.prop
+  const indirectMatch = rhs.match(/^(\w+)([.:].+)/);
+  if (indirectMatch !== null && indirectMatch[1] !== undefined && indirectMatch[2] !== undefined) {
+    const sourceVar = indirectMatch[1];
+    const suffix = indirectMatch[2];
+    const sourceExpr = traceVarExpression(sourceVar, content, depth + 1);
+    if (sourceExpr !== undefined) return `${sourceExpr}${suffix}`;
+  }
+
+  return undefined;
+};
+
+/**
+ * Resolves a require() argument to a module type using the workspace module index
+ * or local file resolution for relative paths.
+ * @param requireArg - The require argument (e.g., "game.ReplicatedStorage.Utils" or "\"./utils\"")
+ * @param documentManager - The document manager for module index access
+ * @param documentUri - Optional URI of the current document (needed for relative path resolution)
+ * @returns A Table type representing the module's exports, or undefined
+ */
+const resolveRequireModuleType = (
+  requireArg: string,
+  documentManager: DocumentManager,
+  documentUri?: string,
+): LuauType | undefined => {
+  // Handle relative path requires: require("./utils") or require("../lib/utils")
+  const stringMatch = requireArg.match(/^["'](\.\.?\/[^"']+)["']$/);
+  if (stringMatch !== null && documentUri !== undefined) {
+    const relativePath = stringMatch[1]!;
+    let filePath: string;
+    try {
+      filePath = decodeURIComponent(new URL(documentUri).pathname);
+      if (filePath.match(/^\/[A-Za-z]:/) !== null) filePath = filePath.slice(1);
+    } catch {
+      return undefined;
+    }
+
+    const moduleInfo = resolveLocalModule(relativePath, filePath);
+    if (moduleInfo !== undefined && moduleInfo.exports.length > 0) {
+      return moduleExportsToTableType(moduleInfo);
+    }
+    return undefined;
+  }
+
+  // Handle game.Path requires
+  const gamePrefix = requireArg.match(/^game\s*\.\s*/);
+  if (gamePrefix === null) return undefined;
+
+  const pathParts = requireArg
+    .slice(gamePrefix[0].length)
+    .split('.')
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  if (pathParts.length === 0) return undefined;
+
+  // Search the module index for a matching module
+  const moduleIndex = documentManager.getModuleIndex();
+
+  for (const [, moduleInfo] of moduleIndex) {
+    const dmPath = moduleInfo.dataModelPath;
+    if (dmPath.length < pathParts.length) continue;
+
+    const offset = dmPath.length - pathParts.length;
+    let matches = true;
+    for (let i = 0; i < pathParts.length; i++) {
+      if (dmPath[offset + i] !== pathParts[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches && moduleInfo.exports.length > 0) {
+      return moduleExportsToTableType(moduleInfo);
+    }
+  }
+
+  return undefined;
+};
+
+/**
  * Quick scans document content to find variable types from Instance.new and GetService patterns.
  * This is used as a fallback when the full type check result is not available.
  * @param varName - The variable name to find the type for
@@ -1803,13 +1951,14 @@ const quickScanForVariableType = (
   content: string,
   documentManager: DocumentManager,
   logFn?: (msg: string) => void,
+  documentUri?: string,
 ): LuauType | undefined => {
   const log = logFn ?? debugLog;
   log(`quickScan for: ${varName}`);
 
   // Pattern: local varName = Instance.new("ClassName")
   const instanceNewPattern = new RegExp(
-    `local\\s+${varName}\\s*=\\s*Instance\\s*\\.\\s*new\\s*\\(\\s*["']([\\w]+)["']`,
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*Instance\\s*\\.\\s*new\\s*\\(\\s*["']([\\w]+)["']`,
   );
   const instanceNewMatch = content.match(instanceNewPattern);
   log(`instanceNewMatch: ${instanceNewMatch !== null ? instanceNewMatch[0] : 'null'}`);
@@ -1822,9 +1971,10 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = game:GetService("ServiceName") or game:getService("ServiceName")
+  // Pattern: local varName = game:GetService("ServiceName") or game:GetService'ServiceName'
+  // Handles both parenthesized and Lua string shorthand (no parens) forms
   const getServicePattern = new RegExp(
-    `local\\s+${varName}\\s*=\\s*game\\s*:\\s*[Gg]et[Ss]ervice\\s*\\(\\s*["']([\\w]+)["']`,
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*:\\s*[Gg]et[Ss]ervice\\s*\\(?\\s*["']([\\w]+)["']`,
   );
   const getServiceMatch = content.match(getServicePattern);
   if (getServiceMatch !== null) {
@@ -1836,7 +1986,7 @@ const quickScanForVariableType = (
   }
 
   // Pattern: local varName = game.ServiceName
-  const gameServicePattern = new RegExp(`local\\s+${varName}\\s*=\\s*game\\s*\\.\\s*([\\w]+)`);
+  const gameServicePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*\\.\\s*([\\w]+)`);
   const gameServiceMatch = content.match(gameServicePattern);
   if (gameServiceMatch !== null) {
     const serviceName = gameServiceMatch[1];
@@ -1850,7 +2000,7 @@ const quickScanForVariableType = (
   }
 
   // Pattern: local varName = workspace (or other globals)
-  const workspacePattern = new RegExp(`local\\s+${varName}\\s*=\\s*workspace\\b`);
+  const workspacePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*workspace\\b`);
   if (workspacePattern.test(content)) {
     const workspaceClass = documentManager.globalEnv.robloxClasses.get('Workspace');
     if (workspaceClass !== undefined) return workspaceClass;
@@ -1858,7 +2008,7 @@ const quickScanForVariableType = (
 
   // Pattern: local varName = something:FindFirstChildOfClass("ClassName")
   const findChildOfClassPattern = new RegExp(
-    `local\\s+${varName}\\s*=.*:FindFirstChildOfClass\\s*\\(\\s*["']([\\w]+)["']`,
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildOfClass\\s*\\(\\s*["']([\\w]+)["']`,
   );
   const findChildOfClassMatch = content.match(findChildOfClassPattern);
   if (findChildOfClassMatch !== null) {
@@ -1871,7 +2021,7 @@ const quickScanForVariableType = (
 
   // Pattern: local varName = something:FindFirstChildWhichIsA("ClassName")
   const findChildWhichIsAPattern = new RegExp(
-    `local\\s+${varName}\\s*=.*:FindFirstChildWhichIsA\\s*\\(\\s*["']([\\w]+)["']`,
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildWhichIsA\\s*\\(\\s*["']([\\w]+)["']`,
   );
   const findChildWhichIsAMatch = content.match(findChildWhichIsAPattern);
   if (findChildWhichIsAMatch !== null) {
@@ -1879,6 +2029,50 @@ const quickScanForVariableType = (
     if (className !== undefined) {
       const classType = documentManager.globalEnv.robloxClasses.get(className);
       if (classType !== undefined) return classType;
+    }
+  }
+
+  // Pattern: local varName = require(game.Path.Module) or require(script.Parent.Module)
+  const requirePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*require\\s*\\(\\s*([^)]+)\\s*\\)`);
+  const requireMatch = content.match(requirePattern);
+  if (requireMatch !== null) {
+    const requireArg = requireMatch[1]?.trim();
+    if (requireArg !== undefined) {
+      const moduleType = resolveRequireModuleType(requireArg, documentManager, documentUri);
+      if (moduleType !== undefined) return moduleType;
+    }
+  }
+
+  // Pattern: local varName = otherVar.property or otherVar:Method()
+  // Trace through variable indirection to resolve the source type
+  const indirectPattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(\\w+)([.:][^\\n]+)`);
+  const indirectMatch = content.match(indirectPattern);
+  if (indirectMatch !== null && indirectMatch[1] !== undefined && indirectMatch[2] !== undefined) {
+    const sourceVar = indirectMatch[1];
+    const suffix = indirectMatch[2].trim();
+
+    // Don't recurse into patterns already handled above
+    if (sourceVar !== 'Instance' && sourceVar !== 'game' && sourceVar !== 'workspace' && sourceVar !== 'require') {
+      const sourceType = quickScanForVariableType(sourceVar, content, documentManager, logFn, documentUri);
+      if (sourceType !== undefined && sourceType.kind === 'Class') {
+        // Resolve the property/method chain on the class type
+        const memberName = suffix.match(/^[.:]\s*(\w+)/)?.[1];
+        if (memberName !== undefined) {
+          // Walk the class hierarchy for the member
+          let cls: ClassType | undefined = sourceType;
+          while (cls !== undefined) {
+            const prop = cls.properties.get(memberName);
+            if (prop !== undefined) {
+              // If accessing a property that returns a class, resolve it
+              if (prop.type.kind === 'Class') return prop.type;
+              return prop.type;
+            }
+            const method = cls.methods.get(memberName);
+            if (method !== undefined) return method.func.returnType;
+            cls = cls.superclass;
+          }
+        }
+      }
     }
   }
 
@@ -1913,6 +2107,7 @@ const resolveExpressionType = (
   document?: ParsedDocument,
   liveContent?: string,
   logFn?: (msg: string) => void,
+  documentUri?: string,
 ): LuauType | undefined => {
   const log = logFn ?? debugLog;
   log(`Resolving expression: ${expression}`);
@@ -2032,12 +2227,32 @@ const resolveExpressionType = (
       log(`Found '${firstName}' in allSymbols, type: ${symbolType.kind}`);
       const resolved = resolveTypeReference(symbolType, documentManager);
       log(`Resolved type: ${resolved.kind}${resolved.kind === 'Class' ? ` (${(resolved as ClassType).name})` : ''}`);
-      // Only use if it resolves to a useful type (Class or Table)
+
       if (resolved.kind === 'Class' || resolved.kind === 'Table') {
         currentType = resolved;
-      } else {
-        log(`allSymbols type for '${firstName}' is not useful: ${resolved.kind}`);
+      } else if (resolved.kind === 'Union') {
+        // Strip nil from union and use the non-nil member for completions
+        const nonNilTypes = (resolved as { types: ReadonlyArray<LuauType> }).types.filter(
+          (t: LuauType) => t.kind !== 'Primitive' || (t as { name: string }).name !== 'nil',
+        );
+        for (const member of nonNilTypes) {
+          const memberResolved = resolveTypeReference(member, documentManager);
+          if (memberResolved.kind === 'Class' || memberResolved.kind === 'Table') {
+            currentType = memberResolved;
+            break;
+          }
+        }
+      } else if (resolved.kind === 'Function') {
+        // Variable holds a function - use its return type for .dot access (e.g., require() result)
+        const funcType = resolved as { returnType: LuauType };
+        const returnResolved = resolveTypeReference(funcType.returnType, documentManager);
+        if (returnResolved.kind === 'Class' || returnResolved.kind === 'Table') {
+          currentType = returnResolved;
+        }
+      } else if (resolved.kind !== 'Any') {
+        log(`allSymbols type for '${firstName}' not directly usable: ${resolved.kind}`);
       }
+      // For 'Any', fall through to quickScan for potentially better info
     } else {
       log(`'${firstName}' not found in allSymbols`);
     }
@@ -2051,7 +2266,7 @@ const resolveExpressionType = (
   // This works even when the type check result is outdated or has unhelpful types
   if (currentType === undefined && liveContent !== undefined) {
     log(`Running quick scan for '${firstName}'...`);
-    const scannedType = quickScanForVariableType(firstName, liveContent, documentManager, log);
+    const scannedType = quickScanForVariableType(firstName, liveContent, documentManager, log, documentUri);
     if (scannedType !== undefined) {
       log(
         `Quick scan found '${firstName}': ${scannedType.kind}${scannedType.kind === 'Class' ? ` (${(scannedType as ClassType).name})` : ''}`,
@@ -2660,7 +2875,92 @@ const extractRequireExpression = (beforeCursor: string): ModuleReference | undef
 };
 
 /**
+ * Gets file path completions inside a require("./...") string.
+ * @param beforeCursor - The text before the cursor
+ * @param documentUri - The URI of the current document
+ * @returns Completion items for local file paths, or undefined
+ */
+const formatModuleDetail = (entry: ModuleFileEntry): string => {
+  if (entry.exports.length === 0) return entry.isFolder ? 'module' : 'Luau';
+
+  const funcs = entry.exports.filter(e => e.kind === 'function');
+  const values = entry.exports.filter(e => e.kind !== 'function');
+
+  const parts: string[] = [];
+  if (funcs.length > 0) parts.push(`${funcs.length} function${funcs.length > 1 ? 's' : ''}`);
+  if (values.length > 0) parts.push(`${values.length} value${values.length > 1 ? 's' : ''}`);
+  return parts.join(', ');
+};
+
+const formatModuleDoc = (entry: ModuleFileEntry): string => {
+  if (entry.exports.length === 0) return '';
+
+  const lines: string[] = ['```lua'];
+  for (const exp of entry.exports.slice(0, 15)) {
+    const icon = exp.kind === 'function' ? 'function' : exp.kind === 'table' ? 'table' : 'value';
+    lines.push(`${exp.name}: ${icon}`);
+  }
+  if (entry.exports.length > 15) lines.push(`... and ${entry.exports.length - 15} more`);
+  lines.push('```');
+  return lines.join('\n');
+};
+
+const getLocalRequireCompletions = (beforeCursor: string, documentUri: string): CompletionItem[] | undefined => {
+  const match = beforeCursor.match(/require\s*\(\s*["'](\.\.?\/[^"']*)$/);
+  if (match === null) return undefined;
+
+  const partialPath = match[1];
+  if (partialPath === undefined) return undefined;
+
+  let filePath: string;
+  try {
+    filePath = decodeURIComponent(new URL(documentUri).pathname);
+    if (filePath.match(/^\/[A-Za-z]:/) !== null) filePath = filePath.slice(1);
+  } catch {
+    return undefined;
+  }
+
+  const currentDir = filePath.replace(/[/\\][^/\\]*$/, '');
+  const lastSlash = partialPath.lastIndexOf('/');
+  const dirPart = partialPath.slice(0, lastSlash + 1);
+  const prefix = partialPath.slice(lastSlash + 1).toLowerCase();
+
+  const searchDir = path.resolve(currentDir, dirPart);
+  const entries = listModuleFiles(searchDir);
+  if (entries.length === 0) return undefined;
+
+  const items: CompletionItem[] = [];
+  for (const entry of entries) {
+    if (prefix.length > 0 && entry.name.toLowerCase().startsWith(prefix) === false) continue;
+
+    const detail = formatModuleDetail(entry);
+    const doc = formatModuleDoc(entry);
+
+    const item: CompletionItem = {
+      'label': entry.name,
+      'labelDetails': { 'description': entry.ext },
+      'kind': CompletionItemKind.Module,
+      'detail': detail,
+      'sortText': `0_${entry.name}`,
+    };
+
+    if (doc.length > 0) {
+      item.documentation = { 'kind': MarkupKind.Markdown, 'value': doc };
+    }
+
+    items.push(item);
+  }
+
+  return items.length > 0 ? items : undefined;
+};
+
+/** Cache for module interface completions with 30s TTL */
+const moduleInterfaceCache = new Map<string, { items: CompletionItem[]; timestamp: number }>();
+const MODULE_CACHE_TTL = 30_000;
+
+/**
  * Gets completions for a require() expression by querying the executor bridge.
+ * Results are cached for 30s to avoid repeated bridge queries.
  * @param beforeCursor - The text before the cursor
  * @param executorBridge - The executor bridge for module interface queries
  * @returns Completion items for the module's exports, or undefined
@@ -2674,6 +2974,12 @@ const getRequireModuleCompletions = async (
   const moduleRef = extractRequireExpression(beforeCursor);
   if (moduleRef === undefined) return undefined;
 
+  const cacheKey = moduleRef.kind === 'path' ? moduleRef.path.join('.') : String(moduleRef.id);
+  const cached = moduleInterfaceCache.get(cacheKey);
+  if (cached !== undefined && Date.now() - cached.timestamp < MODULE_CACHE_TTL) {
+    return cached.items;
+  }
+
   try {
     const result = await executorBridge.requestModuleInterface(moduleRef);
     if (result.success === false || result.interface === undefined) return undefined;
@@ -2683,6 +2989,7 @@ const getRequireModuleCompletions = async (
 
     if (moduleInterface.kind === 'table' && moduleInterface.properties !== undefined) {
       for (const prop of moduleInterface.properties) {
+        if (prop.name.startsWith('__')) continue;
         const item: CompletionItem = {
           'label': prop.name,
           'kind': prop.valueKind === 'function' ? CompletionItemKind.Function : CompletionItemKind.Field,
@@ -2698,7 +3005,11 @@ const getRequireModuleCompletions = async (
       }
     }
 
-    return items.length > 0 ? items : undefined;
+    if (items.length > 0) {
+      moduleInterfaceCache.set(cacheKey, { items, 'timestamp': Date.now() });
+      return items;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -2764,6 +3075,10 @@ export const setupCompletionHandler = (
     const requireModuleCompletions = await getRequireModuleCompletions(beforeCursor, executorBridge);
     if (requireModuleCompletions !== undefined) return { 'isIncomplete': true, 'items': requireModuleCompletions };
 
+    // Check for local file path completions inside require("./...")
+    const localRequireCompletions = getLocalRequireCompletions(beforeCursor, params.textDocument.uri);
+    if (localRequireCompletions !== undefined) return { 'isIncomplete': true, 'items': localRequireCompletions };
+
     // Check for table field completions (inside a table literal passed to a function)
     const tableContext = detectTableFieldContext(beforeCursor);
     if (tableContext !== undefined) {
@@ -2787,10 +3102,31 @@ export const setupCompletionHandler = (
     log(`chainInfo: ${JSON.stringify(chainInfo)}`);
     if (chainInfo !== null && chainInfo !== undefined) {
       // Check for live game tree completions first
-      const gameTreePath = parseGameTreePath(chainInfo.expression);
+      let gameTreePath = parseGameTreePath(chainInfo.expression);
+
+      // If direct parsing failed, trace variable assignments to build a game tree path
+      if (gameTreePath === undefined) {
+        const traceFirst = chainInfo.expression.split(/[.:]/)[0]?.trim();
+        if (traceFirst !== undefined) {
+          const tracedExpr = traceVarExpression(traceFirst, content);
+          if (tracedExpr !== undefined) {
+            const fullExpr = chainInfo.expression.replace(traceFirst, tracedExpr);
+            gameTreePath = parseGameTreePath(fullExpr) ?? undefined;
+            log(`Traced '${traceFirst}' → '${tracedExpr}', gameTreePath: ${JSON.stringify(gameTreePath)}`);
+          }
+        }
+      }
+
       log(`gameTreePath: ${JSON.stringify(gameTreePath)}`);
 
-      let resolvedType = resolveExpressionType(chainInfo.expression, documentManager, document, content, log);
+      let resolvedType = resolveExpressionType(
+        chainInfo.expression,
+        documentManager,
+        document,
+        content,
+        log,
+        params.textDocument.uri,
+      );
       log(
         `resolvedType: ${resolvedType?.kind}${resolvedType?.kind === 'Class' ? ` (${(resolvedType as ClassType).name})` : ''}`,
       );
@@ -2835,6 +3171,64 @@ export const setupCompletionHandler = (
             'isIncomplete': true,
             'items': getTableCompletions(resolvedType, chainInfo.prefix),
           };
+        }
+      }
+
+      // Try executor bridge for require() variables when static resolution failed
+      if (resolvedType === undefined && executorBridge.isConnected) {
+        const firstName = chainInfo.expression.split(/[.:]/)[0]?.trim();
+        if (firstName !== undefined) {
+          // Build the full expression that produced this variable by tracing assignments
+          const assignExpr = traceVarExpression(firstName, content);
+          log(`Traced '${firstName}' to: ${assignExpr ?? 'undefined'}`);
+
+          // Check if the traced expression involves a require
+          const reqExprMatch = assignExpr?.match(/^require\s*\(\s*(game\.[^)]+)\s*\)(.*)/);
+          if (reqExprMatch !== null && reqExprMatch !== undefined && reqExprMatch[1] !== undefined) {
+            const modulePath = reqExprMatch[1].trim();
+            const chainedCall = (reqExprMatch[2] ?? '').trim();
+            log(`Trying executor bridge for require: ${modulePath}${chainedCall}`);
+            try {
+              const inspectScript = [
+                `local mod = require(${modulePath})`,
+                chainedCall.length > 0 ? `mod = mod${chainedCall}` : '',
+                'local result = {}',
+                'local visited = {}',
+                'local current = mod',
+                'while current and type(current) == "table" do',
+                '  if visited[current] then break end',
+                '  visited[current] = true',
+                '  for k, v in pairs(current) do',
+                '    if type(k) == "string" and not result[k] and k:sub(1,2) ~= "__" then',
+                '      result[k] = type(v)',
+                '    end',
+                '  end',
+                '  local mt = getmetatable(current)',
+                '  current = mt and type(mt) == "table" and mt.__index or nil',
+                'end',
+                'return game:GetService("HttpService"):JSONEncode(result)',
+              ].filter(l => l.length > 0).join('\n');
+
+              const execResult = await executorBridge.execute(inspectScript);
+              if (execResult.success && execResult.result !== undefined) {
+                const members: Record<string, string> = JSON.parse(execResult.result);
+                const items: CompletionItem[] = [];
+                for (const [name, valueType] of Object.entries(members)) {
+                  items.push({
+                    'label': name,
+                    'kind': valueType === 'function' ? CompletionItemKind.Function : CompletionItemKind.Field,
+                    'detail': valueType,
+                    'sortText': `0_${name}`,
+                  });
+                }
+                if (items.length > 0) {
+                  return { 'isIncomplete': true, items };
+                }
+              }
+            } catch {
+              log(`Executor bridge inspect request failed`);
+            }
+          }
         }
       }
 
