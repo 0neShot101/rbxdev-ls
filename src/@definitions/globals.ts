@@ -6,7 +6,7 @@
  * with all available types, functions, classes, and services.
  */
 
-import { TypeEnvironment, createTypeEnvironment } from '@typings/environment';
+import { TypeEnvironment, addLuauBuiltins, createTypeEnvironment } from '@typings/environment';
 import {
   AnyType,
   BooleanType,
@@ -513,6 +513,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                   { 'name': 'parent', 'type': instanceClass, 'optional': true },
                 ],
                 instanceClass,
+                {
+                  'description':
+                    'Creates a new Instance of the given class name, optionally parented to the given parent.',
+                },
               ),
               'readonly': true,
               'optional': false,
@@ -524,6 +528,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
               'type': createFunctionType(
                 [{ 'name': 'instance', 'type': instanceClass, 'optional': false }],
                 instanceClass,
+                { 'description': 'Creates a copy of an existing Instance and all of its descendants.' },
               ),
               'readonly': true,
               'optional': false,
@@ -557,6 +562,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'z', 'type': NumberType, 'optional': true },
               ],
               vector3Type,
+              { 'description': 'Creates a new Vector3 from the given x, y, and z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -570,7 +576,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'FromNormalId',
           {
-            'type': createFunctionType([{ 'name': 'normalId', 'type': AnyType, 'optional': false }], vector3Type),
+            'type': createFunctionType([{ 'name': 'normalId', 'type': AnyType, 'optional': false }], vector3Type, {
+              'description': 'Returns the unit Vector3 corresponding to the given Enum.NormalId.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -578,7 +586,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'FromAxis',
           {
-            'type': createFunctionType([{ 'name': 'axis', 'type': AnyType, 'optional': false }], vector3Type),
+            'type': createFunctionType([{ 'name': 'axis', 'type': AnyType, 'optional': false }], vector3Type, {
+              'description': 'Returns the unit Vector3 corresponding to the given Enum.Axis.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -601,6 +611,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'y', 'type': NumberType, 'optional': true },
               ],
               vector2Type,
+              { 'description': 'Creates a new Vector2 from the given x and y components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -621,7 +632,14 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], cframeType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], cframeType, {
+              'isVariadic': true,
+              'description': 'Creates a new CFrame. Can take a position, position + lookAt, or 12 matrix components.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
         ['identity', { 'type': cframeType, 'readonly': true, 'optional': false }],
         [
@@ -634,6 +652,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, Y, X order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -649,6 +668,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, Y, X order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -664,6 +684,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, X, Y order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -679,6 +700,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from orientation angles in radians.' },
             ),
             'readonly': true,
             'optional': false,
@@ -693,6 +715,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'angle', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from an axis and rotation angle in radians.' },
             ),
             'readonly': true,
             'optional': false,
@@ -709,6 +732,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'vZ', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from a position and rotation matrix column vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -724,6 +748,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'up', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame at a position looking towards a target point.' },
             ),
             'readonly': true,
             'optional': false,
@@ -739,6 +764,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'up', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame at a position looking along a direction vector.' },
             ),
             'readonly': true,
             'optional': false,
@@ -763,6 +789,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'b', 'type': NumberType, 'optional': true },
               ],
               color3Type,
+              { 'description': 'Creates a Color3 from red, green, and blue components in the range [0, 1].' },
             ),
             'readonly': true,
             'optional': false,
@@ -778,6 +805,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'b', 'type': NumberType, 'optional': false },
               ],
               color3Type,
+              { 'description': 'Creates a Color3 from red, green, and blue components in the range [0, 255].' },
             ),
             'readonly': true,
             'optional': false,
@@ -793,6 +821,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'v', 'type': NumberType, 'optional': false },
               ],
               color3Type,
+              {
+                'description': 'Creates a Color3 from hue, saturation, and value components, each in the range [0, 1].',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -801,7 +832,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromHex',
           {
-            'type': createFunctionType([{ 'name': 'hex', 'type': StringType, 'optional': false }], color3Type),
+            'type': createFunctionType([{ 'name': 'hex', 'type': StringType, 'optional': false }], color3Type, {
+              'description': 'Creates a Color3 from a hexadecimal string (e.g., "#FF0000" or "FF0000").',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -824,6 +857,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'offset', 'type': NumberType, 'optional': false },
               ],
               udimType,
+              { 'description': 'Creates a new UDim from scale and offset components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -849,6 +883,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'yOffset', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y scale and offset components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -863,6 +898,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'yScale', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y scale components with zero offsets.' },
             ),
             'readonly': true,
             'optional': false,
@@ -877,6 +913,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'yOffset', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y offset components with zero scale.' },
             ),
             'readonly': true,
             'optional': false,
@@ -895,7 +932,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], brickColorType),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], brickColorType, {
+              'description': 'Creates a BrickColor from a name, number, or Color3 value.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -903,18 +942,69 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'palette',
           {
-            'type': createFunctionType([{ 'name': 'index', 'type': NumberType, 'optional': false }], brickColorType),
+            'type': createFunctionType([{ 'name': 'index', 'type': NumberType, 'optional': false }], brickColorType, {
+              'description': 'Returns the BrickColor from the default palette at the given index (0-127).',
+            }),
             'readonly': true,
             'optional': false,
           },
         ],
-        ['random', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['White', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['Black', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['Red', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['Green', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['Blue', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
-        ['Yellow', { 'type': createFunctionType([], brickColorType), 'readonly': true, 'optional': false }],
+        [
+          'random',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns a random BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'White',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the White BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'Black',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the Black BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'Red',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the Red BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'Green',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the Green BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'Blue',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the Blue BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+        [
+          'Yellow',
+          {
+            'type': createFunctionType([], brickColorType, { 'description': 'Returns the Yellow BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
       ]),
     ),
   );
@@ -938,6 +1028,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'delayTime', 'type': NumberType, 'optional': true },
               ],
               tweenInfoType,
+              { 'description': 'Creates a new TweenInfo with the given easing parameters for use with TweenService.' },
             ),
             'readonly': true,
             'optional': false,
@@ -962,6 +1053,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'max', 'type': NumberType, 'optional': true },
               ],
               numberRangeType,
+              { 'description': 'Creates a new NumberRange from a minimum and optional maximum value.' },
             ),
             'readonly': true,
             'optional': false,
@@ -980,7 +1072,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], numberSequenceType),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], numberSequenceType, {
+              'description':
+                'Creates a new NumberSequence from a single value, two values, or an array of NumberSequenceKeypoints.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -998,7 +1093,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], colorSequenceType),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], colorSequenceType, {
+              'description':
+                'Creates a new ColorSequence from a single Color3, two Color3s, or an array of ColorSequenceKeypoints.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1022,6 +1120,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'direction', 'type': vector3Type, 'optional': false },
               ],
               rayType,
+              { 'description': 'Creates a new Ray from an origin point and a direction vector.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1046,6 +1145,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'max', 'type': vector3Type, 'optional': false },
               ],
               region3Type,
+              { 'description': 'Creates a new Region3 from two Vector3 corners (min and max).' },
             ),
             'readonly': true,
             'optional': false,
@@ -1063,7 +1163,14 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], rectType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], rectType, {
+              'isVariadic': true,
+              'description': 'Creates a new Rect from min/max points or x/y coordinates.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1074,7 +1181,18 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   globals.set(
     'RaycastParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], raycastParamsType), 'readonly': true, 'optional': false }]]),
+      new Map([
+        [
+          'new',
+          {
+            'type': createFunctionType([], raycastParamsType, {
+              'description': 'Creates a new RaycastParams object for use with workspace:Raycast().',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+      ]),
     ),
   );
 
@@ -1083,7 +1201,18 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   globals.set(
     'OverlapParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], overlapParamsType), 'readonly': true, 'optional': false }]]),
+      new Map([
+        [
+          'new',
+          {
+            'type': createFunctionType([], overlapParamsType, {
+              'description': 'Creates a new OverlapParams object for use with spatial query methods.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+      ]),
     ),
   );
 
@@ -1093,11 +1222,22 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     'DateTime',
     createTableType(
       new Map([
-        ['now', { 'type': createFunctionType([], dateTimeType), 'readonly': true, 'optional': false }],
+        [
+          'now',
+          {
+            'type': createFunctionType([], dateTimeType, {
+              'description': 'Returns a DateTime representing the current UTC time.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
         [
           'fromUnixTimestamp',
           {
-            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], dateTimeType),
+            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], dateTimeType, {
+              'description': 'Creates a DateTime from a Unix timestamp (seconds since epoch).',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1105,7 +1245,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromUnixTimestampMillis',
           {
-            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], dateTimeType),
+            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], dateTimeType, {
+              'description': 'Creates a DateTime from a Unix timestamp in milliseconds.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1113,7 +1255,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromIsoDate',
           {
-            'type': createFunctionType([{ 'name': 'isoDate', 'type': StringType, 'optional': false }], dateTimeType),
+            'type': createFunctionType([{ 'name': 'isoDate', 'type': StringType, 'optional': false }], dateTimeType, {
+              'description': 'Creates a DateTime from an ISO 8601 date-time string.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1121,7 +1265,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromLocalTime',
           {
-            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], dateTimeType),
+            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], dateTimeType, {
+              'description': 'Creates a DateTime from a table of local time components.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1129,7 +1275,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromUniversalTime',
           {
-            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], dateTimeType),
+            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], dateTimeType, {
+              'description': 'Creates a DateTime from a table of UTC time components.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1147,7 +1295,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'seed', 'type': NumberType, 'optional': true }], randomType),
+            'type': createFunctionType([{ 'name': 'seed', 'type': NumberType, 'optional': true }], randomType, {
+              'description': 'Creates a new Random number generator with an optional seed.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1174,6 +1324,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'elasticityWeight', 'type': NumberType, 'optional': true },
               ],
               physicalPropertiesType,
+              {
+                'description':
+                  'Creates custom PhysicalProperties from a material or explicit density, friction, and elasticity values.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1198,6 +1352,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'y', 'type': NumberType, 'optional': true },
               ],
               vector2int16Type,
+              { 'description': 'Creates a new Vector2int16 from integer x and y components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1223,6 +1378,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'z', 'type': NumberType, 'optional': true },
               ],
               vector3int16Type,
+              { 'description': 'Creates a new Vector3int16 from integer x, y, and z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1247,6 +1403,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'max', 'type': vector3int16Type, 'optional': false },
               ],
               region3int16Type,
+              { 'description': 'Creates a new Region3int16 from two Vector3int16 corners.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1262,7 +1419,16 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     'CatalogSearchParams',
     createTableType(
       new Map([
-        ['new', { 'type': createFunctionType([], catalogSearchParamsType), 'readonly': true, 'optional': false }],
+        [
+          'new',
+          {
+            'type': createFunctionType([], catalogSearchParamsType, {
+              'description': 'Creates a new CatalogSearchParams object for searching the avatar catalog.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
       ]),
     ),
   );
@@ -1273,7 +1439,16 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     'SharedTable',
     createTableType(
       new Map([
-        ['new', { 'type': createFunctionType([], sharedTableType), 'readonly': true, 'optional': false }],
+        [
+          'new',
+          {
+            'type': createFunctionType([], sharedTableType, {
+              'description': 'Creates a new empty SharedTable for cross-thread data sharing.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
         [
           'clone',
           {
@@ -1283,6 +1458,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'freezeClone', 'type': BooleanType, 'optional': true },
               ],
               sharedTableType,
+              { 'description': 'Creates a clone of the given SharedTable, optionally freezing the clone.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1291,7 +1467,13 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'cloneAndFreeze',
           {
-            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], sharedTableType),
+            'type': createFunctionType(
+              [{ 'name': 'st', 'type': sharedTableType, 'optional': false }],
+              sharedTableType,
+              {
+                'description': 'Creates a frozen clone of the given SharedTable.',
+              },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1299,7 +1481,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'isFrozen',
           {
-            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], BooleanType),
+            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], BooleanType, {
+              'description': 'Returns whether the given SharedTable is frozen.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1307,7 +1491,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'size',
           {
-            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], NumberType),
+            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], NumberType, {
+              'description': 'Returns the number of entries in the given SharedTable.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1315,7 +1501,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'clear',
           {
-            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], NilType),
+            'type': createFunctionType([{ 'name': 'st', 'type': sharedTableType, 'optional': false }], NilType, {
+              'description': 'Removes all entries from the given SharedTable.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1344,6 +1532,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'minHeight', 'type': NumberType, 'optional': true },
               ],
               dockWidgetPluginGuiInfoType,
+              {
+                'description': 'Creates a new DockWidgetPluginGuiInfo for configuring plugin widget docking behavior.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1369,6 +1560,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               fontType,
+              {
+                'description':
+                  'Creates a new Font from a font family asset ID or path, with optional weight and style.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1377,7 +1572,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'fromEnum',
           {
-            'type': createFunctionType([{ 'name': 'font', 'type': AnyType, 'optional': false }], fontType),
+            'type': createFunctionType([{ 'name': 'font', 'type': AnyType, 'optional': false }], fontType, {
+              'description': 'Creates a Font from an Enum.Font value.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1392,6 +1589,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               fontType,
+              { 'description': 'Creates a Font from a font asset ID with optional weight and style.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1407,6 +1605,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               fontType,
+              { 'description': 'Creates a Font from a font name with optional weight and style.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1424,7 +1623,14 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], facesType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], facesType, {
+              'isVariadic': true,
+              'description': 'Creates a new Faces object from a combination of Enum.NormalId values.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1438,7 +1644,14 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], axesType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], axesType, {
+              'isVariadic': true,
+              'description': 'Creates a new Axes object from a combination of Enum.Axis or Enum.NormalId values.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1460,6 +1673,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'label', 'type': StringType, 'optional': true },
               ],
               pathWaypointType,
+              { 'description': 'Creates a new PathWaypoint at the given position with optional action and label.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1485,6 +1699,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'envelope', 'type': NumberType, 'optional': true },
               ],
               numberSequenceKeypointType,
+              {
+                'description':
+                  'Creates a new NumberSequenceKeypoint at the given time with a value and optional envelope.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1509,6 +1727,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'color', 'type': color3Type, 'optional': false },
               ],
               colorSequenceKeypointType,
+              { 'description': 'Creates a new ColorSequenceKeypoint at the given time with the given color.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1596,7 +1815,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'GetCameraYInvertValue',
         {
-          'type': createFunctionType([], NumberType),
+          'type': createFunctionType([], NumberType, { 'description': 'Returns the camera Y invert value.' }),
           'readonly': true,
           'optional': false,
         },
@@ -1604,7 +1823,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'GetOnboardingCompleted',
         {
-          'type': createFunctionType([{ 'name': 'onboardingId', 'type': StringType, 'optional': false }], BooleanType),
+          'type': createFunctionType([{ 'name': 'onboardingId', 'type': StringType, 'optional': false }], BooleanType, {
+            'description': 'Returns whether the specified onboarding has been completed.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1612,7 +1833,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'InFullScreen',
         {
-          'type': createFunctionType([], BooleanType),
+          'type': createFunctionType([], BooleanType, {
+            'description': 'Returns whether the game is currently in full screen mode.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1620,7 +1843,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'InStudioMode',
         {
-          'type': createFunctionType([], BooleanType),
+          'type': createFunctionType([], BooleanType, {
+            'description': 'Returns whether the game is running in Roblox Studio.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1628,7 +1853,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'SetCameraYInvertVisible',
         {
-          'type': createFunctionType([], NilType),
+          'type': createFunctionType([], NilType, {
+            'description': 'Makes the camera Y invert option visible in the game settings menu.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1636,7 +1863,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'SetGamepadCameraSensitivityVisible',
         {
-          'type': createFunctionType([], NilType),
+          'type': createFunctionType([], NilType, {
+            'description': 'Makes the gamepad camera sensitivity option visible in the game settings menu.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1644,7 +1873,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'SetOnboardingCompleted',
         {
-          'type': createFunctionType([{ 'name': 'onboardingId', 'type': StringType, 'optional': false }], NilType),
+          'type': createFunctionType([{ 'name': 'onboardingId', 'type': StringType, 'optional': false }], NilType, {
+            'description': 'Marks the specified onboarding as completed.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1661,6 +1892,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
           'type': createFunctionType(
             [{ 'name': 'serviceName', 'type': StringType, 'optional': false }],
             userGameSettingsType,
+            { 'description': 'Returns the specified service from UserSettings.' },
           ),
           'readonly': true,
           'optional': false,
@@ -1669,7 +1901,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       [
         'IsUserFeatureEnabled',
         {
-          'type': createFunctionType([{ 'name': 'feature', 'type': StringType, 'optional': false }], BooleanType),
+          'type': createFunctionType([{ 'name': 'feature', 'type': StringType, 'optional': false }], BooleanType, {
+            'description': 'Returns whether the specified user feature is enabled.',
+          }),
           'readonly': true,
           'optional': false,
         },
@@ -1678,7 +1912,12 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   );
 
   // UserSettings() global function
-  globals.set('UserSettings', createFunctionType([], userSettingsType));
+  globals.set(
+    'UserSettings',
+    createFunctionType([], userSettingsType, {
+      'description': 'Returns the UserSettings object for accessing user game settings.',
+    }),
+  );
 
   // Native vector library (Luau built-in, lowercase)
   const nativeVectorType: LuauType = { 'kind': 'Primitive', 'name': 'vector' };
@@ -1696,6 +1935,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'z', 'type': NumberType, 'optional': false },
               ],
               nativeVectorType,
+              { 'description': 'Creates a new native vector with x, y, z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1704,7 +1944,9 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'magnitude',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': nativeVectorType, 'optional': false }], NumberType),
+            'type': createFunctionType([{ 'name': 'v', 'type': nativeVectorType, 'optional': false }], NumberType, {
+              'description': 'Returns the magnitude (length) of the vector.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1715,6 +1957,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
             'type': createFunctionType(
               [{ 'name': 'v', 'type': nativeVectorType, 'optional': false }],
               nativeVectorType,
+              { 'description': 'Returns the unit vector (normalized to length 1).' },
             ),
             'readonly': true,
             'optional': false,
@@ -1729,6 +1972,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'b', 'type': nativeVectorType, 'optional': false },
               ],
               nativeVectorType,
+              { 'description': 'Returns the cross product of two vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1743,6 +1987,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'b', 'type': nativeVectorType, 'optional': false },
               ],
               NumberType,
+              { 'description': 'Returns the dot product of two vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1754,6 +1999,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
             'type': createFunctionType(
               [{ 'name': 'v', 'type': nativeVectorType, 'optional': false }],
               nativeVectorType,
+              { 'description': 'Returns a vector with each component rounded down.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1765,6 +2011,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
             'type': createFunctionType(
               [{ 'name': 'v', 'type': nativeVectorType, 'optional': false }],
               nativeVectorType,
+              { 'description': 'Returns a vector with each component rounded up.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1776,6 +2023,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
             'type': createFunctionType(
               [{ 'name': 'v', 'type': nativeVectorType, 'optional': false }],
               nativeVectorType,
+              { 'description': 'Returns a vector with the absolute value of each component.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1787,6 +2035,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
             'type': createFunctionType(
               [{ 'name': 'v', 'type': nativeVectorType, 'optional': false }],
               nativeVectorType,
+              { 'description': 'Returns a vector with the sign (-1, 0, or 1) of each component.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1802,6 +2051,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
                 { 'name': 'max', 'type': nativeVectorType, 'optional': false },
               ],
               nativeVectorType,
+              { 'description': 'Returns a vector with each component clamped between min and max.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1810,7 +2060,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'max',
           {
-            'type': createFunctionType([], nativeVectorType, { 'isVariadic': true }),
+            'type': createFunctionType([], nativeVectorType, {
+              'isVariadic': true,
+              'description': 'Returns the component-wise maximum of the given vectors.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1818,7 +2071,10 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         [
           'min',
           {
-            'type': createFunctionType([], nativeVectorType, { 'isVariadic': true }),
+            'type': createFunctionType([], nativeVectorType, {
+              'isVariadic': true,
+              'description': 'Returns the component-wise minimum of the given vectors.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1922,31 +2178,9 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
     }
   }
 
-  // Load standard library
-  const stdLibs = createAllStdLibraries();
-  for (const [name, type] of stdLibs) {
-    env.globalScope.symbols.set(name, {
-      'kind': 'Variable',
-      'declarationLocation': undefined,
-      'docComment': undefined,
-      name,
-      type,
-      'mutable': false,
-    });
-  }
-
-  // Load global functions
-  const globalFunctions = createGlobalFunctions();
-  for (const [name, type] of globalFunctions) {
-    env.globalScope.symbols.set(name, {
-      'kind': 'Function',
-      'declarationLocation': undefined,
-      'docComment': undefined,
-      name,
-      type,
-      'mutable': false,
-    });
-  }
+  // Load global functions (print, warn, error, etc.) and standard libraries (math, string, table, etc.)
+  // Uses addLuauBuiltins which includes documentation descriptions for all functions
+  addLuauBuiltins(env);
 
   // Load Sunc API
   const suncApi = loadedDefs.sunc ?? getDefaultSuncApi();
