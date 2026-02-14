@@ -175,19 +175,32 @@ export const createDocumentManager = (): DocumentManager => {
         'code': 'P001',
       }));
 
-    // Type check
+    // Always run type checking on the error-recovery AST so allSymbols is populated
+    // for the completion handler. Only report type diagnostics when parse is clean.
     let typeCheckResult: TypeCheckResult | undefined;
     let typeErrors: TypeDiagnostic[] = [];
 
-    if (parseErrors.length === 0) {
-      // Detect type check mode from comments (--!strict, --!nonstrict, --!nocheck)
-      const mode = detectTypeCheckMode(ast.comments);
+    const mode = detectTypeCheckMode(ast.comments);
 
-      // Skip type checking entirely for nocheck mode
-      if (mode !== 'nocheck') {
-        typeCheckResult = checkProgram(ast, { 'classes': getClassMap(), 'mode': mode });
+    if (mode !== 'nocheck') {
+      typeCheckResult = checkProgram(ast, { 'classes': getClassMap(), 'dataTypes': globalEnv.robloxDataTypes, 'mode': mode });
+
+      // Only surface type diagnostics when there are no parse errors
+      // to avoid cascading false positives from error-recovery regions
+      if (parseErrors.length === 0) {
         typeErrors = typeCheckResult.diagnostics.slice();
       }
+    }
+
+    // If the current run produced no symbols (catastrophic failure), keep the previous result
+    const previousDoc = documents.get(uri);
+    if (
+      typeCheckResult !== undefined &&
+      typeCheckResult.allSymbols.size === 0 &&
+      previousDoc?.typeCheckResult !== undefined &&
+      previousDoc.typeCheckResult.allSymbols.size > 0
+    ) {
+      typeCheckResult = previousDoc.typeCheckResult;
     }
 
     const parsed: ParsedDocument = {

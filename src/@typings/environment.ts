@@ -345,21 +345,29 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'print',
-    createFunctionType([{ 'name': undefined, 'type': AnyType, 'optional': false }], NilType, { 'isVariadic': true }),
+    createFunctionType([{ 'name': undefined, 'type': AnyType, 'optional': false }], NilType, {
+      'isVariadic': true,
+      'description': 'Prints all arguments to the output, separated by spaces, followed by a newline.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'warn',
-    createFunctionType([{ 'name': undefined, 'type': AnyType, 'optional': false }], NilType, { 'isVariadic': true }),
+    createFunctionType([{ 'name': undefined, 'type': AnyType, 'optional': false }], NilType, {
+      'isVariadic': true,
+      'description': 'Prints all arguments to the output as a warning, separated by spaces, followed by a newline.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'error',
-    createFunctionType([{ 'name': 'message', 'type': AnyType, 'optional': false }], { 'kind': 'Never' }),
+    createFunctionType([{ 'name': 'message', 'type': AnyType, 'optional': false }], { 'kind': 'Never' }, {
+      'description': 'Raises an error with the given message. This function never returns.',
+    }),
     'Global',
     false,
   );
@@ -372,6 +380,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'message', 'type': StringType, 'optional': true },
       ],
       AnyType,
+      { 'description': 'Raises an error if the condition is false or nil. Returns all arguments if the condition is truthy.' },
     ),
     'Global',
     false,
@@ -379,31 +388,40 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'type',
-    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType),
+    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType, {
+      'description':
+        'Returns the type of the value as a string. Possible results: "nil", "number", "string", "boolean", "table", "function", "thread", "userdata".',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'typeof',
-    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType),
+    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType, {
+      'description':
+        'Returns the type of the value as a string, with Roblox type awareness. Returns specific types like "Vector3", "CFrame", "Instance" for Roblox objects.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'tostring',
-    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType),
+    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], StringType, {
+      'description': 'Converts the given value to a string. Calls the __tostring metamethod if available.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'tonumber',
-    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], {
-      'kind': 'Union',
-      'types': [NumberType, NilType],
-    }),
+    createFunctionType(
+      [{ 'name': 'value', 'type': AnyType, 'optional': false }],
+      { 'kind': 'Union', 'types': [NumberType, NilType] },
+      { 'description': 'Converts the given value to a number. Returns nil if the conversion fails.' },
+    ),
     'Global',
     false,
   );
@@ -413,7 +431,11 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
     createFunctionType(
       [{ 'name': 'func', 'type': AnyType, 'optional': false }],
       { 'kind': 'Union', 'types': [BooleanType, AnyType] },
-      { 'isVariadic': true },
+      {
+        'isVariadic': true,
+        'description':
+          'Calls the function in protected mode. Returns true and the results on success, or false and the error message on failure.',
+      },
     ),
     'Global',
     false,
@@ -427,7 +449,11 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'handler', 'type': AnyType, 'optional': false },
       ],
       { 'kind': 'Union', 'types': [BooleanType, AnyType] },
-      { 'isVariadic': true },
+      {
+        'isVariadic': true,
+        'description':
+          'Calls the function in protected mode with a custom error handler. Returns true and the results on success, or false and the handler result on failure.',
+      },
     ),
     'Global',
     false,
@@ -444,7 +470,11 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         },
       ],
       AnyType,
-      { 'isVariadic': true },
+      {
+        'isVariadic': true,
+        'description':
+          'Returns all arguments after the given index, or the total number of arguments when index is "#".',
+      },
     ),
     'Global',
     false,
@@ -452,14 +482,18 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'pairs',
-    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType),
+    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType, {
+      'description': 'Returns an iterator function for traversing all key-value pairs in a table.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'ipairs',
-    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType),
+    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType, {
+      'description': 'Returns an iterator function for traversing the array portion of a table in order.',
+    }),
     'Global',
     false,
   );
@@ -472,6 +506,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'index', 'type': AnyType, 'optional': true },
       ],
       AnyType,
+      { 'description': 'Returns the next key-value pair in the table after the given index. Returns nil when there are no more elements.' },
     ),
     'Global',
     false,
@@ -479,7 +514,10 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'unpack',
-    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType, { 'isVariadic': true }),
+    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType, {
+      'isVariadic': true,
+      'description': 'Returns all elements from the given table as multiple values.',
+    }),
     'Global',
     false,
   );
@@ -492,6 +530,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'index', 'type': AnyType, 'optional': false },
       ],
       AnyType,
+      { 'description': 'Gets the value of table[index] without invoking any metamethods.' },
     ),
     'Global',
     false,
@@ -506,6 +545,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'value', 'type': AnyType, 'optional': false },
       ],
       AnyType,
+      { 'description': 'Sets the value of table[index] without invoking any metamethods. Returns the table.' },
     ),
     'Global',
     false,
@@ -519,6 +559,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'b', 'type': AnyType, 'optional': false },
       ],
       BooleanType,
+      { 'description': 'Returns true if a and b are equal without invoking the __eq metamethod.' },
     ),
     'Global',
     false,
@@ -526,7 +567,9 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'rawlen',
-    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], NumberType),
+    createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], NumberType, {
+      'description': 'Returns the length of the table or string without invoking the __len metamethod.',
+    }),
     'Global',
     false,
   );
@@ -539,6 +582,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'metatable', 'type': AnyType, 'optional': false },
       ],
       AnyType,
+      { 'description': 'Sets the metatable for the given table. Pass nil to remove the metatable. Returns the table.' },
     ),
     'Global',
     false,
@@ -546,21 +590,27 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'getmetatable',
-    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType),
+    createFunctionType([{ 'name': 'table', 'type': AnyType, 'optional': false }], AnyType, {
+      'description': 'Returns the metatable of the given table, or nil if it does not have one.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'require',
-    createFunctionType([{ 'name': 'module', 'type': AnyType, 'optional': false }], AnyType),
+    createFunctionType([{ 'name': 'module', 'type': AnyType, 'optional': false }], AnyType, {
+      'description': 'Loads and runs the given module, returning any values the module returns. Caches the result for subsequent calls.',
+    }),
     'Global',
     false,
   );
   defineSymbol(
     env,
     'getfenv',
-    createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': true }], AnyType),
+    createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': true }], AnyType, {
+      'description': 'Returns the environment table of the given function or the current function if none is specified.',
+    }),
     'Global',
     false,
   );
@@ -573,6 +623,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'env', 'type': AnyType, 'optional': false },
       ],
       AnyType,
+      { 'description': 'Sets the environment table for the given function. Returns the function.' },
     ),
     'Global',
     false,
@@ -580,7 +631,9 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'newproxy',
-    createFunctionType([{ 'name': 'addMeta', 'type': BooleanType, 'optional': true }], AnyType),
+    createFunctionType([{ 'name': 'addMeta', 'type': BooleanType, 'optional': true }], AnyType, {
+      'description': 'Creates a blank userdata. If addMeta is true, the userdata will have an empty metatable that can be modified.',
+    }),
     'Global',
     false,
   );
@@ -645,6 +698,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'z', 'type': NumberType, 'optional': true },
               ],
               vector3Type,
+              { 'description': 'Creates a new Vector3 from the given x, y, and z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -658,7 +712,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'FromNormalId',
           {
-            'type': createFunctionType([{ 'name': 'normalId', 'type': AnyType, 'optional': false }], vector3Type),
+            'type': createFunctionType([{ 'name': 'normalId', 'type': AnyType, 'optional': false }], vector3Type, {
+              'description': 'Returns the unit Vector3 corresponding to the given Enum.NormalId.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -666,7 +722,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'FromAxis',
           {
-            'type': createFunctionType([{ 'name': 'axis', 'type': AnyType, 'optional': false }], vector3Type),
+            'type': createFunctionType([{ 'name': 'axis', 'type': AnyType, 'optional': false }], vector3Type, {
+              'description': 'Returns the unit Vector3 corresponding to the given Enum.Axis.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -692,6 +750,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'y', 'type': NumberType, 'optional': true },
               ],
               vector2Type,
+              { 'description': 'Creates a new Vector2 from the given x and y components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -715,7 +774,14 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], cframeType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], cframeType, {
+              'isVariadic': true,
+              'description': 'Creates a new CFrame. Can take a position, position + lookAt, or 12 matrix components.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
         ['identity', { 'type': cframeType, 'readonly': true, 'optional': false }],
         [
@@ -728,6 +794,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, Y, X order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -743,6 +810,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, Y, X order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -758,6 +826,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from Euler angles in radians, applied in Z, X, Y order.' },
             ),
             'readonly': true,
             'optional': false,
@@ -773,6 +842,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'rz', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from orientation angles in radians.' },
             ),
             'readonly': true,
             'optional': false,
@@ -787,6 +857,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'angle', 'type': NumberType, 'optional': false },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from an axis and rotation angle in radians.' },
             ),
             'readonly': true,
             'optional': false,
@@ -803,6 +874,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'vZ', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame from a position and rotation matrix column vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -818,6 +890,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'up', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame at a position looking towards a target point.' },
             ),
             'readonly': true,
             'optional': false,
@@ -833,6 +906,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'up', 'type': vector3Type, 'optional': true },
               ],
               cframeType,
+              { 'description': 'Creates a CFrame at a position looking along a direction vector.' },
             ),
             'readonly': true,
             'optional': false,
@@ -860,6 +934,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'b', 'type': NumberType, 'optional': true },
               ],
               color3Type,
+              { 'description': 'Creates a Color3 from red, green, and blue components in the range [0, 1].' },
             ),
             'readonly': true,
             'optional': false,
@@ -875,6 +950,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'b', 'type': NumberType, 'optional': false },
               ],
               color3Type,
+              { 'description': 'Creates a Color3 from red, green, and blue components in the range [0, 255].' },
             ),
             'readonly': true,
             'optional': false,
@@ -890,6 +966,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'v', 'type': NumberType, 'optional': false },
               ],
               color3Type,
+              { 'description': 'Creates a Color3 from hue, saturation, and value components, each in the range [0, 1].' },
             ),
             'readonly': true,
             'optional': false,
@@ -898,7 +975,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromHex',
           {
-            'type': createFunctionType([{ 'name': 'hex', 'type': StringType, 'optional': false }], color3Type),
+            'type': createFunctionType(
+              [{ 'name': 'hex', 'type': StringType, 'optional': false }],
+              color3Type,
+              { 'description': 'Creates a Color3 from a hexadecimal string (e.g., "#FF0000" or "FF0000").' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -918,7 +999,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a BrickColor from a name, number, or Color3 value.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -926,12 +1011,16 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'palette',
           {
-            'type': createFunctionType([{ 'name': 'index', 'type': NumberType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'index', 'type': NumberType, 'optional': false }],
+              AnyType,
+              { 'description': 'Returns the BrickColor from the default palette at the given index (0-127).' },
+            ),
             'readonly': true,
             'optional': false,
           },
         ],
-        ['random', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
+        ['random', { 'type': createFunctionType([], AnyType, { 'description': 'Returns a random BrickColor.' }), 'readonly': true, 'optional': false }],
         ['White', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
         ['Black', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
         ['Red', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
@@ -959,6 +1048,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'offset', 'type': NumberType, 'optional': false },
               ],
               udimType,
+              { 'description': 'Creates a new UDim from scale and offset components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -987,6 +1077,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'yOffset', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y scale and offset components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1001,6 +1092,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'yScale', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y scale components with zero offsets.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1015,6 +1107,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'yOffset', 'type': NumberType, 'optional': false },
               ],
               udim2Type,
+              { 'description': 'Creates a new UDim2 from X and Y offset components with zero scale.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1034,7 +1127,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Rect from min/max points or x/y coordinates.' }), 'readonly': true, 'optional': false },
         ],
       ]),
     ),
@@ -1057,6 +1150,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'max', 'type': vector3Type, 'optional': false },
               ],
               AnyType,
+              { 'description': 'Creates a new Region3 from two Vector3 corners (min and max).' },
             ),
             'readonly': true,
             'optional': false,
@@ -1083,6 +1177,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'direction', 'type': vector3Type, 'optional': false },
               ],
               AnyType,
+              { 'description': 'Creates a new Ray from an origin point and a direction vector.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1113,6 +1208,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'delayTime', 'type': NumberType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new TweenInfo with the given easing parameters for use with TweenService.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1139,6 +1235,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'max', 'type': NumberType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new NumberRange from a minimum and optional maximum value.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1159,7 +1256,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a new NumberSequence from a single value, two values, or an array of NumberSequenceKeypoints.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1186,6 +1287,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'envelope', 'type': NumberType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new NumberSequenceKeypoint at the given time with a value and optional envelope.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1206,7 +1308,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a new ColorSequence from a single Color3, two Color3s, or an array of ColorSequenceKeypoints.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1232,6 +1338,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'color', 'type': color3Type, 'optional': false },
               ],
               AnyType,
+              { 'description': 'Creates a new ColorSequenceKeypoint at the given time with the given color.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1252,7 +1359,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'material', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'material', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates custom PhysicalProperties from a material or explicit density, friction, and elasticity values.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1268,7 +1379,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     env,
     'OverlapParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }]]),
+      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new OverlapParams object for use with spatial query methods.' }), 'readonly': true, 'optional': false }]]),
     ),
     'Global',
     false,
@@ -1279,7 +1390,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     env,
     'RaycastParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }]]),
+      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new RaycastParams object for use with workspace:Raycast().' }), 'readonly': true, 'optional': false }]]),
     ),
     'Global',
     false,
@@ -1301,6 +1412,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'z', 'type': NumberType, 'optional': false },
               ],
               { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Creates a new native vector with x, y, z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1309,7 +1421,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'magnitude',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], NumberType),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              NumberType,
+              { 'description': 'Returns the magnitude (length) of the vector.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1317,10 +1433,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'normalize',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], {
-              'kind': 'Primitive',
-              'name': 'vector',
-            }),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns the unit vector (normalized to length 1).' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1334,6 +1451,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'b', 'type': AnyType, 'optional': false },
               ],
               { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns the cross product of two vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1348,6 +1466,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'b', 'type': AnyType, 'optional': false },
               ],
               NumberType,
+              { 'description': 'Returns the dot product of two vectors.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1356,10 +1475,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'floor',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], {
-              'kind': 'Primitive',
-              'name': 'vector',
-            }),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns a vector with each component rounded down.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1367,10 +1487,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'ceil',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], {
-              'kind': 'Primitive',
-              'name': 'vector',
-            }),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns a vector with each component rounded up.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1378,10 +1499,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'abs',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], {
-              'kind': 'Primitive',
-              'name': 'vector',
-            }),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns a vector with the absolute value of each component.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1389,10 +1511,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'sign',
           {
-            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], {
-              'kind': 'Primitive',
-              'name': 'vector',
-            }),
+            'type': createFunctionType(
+              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns a vector with the sign (-1, 0, or 1) of each component.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1407,6 +1530,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'max', 'type': AnyType, 'optional': false },
               ],
               { 'kind': 'Primitive', 'name': 'vector' },
+              { 'description': 'Returns a vector with each component clamped between min and max.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1415,7 +1539,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'max',
           {
-            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true }),
+            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true, 'description': 'Returns the component-wise maximum of the given vectors.' }),
             'readonly': true,
             'optional': false,
           },
@@ -1423,7 +1547,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'min',
           {
-            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true }),
+            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true, 'description': 'Returns the component-wise minimum of the given vectors.' }),
             'readonly': true,
             'optional': false,
           },
@@ -1444,7 +1568,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Axes object from a combination of Enum.Axis or Enum.NormalId values.' }), 'readonly': true, 'optional': false },
         ],
       ]),
     ),
@@ -1460,7 +1584,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true }), 'readonly': true, 'optional': false },
+          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Faces object from a combination of Enum.NormalId values.' }), 'readonly': true, 'optional': false },
         ],
       ]),
     ),
@@ -1484,6 +1608,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new Font from a font family asset ID or path, with optional weight and style.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1492,7 +1617,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromEnum',
           {
-            'type': createFunctionType([{ 'name': 'font', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'font', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a Font from an Enum.Font value.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1507,6 +1636,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a Font from a font name with optional weight and style.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1522,6 +1652,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a Font from a font asset ID with optional weight and style.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1539,11 +1670,15 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     'DateTime',
     createTableType(
       new Map([
-        ['now', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
+        ['now', { 'type': createFunctionType([], AnyType, { 'description': 'Returns a DateTime representing the current UTC time.' }), 'readonly': true, 'optional': false }],
         [
           'fromUnixTimestamp',
           {
-            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'timestamp', 'type': NumberType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a DateTime from a Unix timestamp (seconds since epoch).' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1551,7 +1686,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromUnixTimestampMillis',
           {
-            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'timestamp', 'type': NumberType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a DateTime from a Unix timestamp in milliseconds.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1559,7 +1698,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromIsoDate',
           {
-            'type': createFunctionType([{ 'name': 'isoDate', 'type': StringType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'isoDate', 'type': StringType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a DateTime from an ISO 8601 date-time string.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1567,7 +1710,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromLocalTime',
           {
-            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'dateTime', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a DateTime from a table of local time components.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1575,7 +1722,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromUniversalTime',
           {
-            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'dateTime', 'type': AnyType, 'optional': false }],
+              AnyType,
+              { 'description': 'Creates a DateTime from a table of UTC time components.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1602,6 +1753,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'label', 'type': StringType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new PathWaypoint at the given position with optional action and label.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1618,7 +1770,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     env,
     'CatalogSearchParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }]]),
+      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new CatalogSearchParams object for searching the avatar catalog.' }), 'readonly': true, 'optional': false }]]),
     ),
     'Global',
     false,
@@ -1633,7 +1785,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType([{ 'name': 'seed', 'type': NumberType, 'optional': true }], AnyType),
+            'type': createFunctionType(
+              [{ 'name': 'seed', 'type': NumberType, 'optional': true }],
+              AnyType,
+              { 'description': 'Creates a new Random number generator with an optional seed.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1659,6 +1815,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'max', 'type': AnyType, 'optional': false },
               ],
               AnyType,
+              { 'description': 'Creates a new Region3int16 from two Vector3int16 corners.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1685,6 +1842,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'y', 'type': NumberType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new Vector2int16 from integer x and y components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1712,6 +1870,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'z', 'type': NumberType, 'optional': true },
               ],
               AnyType,
+              { 'description': 'Creates a new Vector3int16 from integer x, y, and z components.' },
             ),
             'readonly': true,
             'optional': false,
@@ -1727,7 +1886,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'wait',
-    createFunctionType([{ 'name': 'seconds', 'type': NumberType, 'optional': true }], NumberType),
+    createFunctionType(
+      [{ 'name': 'seconds', 'type': NumberType, 'optional': true }],
+      NumberType,
+      { 'description': 'Yields the current thread for the given duration. Deprecated in favor of task.wait().' },
+    ),
     'Global',
     false,
   );
@@ -1740,6 +1903,7 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         { 'name': 'callback', 'type': AnyType, 'optional': false },
       ],
       NilType,
+      { 'description': 'Schedules a function to run after the given delay. Deprecated in favor of task.delay().' },
     ),
     'Global',
     false,
@@ -1747,28 +1911,36 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'spawn',
-    createFunctionType([{ 'name': 'callback', 'type': AnyType, 'optional': false }], NilType),
+    createFunctionType(
+      [{ 'name': 'callback', 'type': AnyType, 'optional': false }],
+      NilType,
+      { 'description': 'Schedules a function to run in a new thread. Deprecated in favor of task.spawn().' },
+    ),
     'Global',
     false,
   );
-  defineSymbol(env, 'tick', createFunctionType([], NumberType), 'Global', false);
-  defineSymbol(env, 'time', createFunctionType([], NumberType), 'Global', false);
-  defineSymbol(env, 'elapsedTime', createFunctionType([], NumberType), 'Global', false);
-  defineSymbol(env, 'gcinfo', createFunctionType([], NumberType), 'Global', false);
+  defineSymbol(env, 'tick', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since the Unix epoch. Deprecated in favor of os.clock() or DateTime.' }), 'Global', false);
+  defineSymbol(env, 'time', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since the game started running.' }), 'Global', false);
+  defineSymbol(env, 'elapsedTime', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since Roblox started. Deprecated in favor of os.clock().' }), 'Global', false);
+  defineSymbol(env, 'gcinfo', createFunctionType([], NumberType, { 'description': 'Returns the total memory heap size in kilobytes.' }), 'Global', false);
   defineSymbol(
     env,
     'collectgarbage',
-    createFunctionType([{ 'name': 'opt', 'type': StringType, 'optional': true }], AnyType),
+    createFunctionType(
+      [{ 'name': 'opt', 'type': StringType, 'optional': true }],
+      AnyType,
+      { 'description': 'Performs garbage collection operations. Only "count" is supported on Roblox.' },
+    ),
     'Global',
     false,
   );
-  // loadstring returns a function that can be called
   defineSymbol(
     env,
     'loadstring',
     createFunctionType(
       [{ 'name': 'code', 'type': StringType, 'optional': false }],
       createFunctionType([], AnyType, { 'isVariadic': true }),
+      { 'description': 'Compiles and returns the given string as a function. Disabled on Roblox by default.' },
     ),
     'Global',
     false,

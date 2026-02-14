@@ -137,6 +137,7 @@ interface CheckerState {
 interface CheckerOptions {
   readonly mode?: TypeCheckMode;
   readonly classes?: Map<string, ClassType>;
+  readonly dataTypes?: Map<string, LuauType>;
   readonly ignoreState?: IgnoreState;
 }
 
@@ -151,6 +152,13 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
   if (options.classes !== undefined) {
     for (const [name, classType] of options.classes) {
       (env.classes as Map<string, ClassType>).set(name, classType);
+    }
+  }
+
+  // Register data types (Vector3, CFrame, etc.) as type aliases for type annotation resolution
+  if (options.dataTypes !== undefined) {
+    for (const [name, type] of options.dataTypes) {
+      env.globalScope.types.set(name, type);
     }
   }
 
@@ -212,10 +220,22 @@ const widenTypeForMutableVariable = (type: LuauType): LuauType => {
   return type;
 };
 
-const extractIsANarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
-  // Handle parenthesized expressions: (x:IsA("ClassName"))
+const stripNilFromType = (type: LuauType): LuauType => {
+  if (type.kind === 'Union') {
+    const nonNil = type.types.filter(t => t.kind !== 'Primitive' || t.name !== 'nil');
+    if (nonNil.length === 0) return NeverType;
+    if (nonNil.length === 1) return nonNil[0]!;
+    return createUnionType(nonNil);
+  }
+  if (type.kind === 'Optional') return type.type;
+  if (type.kind === 'Primitive' && type.name === 'nil') return NeverType;
+  return type;
+};
+
+const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
+  // Handle parenthesized expressions
   if (condition.kind === 'ParenthesizedExpression') {
-    return extractIsANarrowing(state, condition.expression);
+    return extractNarrowing(state, condition.expression);
   }
 
   // Pattern: x:IsA("ClassName")
@@ -230,26 +250,98 @@ const extractIsANarrowing = (state: CheckerState, condition: Expression): TypeNa
     const classType = state.env.classes.get(className);
     if (classType === undefined) return undefined;
 
-    // Extract variable name from the object
-    if (condition.object.kind === 'Identifier') {
+    if (condition.object.kind === 'Identifier')
       return { 'variableName': condition.object.name, 'narrowedType': classType };
-    }
 
     return undefined;
   }
 
-  // Pattern: x and x:IsA("ClassName") - handle truthiness check combined with IsA
+  // Pattern: x ~= nil (narrows away nil) or x == nil (not useful for then-branch)
+  if (condition.kind === 'BinaryExpression' && condition.operator === '~=') {
+    if (condition.right.kind === 'NilLiteral' && condition.left.kind === 'Identifier') {
+      const symbol = lookupSymbol(state.env, condition.left.name);
+      if (symbol !== undefined)
+        return { 'variableName': condition.left.name, 'narrowedType': stripNilFromType(symbol.type) };
+    }
+    if (condition.left.kind === 'NilLiteral' && condition.right.kind === 'Identifier') {
+      const symbol = lookupSymbol(state.env, condition.right.name);
+      if (symbol !== undefined) {
+        return { 'variableName': condition.right.name, 'narrowedType': stripNilFromType(symbol.type) };
+      }
+    }
+  }
+
+  // Pattern: type(x) == "typename"
+  if (condition.kind === 'BinaryExpression' && condition.operator === '==') {
+    const typeofNarrowing = extractTypeofNarrowing(state, condition.left, condition.right);
+    if (typeofNarrowing !== undefined) return typeofNarrowing;
+    const reverseNarrowing = extractTypeofNarrowing(state, condition.right, condition.left);
+    if (reverseNarrowing !== undefined) return reverseNarrowing;
+  }
+
+  // Pattern: x (truthiness check - identifier used directly as condition)
+  if (condition.kind === 'Identifier') {
+    const symbol = lookupSymbol(state.env, condition.name);
+    if (symbol !== undefined) {
+      const narrowed = stripNilFromType(symbol.type);
+      if (narrowed !== symbol.type) {
+        return { 'variableName': condition.name, 'narrowedType': narrowed };
+      }
+    }
+  }
+
+  // Pattern: x and y - handle combined checks
   if (condition.kind === 'BinaryExpression' && condition.operator === 'and') {
-    // Check right side for IsA pattern
-    const rightNarrowing = extractIsANarrowing(state, condition.right);
+    const rightNarrowing = extractNarrowing(state, condition.right);
     if (rightNarrowing !== undefined) return rightNarrowing;
 
-    // Check left side for IsA pattern
-    const leftNarrowing = extractIsANarrowing(state, condition.left);
+    const leftNarrowing = extractNarrowing(state, condition.left);
     if (leftNarrowing !== undefined) return leftNarrowing;
   }
 
   return undefined;
+};
+
+const extractTypeofNarrowing = (
+  _state: CheckerState,
+  callSide: Expression,
+  litSide: Expression,
+): TypeNarrowing | undefined => {
+  if (callSide.kind !== 'CallExpression') return undefined;
+  if (callSide.callee.kind !== 'Identifier' || callSide.callee.name !== 'type') return undefined;
+  if (callSide.args.length === 0) return undefined;
+  if (litSide.kind !== 'StringLiteral') return undefined;
+
+  const arg = callSide.args[0]!;
+  if (arg.kind !== 'Identifier') return undefined;
+
+  const typeName = litSide.value;
+  let narrowedType: LuauType;
+
+  switch (typeName) {
+    case 'string':
+      narrowedType = StringType;
+      break;
+    case 'number':
+      narrowedType = NumberType;
+      break;
+    case 'boolean':
+      narrowedType = BooleanType;
+      break;
+    case 'nil':
+      narrowedType = NilType;
+      break;
+    case 'table':
+      narrowedType = createTableType(new Map(), undefined);
+      break;
+    case 'function':
+      narrowedType = createFunctionType([], AnyType);
+      break;
+    default:
+      return undefined;
+  }
+
+  return { 'variableName': arg.name, narrowedType };
 };
 
 const applyNarrowings = (state: CheckerState, narrowings: ReadonlyArray<TypeNarrowing>): void => {
@@ -274,6 +366,15 @@ const lookupClassMethod = (classType: ClassType, methodName: string): ClassMetho
   return undefined;
 };
 
+const isInstanceDerived = (classType: ClassType): boolean => {
+  let current: ClassType | undefined = classType;
+  while (current !== undefined) {
+    if (current.name === 'Instance') return true;
+    current = current.superclass;
+  }
+  return false;
+};
+
 const lookupClassProperty = (classType: ClassType, propertyName: string): ClassProperty | undefined => {
   let current: ClassType | undefined = classType;
   while (current !== undefined) {
@@ -296,7 +397,7 @@ const lookupClassProperty = (classType: ClassType, propertyName: string): ClassP
  */
 export const checkProgram = (
   chunk: Chunk,
-  options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType> },
+  options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType>; dataTypes?: Map<string, LuauType> },
 ): TypeCheckResult => {
   const lastStatement = chunk.body[chunk.body.length - 1];
   const totalLines = lastStatement !== undefined ? lastStatement.range.end.line : 1;
@@ -306,6 +407,45 @@ export const checkProgram = (
   checkBlock(state, chunk.body);
 
   return { 'diagnostics': state.diagnostics, 'environment': state.env, 'allSymbols': state.allSymbols };
+};
+
+const blockAlwaysExits = (statements: ReadonlyArray<Statement>): boolean => {
+  const last = statements[statements.length - 1];
+  if (last === undefined) return false;
+
+  if (last.kind === 'ReturnStatement') return true;
+  if (last.kind === 'BreakStatement') return true;
+  if (last.kind === 'ContinueStatement') return true;
+
+  if (last.kind === 'IfStatement') {
+    if (last.elseBody === undefined) return false;
+    return (
+      blockAlwaysExits(last.thenBody) &&
+      blockAlwaysExits(last.elseBody) &&
+      last.elseifClauses.every(c => blockAlwaysExits(c.body))
+    );
+  }
+
+  return false;
+};
+
+const extractGuardNarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
+  if (condition.kind === 'ParenthesizedExpression') return extractGuardNarrowing(state, condition.expression);
+
+  if (condition.kind === 'BinaryExpression' && condition.operator === '==') {
+    if (condition.right.kind === 'NilLiteral' && condition.left.kind === 'Identifier') {
+      const symbol = lookupSymbol(state.env, condition.left.name);
+      if (symbol !== undefined)
+        return { 'variableName': condition.left.name, 'narrowedType': stripNilFromType(symbol.type) };
+    }
+    if (condition.left.kind === 'NilLiteral' && condition.right.kind === 'Identifier') {
+      const symbol = lookupSymbol(state.env, condition.right.name);
+      if (symbol !== undefined)
+        return { 'variableName': condition.right.name, 'narrowedType': stripNilFromType(symbol.type) };
+    }
+  }
+
+  return undefined;
 };
 
 const checkBlock = (state: CheckerState, statements: ReadonlyArray<Statement>): void => {
@@ -590,6 +730,21 @@ const checkFunctionExpressionWithDocComment = (
 
   checkBlock(state, func.body);
 
+  if (
+    declaredReturnType !== undefined &&
+    state.env.mode === 'strict' &&
+    (declaredReturnType.kind !== 'Primitive' || declaredReturnType.name !== 'nil') &&
+    blockAlwaysExits(func.body) === false
+  ) {
+    addDiagnostic(
+      state,
+      `Function with declared return type '${typeToString(declaredReturnType)}' must return a value on all code paths`,
+      func.range,
+      'error',
+      'E013',
+    );
+  }
+
   state.returnType = savedReturnType;
   state.isVariadic = savedVariadic;
   exitScope(state.env);
@@ -609,7 +764,15 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
     const target = stmt.targets[i]!;
     const valueType = valueTypes[i] ?? NilType;
 
-    const targetType = inferExpression(state, target);
+    // For identifier targets, use the original declared type (not narrowed)
+    // Narrowing affects reads, not writes
+    let targetType: LuauType;
+    if (target.kind === 'Identifier') {
+      const symbol = lookupSymbol(state.env, target.name);
+      targetType = symbol !== undefined ? symbol.type : inferExpression(state, target);
+    } else {
+      targetType = inferExpression(state, target);
+    }
 
     if (
       targetType.kind !== 'Any' &&
@@ -663,7 +826,7 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   inferExpression(state, stmt.condition);
 
   // Extract type narrowings from the condition
-  const narrowing = extractIsANarrowing(state, stmt.condition);
+  const narrowing = extractNarrowing(state, stmt.condition);
   const narrowings: TypeNarrowing[] = narrowing !== undefined ? [narrowing] : [];
 
   enterScope(state.env, 'Conditional');
@@ -676,7 +839,7 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
     inferExpression(state, clause.condition);
 
     // Extract narrowings for elseif clauses
-    const clauseNarrowing = extractIsANarrowing(state, clause.condition);
+    const clauseNarrowing = extractNarrowing(state, clause.condition);
     const clauseNarrowings: TypeNarrowing[] = clauseNarrowing !== undefined ? [clauseNarrowing] : [];
 
     enterScope(state.env, 'Conditional');
@@ -690,6 +853,15 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
     enterScope(state.env, 'Conditional');
     checkBlock(state, stmt.elseBody);
     exitScope(state.env);
+  }
+
+  // Guard clause narrowing: if the then-body always exits (return/break/continue)
+  // and there are no elseif/else clauses, apply the inverse narrowing after the if
+  if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody)) {
+    const guardNarrowing = extractGuardNarrowing(state, stmt.condition);
+    if (guardNarrowing !== undefined) {
+      state.narrowings.set(guardNarrowing.variableName, guardNarrowing.narrowedType);
+    }
   }
 };
 
@@ -735,18 +907,78 @@ const checkForNumeric = (state: CheckerState, stmt: ForNumeric): void => {
   exitScope(state.env);
 };
 
+const inferForGenericTypes = (state: CheckerState, stmt: ForGeneric): LuauType[] => {
+  if (stmt.iterators.length === 0) return [];
+
+  const firstIter = stmt.iterators[0]!;
+
+  // Pattern: pairs(t) or ipairs(t)
+  if (firstIter.kind === 'CallExpression' && firstIter.callee.kind === 'Identifier') {
+    const funcName = firstIter.callee.name;
+    if ((funcName === 'pairs' || funcName === 'ipairs') && firstIter.args.length > 0) {
+      const tableType = resolveType(inferExpression(state, firstIter.args[0]!));
+
+      if (tableType.kind === 'Table') {
+        if (funcName === 'ipairs') {
+          // ipairs: i is number, v is array element type
+          const valueType = tableType.indexer !== undefined ? tableType.indexer.valueType : AnyType;
+          return [NumberType, valueType];
+        }
+
+        // pairs: k and v from indexer or string keys
+        if (tableType.indexer !== undefined) {
+          return [tableType.indexer.keyType, tableType.indexer.valueType];
+        }
+
+        // If table has named properties, k is string, v is union of all property types
+        if (tableType.properties.size > 0) {
+          const valueTypes: LuauType[] = [];
+          for (const [, prop] of tableType.properties) {
+            valueTypes.push(prop.type);
+          }
+          const valueType = valueTypes.length === 1 ? valueTypes[0]! : createUnionType(valueTypes);
+          return [StringType, valueType];
+        }
+      }
+    }
+  }
+
+  // Generalized iteration: for k, v in t (Luau feature)
+  if (firstIter.kind !== 'CallExpression') {
+    const iterType = resolveType(inferExpression(state, firstIter));
+    if (iterType.kind === 'Table') {
+      if (iterType.indexer !== undefined) {
+        return [iterType.indexer.keyType, iterType.indexer.valueType];
+      }
+      if (iterType.properties.size > 0) {
+        const valueTypes: LuauType[] = [];
+        for (const [, prop] of iterType.properties) {
+          valueTypes.push(prop.type);
+        }
+        const valueType = valueTypes.length === 1 ? valueTypes[0]! : createUnionType(valueTypes);
+        return [StringType, valueType];
+      }
+    }
+  }
+
+  return [];
+};
+
 const checkForGeneric = (state: CheckerState, stmt: ForGeneric): void => {
   // Infer iterator types
   for (const iter of stmt.iterators) {
     inferExpression(state, iter);
   }
 
+  const inferredTypes = inferForGenericTypes(state, stmt);
+
   enterScope(state.env, 'Loop');
 
-  // Define loop variables (types inferred from iterators)
-  for (const variable of stmt.variables) {
-    defineSymbol(state.env, variable.name, AnyType, 'Variable', false);
-    trackSymbol(state, variable.name, AnyType);
+  for (let i = 0; i < stmt.variables.length; i++) {
+    const variable = stmt.variables[i]!;
+    const varType = i < inferredTypes.length ? inferredTypes[i]! : AnyType;
+    defineSymbol(state.env, variable.name, varType, 'Variable', false);
+    trackSymbol(state, variable.name, varType);
   }
 
   checkBlock(state, stmt.body);
@@ -757,8 +989,7 @@ const checkReturnStatement = (state: CheckerState, stmt: ReturnStatement): void 
   const returnTypes = stmt.values.map(v => inferExpression(state, v));
 
   if (state.returnType !== undefined && state.env.mode !== 'nonstrict') {
-    const actualReturnType =
-      returnTypes.length === 0 ? NilType : returnTypes.length === 1 ? returnTypes[0]! : createUnionType(returnTypes);
+    const actualReturnType = returnTypes.length === 0 ? NilType : returnTypes[0]!;
 
     if (
       isAssignable(actualReturnType, state.returnType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false
@@ -779,8 +1010,21 @@ const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
   // This allows self-references within the type body to resolve
   defineTypeAlias(state.env, stmt.name.name, { 'kind': 'TypeReference', 'name': stmt.name.name });
 
-  // Now resolve the type body (self-references will find the placeholder)
+  // Define type parameters as AnyType in a child scope during resolution
+  // so references like T in `type Array<T> = {[number]: T}` resolve
+  if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
+    enterScope(state.env, 'Block');
+    for (const param of stmt.typeParams) {
+      const defaultType = param.defaultType !== undefined ? resolveTypeAnnotation(state, param.defaultType) : AnyType;
+      defineTypeAlias(state.env, param.name, defaultType);
+    }
+  }
+
   const resolvedType = resolveTypeAnnotation(state, stmt.type);
+
+  if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
+    exitScope(state.env);
+  }
 
   // Update with the fully resolved type
   defineTypeAlias(state.env, stmt.name.name, resolvedType);
@@ -833,8 +1077,37 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
     case 'IfExpression':
       return inferIfExpression(state, expr);
 
-    case 'TypeCastExpression':
-      return resolveTypeAnnotation(state, expr.type);
+    case 'TypeCastExpression': {
+      const exprType = inferExpression(state, expr.expression);
+      const castType = resolveTypeAnnotation(state, expr.type);
+
+      if (state.env.mode === 'strict' && expr.expression.kind === 'TableExpression') {
+        const resolvedExpr = resolveType(exprType, state.env.classes);
+        const resolvedCast = resolveType(castType, state.env.classes);
+        if (resolvedExpr.kind === 'Table' && resolvedCast.kind === 'Table') {
+          for (const field of expr.expression.fields) {
+            if (field.kind !== 'TableFieldKey') continue;
+            const targetProp = resolvedCast.properties.get(field.key.name);
+            if (targetProp === undefined) continue;
+            const fieldProp = resolvedExpr.properties.get(field.key.name);
+            if (fieldProp === undefined) continue;
+            const fieldType = resolveType(fieldProp.type, state.env.classes);
+            const targetType = resolveType(targetProp.type, state.env.classes);
+            if (isAssignable(fieldType, targetType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+              addDiagnostic(
+                state,
+                `Type '${typeToString(fieldType)}' is not assignable to type '${typeToString(targetType)}' for field '${field.key.name}'`,
+                field.value.range,
+                'error',
+                'E002',
+              );
+            }
+          }
+        }
+      }
+
+      return castType;
+    }
 
     case 'InterpolatedString':
       return StringType;
@@ -966,6 +1239,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
       if (t.kind === 'Primitive' && t.name === 'number') return true;
       if (t.kind === 'Literal' && t.baseType === 'number') return true;
       if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return true;
+      if (t.kind === 'Union') return t.types.every(member => isDefinitelyNumeric(member));
       if (t.kind === 'Table') {
         if (t.properties.has('X') && t.properties.has('Y')) return true;
         if (t.properties.has('Width') && t.properties.has('Height')) return true;
@@ -1043,8 +1317,11 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     case 'and':
       return createUnionType([rightType, { 'kind': 'Literal', 'value': false, 'baseType': 'boolean' }, NilType]);
 
-    case 'or':
-      return createUnionType([leftType, rightType]);
+    case 'or': {
+      const stripped = stripNilFromType(leftType);
+      if (stripped.kind === 'Never') return rightType;
+      return createUnionType([stripped, rightType]);
+    }
 
     default:
       return AnyType;
@@ -1496,8 +1773,14 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
     if (commonChildType !== undefined) {
       const childClass = state.env.classes.get(commonChildType);
       if (childClass !== undefined) return childClass;
-      // Return as TypeReference if class not found
       return { 'kind': 'TypeReference', 'name': commonChildType };
+    }
+
+    // All Roblox Instance-derived classes can have arbitrary children accessed via dot notation
+    if (isInstanceDerived(objectType)) {
+      const instanceClass = state.env.classes.get('Instance');
+      if (instanceClass !== undefined) return instanceClass;
+      return AnyType;
     }
   }
 
@@ -1591,6 +1874,7 @@ const resolveTypeAnnotation = (state: CheckerState, annotation: TypeAnnotation):
     case 'TypeLiteral':
       if (typeof annotation.value === 'string') return createStringLiteral(annotation.value);
       if (typeof annotation.value === 'boolean') return createBooleanLiteral(annotation.value);
+      if (typeof annotation.value === 'number') return createNumberLiteral(annotation.value);
       return AnyType;
 
     case 'FunctionType': {

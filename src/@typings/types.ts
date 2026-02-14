@@ -890,6 +890,10 @@ export const typeToString = (type: LuauType): string => {
       const props = Array.from(resolved.properties.entries())
         .map(([k, v]) => `${k}: ${typeToString(v.type)}`)
         .join(', ');
+      if (resolved.indexer !== undefined) {
+        const indexerStr = `[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}`;
+        return `{${props}, ${indexerStr}}`;
+      }
       return `{${props}}`;
     }
 
