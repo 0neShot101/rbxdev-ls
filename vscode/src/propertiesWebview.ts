@@ -6,7 +6,6 @@
 import {
   CancellationToken,
   ExtensionContext,
-  Webview,
   WebviewView,
   WebviewViewProvider,
   WebviewViewResolveContext,
@@ -29,7 +28,7 @@ export type PropertyChangeCallback = (
   instancePath: ReadonlyArray<string>,
   property: string,
   value: string,
-  valueType: string
+  valueType: string,
 ) => Promise<boolean>;
 
 /**
@@ -37,7 +36,53 @@ export type PropertyChangeCallback = (
  */
 const ENUM_VALUES: Record<string, string[]> = {
   // Parts
-  'Material': ['Plastic', 'Wood', 'Slate', 'Concrete', 'CorrodedMetal', 'DiamondPlate', 'Foil', 'Grass', 'Ice', 'Marble', 'Granite', 'Brick', 'Pebble', 'Sand', 'Fabric', 'SmoothPlastic', 'Metal', 'WoodPlanks', 'Cobblestone', 'Neon', 'Glass', 'ForceField', 'Air', 'Water', 'Rock', 'Glacier', 'Snow', 'Sandstone', 'Mud', 'Basalt', 'Ground', 'CrackedLava', 'Asphalt', 'LeafyGrass', 'Salt', 'Limestone', 'Pavement', 'Cardboard', 'Carpet', 'CeramicTiles', 'ClayRoofTiles', 'Plaster', 'RoofShingles', 'Rubber', 'Leather'],
+  'Material': [
+    'Plastic',
+    'Wood',
+    'Slate',
+    'Concrete',
+    'CorrodedMetal',
+    'DiamondPlate',
+    'Foil',
+    'Grass',
+    'Ice',
+    'Marble',
+    'Granite',
+    'Brick',
+    'Pebble',
+    'Sand',
+    'Fabric',
+    'SmoothPlastic',
+    'Metal',
+    'WoodPlanks',
+    'Cobblestone',
+    'Neon',
+    'Glass',
+    'ForceField',
+    'Air',
+    'Water',
+    'Rock',
+    'Glacier',
+    'Snow',
+    'Sandstone',
+    'Mud',
+    'Basalt',
+    'Ground',
+    'CrackedLava',
+    'Asphalt',
+    'LeafyGrass',
+    'Salt',
+    'Limestone',
+    'Pavement',
+    'Cardboard',
+    'Carpet',
+    'CeramicTiles',
+    'ClayRoofTiles',
+    'Plaster',
+    'RoofShingles',
+    'Rubber',
+    'Leather',
+  ],
   'PartType': ['Block', 'Cylinder', 'Ball', 'Wedge', 'CornerWedge'],
   'Shape': ['Block', 'Cylinder', 'Ball'],
   'SurfaceType': ['Smooth', 'Glue', 'Weld', 'Studs', 'Inlet', 'Universal', 'Hinge', 'Motor', 'SteppingMotor'],
@@ -45,7 +90,48 @@ const ENUM_VALUES: Record<string, string[]> = {
   'RenderFidelity': ['Automatic', 'Precise', 'Performance'],
 
   // Text
-  'Font': ['Legacy', 'Arial', 'ArialBold', 'SourceSans', 'SourceSansBold', 'SourceSansSemibold', 'SourceSansLight', 'SourceSansItalic', 'Bodoni', 'Garamond', 'Cartoon', 'Code', 'Highway', 'SciFi', 'Arcade', 'Fantasy', 'Antique', 'Gotham', 'GothamMedium', 'GothamBold', 'GothamBlack', 'Ubuntu', 'Michroma', 'TitilliumWeb', 'JosefinSans', 'Oswald', 'Merriweather', 'Roboto', 'RobotoMono', 'Sarpanch', 'SpecialElite', 'FredokaOne', 'Creepster', 'IndieFlower', 'PermanentMarker', 'DenkOne', 'BuilderSans', 'BuilderSansMedium', 'BuilderSansBold', 'BuilderSansExtraBold'],
+  'Font': [
+    'Legacy',
+    'Arial',
+    'ArialBold',
+    'SourceSans',
+    'SourceSansBold',
+    'SourceSansSemibold',
+    'SourceSansLight',
+    'SourceSansItalic',
+    'Bodoni',
+    'Garamond',
+    'Cartoon',
+    'Code',
+    'Highway',
+    'SciFi',
+    'Arcade',
+    'Fantasy',
+    'Antique',
+    'Gotham',
+    'GothamMedium',
+    'GothamBold',
+    'GothamBlack',
+    'Ubuntu',
+    'Michroma',
+    'TitilliumWeb',
+    'JosefinSans',
+    'Oswald',
+    'Merriweather',
+    'Roboto',
+    'RobotoMono',
+    'Sarpanch',
+    'SpecialElite',
+    'FredokaOne',
+    'Creepster',
+    'IndieFlower',
+    'PermanentMarker',
+    'DenkOne',
+    'BuilderSans',
+    'BuilderSansMedium',
+    'BuilderSansBold',
+    'BuilderSansExtraBold',
+  ],
   'FontWeight': ['Thin', 'ExtraLight', 'Light', 'Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold', 'Heavy'],
   'FontStyle': ['Normal', 'Italic'],
   'TextXAlignment': ['Center', 'Left', 'Right'],
@@ -67,7 +153,19 @@ const ENUM_VALUES: Record<string, string[]> = {
   'ResamplerMode': ['Default', 'Pixelated'],
 
   // Animation/Tweening
-  'EasingStyle': ['Linear', 'Sine', 'Back', 'Quad', 'Quart', 'Quint', 'Bounce', 'Elastic', 'Exponential', 'Circular', 'Cubic'],
+  'EasingStyle': [
+    'Linear',
+    'Sine',
+    'Back',
+    'Quad',
+    'Quart',
+    'Quint',
+    'Bounce',
+    'Elastic',
+    'Exponential',
+    'Circular',
+    'Cubic',
+  ],
   'EasingDirection': ['In', 'Out', 'InOut'],
   'AnimationPriority': ['Idle', 'Movement', 'Action', 'Action2', 'Action3', 'Action4', 'Core'],
   'PlaybackState': ['Begin', 'Delayed', 'Playing', 'Paused', 'Completed', 'Cancelled'],
@@ -76,7 +174,25 @@ const ENUM_VALUES: Record<string, string[]> = {
   'HumanoidDisplayDistanceType': ['None', 'Viewer', 'Subject'],
   'HumanoidHealthDisplayType': ['DisplayWhenDamaged', 'AlwaysOn', 'AlwaysOff'],
   'HumanoidRigType': ['R6', 'R15'],
-  'HumanoidStateType': ['FallingDown', 'Running', 'RunningNoPhysics', 'Climbing', 'StrafingNoPhysics', 'Ragdoll', 'GettingUp', 'Jumping', 'Landed', 'Flying', 'Freefall', 'Seated', 'PlatformStanding', 'Dead', 'Swimming', 'Physics', 'None'],
+  'HumanoidStateType': [
+    'FallingDown',
+    'Running',
+    'RunningNoPhysics',
+    'Climbing',
+    'StrafingNoPhysics',
+    'Ragdoll',
+    'GettingUp',
+    'Jumping',
+    'Landed',
+    'Flying',
+    'Freefall',
+    'Seated',
+    'PlatformStanding',
+    'Dead',
+    'Swimming',
+    'Physics',
+    'None',
+  ],
 
   // Constraints
   'ActuatorType': ['None', 'Motor', 'Servo'],
@@ -124,13 +240,187 @@ const ENUM_VALUES: Record<string, string[]> = {
   'FieldOfViewMode': ['Vertical', 'Diagonal', 'MaxAxis'],
 
   // Input
-  'KeyCode': ['Unknown', 'Backspace', 'Tab', 'Clear', 'Return', 'Pause', 'Escape', 'Space', 'QuotedDouble', 'Hash', 'Dollar', 'Percent', 'Ampersand', 'Quote', 'LeftParenthesis', 'RightParenthesis', 'Asterisk', 'Plus', 'Comma', 'Minus', 'Period', 'Slash', 'Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Colon', 'Semicolon', 'LessThan', 'Equals', 'GreaterThan', 'Question', 'At', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'LeftBracket', 'BackSlash', 'RightBracket', 'Caret', 'Underscore', 'Backquote', 'Delete', 'World0', 'World1', 'KeypadZero', 'KeypadOne', 'KeypadTwo', 'KeypadThree', 'KeypadFour', 'KeypadFive', 'KeypadSix', 'KeypadSeven', 'KeypadEight', 'KeypadNine', 'KeypadPeriod', 'KeypadDivide', 'KeypadMultiply', 'KeypadMinus', 'KeypadPlus', 'KeypadEnter', 'KeypadEquals', 'Up', 'Down', 'Right', 'Left', 'Insert', 'Home', 'End', 'PageUp', 'PageDown', 'LeftShift', 'RightShift', 'LeftMeta', 'RightMeta', 'LeftAlt', 'RightAlt', 'LeftControl', 'RightControl', 'CapsLock', 'NumLock', 'ScrollLock', 'LeftSuper', 'RightSuper', 'Mode', 'Compose', 'Help', 'Print', 'SysReq', 'Break', 'Menu', 'Power', 'Euro', 'Undo', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12', 'F13', 'F14', 'F15'],
-  'UserInputType': ['MouseButton1', 'MouseButton2', 'MouseButton3', 'MouseWheel', 'MouseMovement', 'Touch', 'Keyboard', 'Focus', 'Accelerometer', 'Gyro', 'Gamepad1', 'Gamepad2', 'Gamepad3', 'Gamepad4', 'Gamepad5', 'Gamepad6', 'Gamepad7', 'Gamepad8', 'TextInput', 'InputMethod', 'None'],
+  'KeyCode': [
+    'Unknown',
+    'Backspace',
+    'Tab',
+    'Clear',
+    'Return',
+    'Pause',
+    'Escape',
+    'Space',
+    'QuotedDouble',
+    'Hash',
+    'Dollar',
+    'Percent',
+    'Ampersand',
+    'Quote',
+    'LeftParenthesis',
+    'RightParenthesis',
+    'Asterisk',
+    'Plus',
+    'Comma',
+    'Minus',
+    'Period',
+    'Slash',
+    'Zero',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Colon',
+    'Semicolon',
+    'LessThan',
+    'Equals',
+    'GreaterThan',
+    'Question',
+    'At',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+    'LeftBracket',
+    'BackSlash',
+    'RightBracket',
+    'Caret',
+    'Underscore',
+    'Backquote',
+    'Delete',
+    'World0',
+    'World1',
+    'KeypadZero',
+    'KeypadOne',
+    'KeypadTwo',
+    'KeypadThree',
+    'KeypadFour',
+    'KeypadFive',
+    'KeypadSix',
+    'KeypadSeven',
+    'KeypadEight',
+    'KeypadNine',
+    'KeypadPeriod',
+    'KeypadDivide',
+    'KeypadMultiply',
+    'KeypadMinus',
+    'KeypadPlus',
+    'KeypadEnter',
+    'KeypadEquals',
+    'Up',
+    'Down',
+    'Right',
+    'Left',
+    'Insert',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'LeftShift',
+    'RightShift',
+    'LeftMeta',
+    'RightMeta',
+    'LeftAlt',
+    'RightAlt',
+    'LeftControl',
+    'RightControl',
+    'CapsLock',
+    'NumLock',
+    'ScrollLock',
+    'LeftSuper',
+    'RightSuper',
+    'Mode',
+    'Compose',
+    'Help',
+    'Print',
+    'SysReq',
+    'Break',
+    'Menu',
+    'Power',
+    'Euro',
+    'Undo',
+    'F1',
+    'F2',
+    'F3',
+    'F4',
+    'F5',
+    'F6',
+    'F7',
+    'F8',
+    'F9',
+    'F10',
+    'F11',
+    'F12',
+    'F13',
+    'F14',
+    'F15',
+  ],
+  'UserInputType': [
+    'MouseButton1',
+    'MouseButton2',
+    'MouseButton3',
+    'MouseWheel',
+    'MouseMovement',
+    'Touch',
+    'Keyboard',
+    'Focus',
+    'Accelerometer',
+    'Gyro',
+    'Gamepad1',
+    'Gamepad2',
+    'Gamepad3',
+    'Gamepad4',
+    'Gamepad5',
+    'Gamepad6',
+    'Gamepad7',
+    'Gamepad8',
+    'TextInput',
+    'InputMethod',
+    'None',
+  ],
   'ContextActionPriority': ['Low', 'Medium', 'Default', 'High'],
   'ContextActionResult': ['Sink', 'Pass'],
 
   // Mesh
-  'MeshType': ['Head', 'Torso', 'Wedge', 'Prism', 'Pyramid', 'ParallelRamp', 'RightAngleRamp', 'CornerWedge', 'Brick', 'Sphere', 'Cylinder', 'FileMesh'],
+  'MeshType': [
+    'Head',
+    'Torso',
+    'Wedge',
+    'Prism',
+    'Pyramid',
+    'ParallelRamp',
+    'RightAngleRamp',
+    'CornerWedge',
+    'Brick',
+    'Sphere',
+    'Cylinder',
+    'FileMesh',
+  ],
 
   // Collision
   'CollisionFidelity': ['Default', 'Hull', 'Box', 'PreciseConvexDecomposition'],
@@ -147,9 +437,54 @@ const ENUM_VALUES: Record<string, string[]> = {
 
   // Character Appearance
   'BodyPart': ['Head', 'Torso', 'LeftArm', 'RightArm', 'LeftLeg', 'RightLeg'],
-  'BodyPartR15': ['Head', 'UpperTorso', 'LowerTorso', 'LeftFoot', 'LeftLowerLeg', 'LeftUpperLeg', 'RightFoot', 'RightLowerLeg', 'RightUpperLeg', 'LeftHand', 'LeftLowerArm', 'LeftUpperArm', 'RightHand', 'RightLowerArm', 'RightUpperArm', 'RootPart', 'Unknown'],
+  'BodyPartR15': [
+    'Head',
+    'UpperTorso',
+    'LowerTorso',
+    'LeftFoot',
+    'LeftLowerLeg',
+    'LeftUpperLeg',
+    'RightFoot',
+    'RightLowerLeg',
+    'RightUpperLeg',
+    'LeftHand',
+    'LeftLowerArm',
+    'LeftUpperArm',
+    'RightHand',
+    'RightLowerArm',
+    'RightUpperArm',
+    'RootPart',
+    'Unknown',
+  ],
   'AvatarItemType': ['Asset', 'Bundle'],
-  'AccessoryType': ['Unknown', 'Hat', 'Hair', 'Face', 'Neck', 'Shoulder', 'Front', 'Back', 'Waist', 'TShirt', 'Shirt', 'Pants', 'Jacket', 'Sweater', 'Shorts', 'LeftShoe', 'RightShoe', 'DressSkirt', 'Eyebrow', 'Eyelash', 'Head', 'LeftArm', 'LeftLeg', 'RightArm', 'RightLeg', 'Torso'],
+  'AccessoryType': [
+    'Unknown',
+    'Hat',
+    'Hair',
+    'Face',
+    'Neck',
+    'Shoulder',
+    'Front',
+    'Back',
+    'Waist',
+    'TShirt',
+    'Shirt',
+    'Pants',
+    'Jacket',
+    'Sweater',
+    'Shorts',
+    'LeftShoe',
+    'RightShoe',
+    'DressSkirt',
+    'Eyebrow',
+    'Eyelash',
+    'Head',
+    'LeftArm',
+    'LeftLeg',
+    'RightArm',
+    'RightLeg',
+    'Torso',
+  ],
 
   // Misc
   'NormalId': ['Top', 'Bottom', 'Front', 'Back', 'Left', 'Right'],
@@ -159,7 +494,15 @@ const ENUM_VALUES: Record<string, string[]> = {
   'PathWaypointAction': ['Walk', 'Jump', 'Custom'],
   'ExplosionType': ['NoCraters', 'Craters'],
   'DeviceType': ['Unknown', 'Desktop', 'Tablet', 'Phone'],
-  'DeviceTouchMovementMode': ['UserChoice', 'Thumbstick', 'DPad', 'Thumbpad', 'ClickToMove', 'Scriptable', 'DynamicThumbstick'],
+  'DeviceTouchMovementMode': [
+    'UserChoice',
+    'Thumbstick',
+    'DPad',
+    'Thumbpad',
+    'ClickToMove',
+    'Scriptable',
+    'DynamicThumbstick',
+  ],
   'ComputerMovementMode': ['Default', 'KeyboardMouse', 'ClickToMove', 'Scriptable'],
   'ComputerCameraMovementMode': ['Default', 'Follow', 'Classic', 'Orbital', 'CameraToggle'],
   'TouchCameraMovementMode': ['Default', 'Follow', 'Classic', 'Orbital'],
@@ -217,23 +560,23 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   resolveWebviewView = (
     webviewView: WebviewView,
     _context: WebviewViewResolveContext,
-    _token: CancellationToken
+    _token: CancellationToken,
   ): void => {
     this.webviewView = webviewView;
 
     webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.context.extensionUri],
+      'enableScripts': true,
+      'localResourceRoots': [this.context.extensionUri],
     };
 
     // Handle messages from webview
-    webviewView.webview.onDidReceiveMessage(async (message) => {
+    webviewView.webview.onDidReceiveMessage(async message => {
       if (message.type === 'propertyChange' && this.onChangeCallback !== undefined) {
         const success = await this.onChangeCallback(
           this.currentPath,
           message.property,
           message.value,
-          message.valueType
+          message.valueType,
         );
         // Send result back to webview
         webviewView.webview.postMessage({ 'type': 'changeResult', 'property': message.property, success });
@@ -245,10 +588,10 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
 
   private updateWebview = (): void => {
     if (this.webviewView === undefined) return;
-    this.webviewView.webview.html = this.getHtml(this.webviewView.webview);
+    this.webviewView.webview.html = this.getHtml();
   };
 
-  private getHtml = (webview: Webview): string => {
+  private getHtml = (): string => {
     const properties = this.properties;
     const instanceName = this.instanceName;
 
@@ -426,7 +769,15 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
         const parts = prop.value.split(',').map(s => parseFloat(s.trim()));
         let hex = '#888888';
         if (parts.length === 3 && parts.every(n => !isNaN(n))) {
-          hex = '#' + parts.map(n => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0')).join('');
+          hex =
+            '#' +
+            parts
+              .map(n =>
+                Math.round(Math.min(1, Math.max(0, n)) * 255)
+                  .toString(16)
+                  .padStart(2, '0'),
+              )
+              .join('');
         }
         inputHtml = `<div class="color-input-group">
           <input type="color" value="${hex}" id="color-${name}"
@@ -447,9 +798,9 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
           const values = ENUM_VALUES[enumType];
 
           if (values !== undefined) {
-            const options = values.map(v =>
-              `<option value="Enum.${enumType}.${v}" ${v === currentValue ? 'selected' : ''}>${v}</option>`
-            ).join('');
+            const options = values
+              .map(v => `<option value="Enum.${enumType}.${v}" ${v === currentValue ? 'selected' : ''}>${v}</option>`)
+              .join('');
             inputHtml = `<select data-property="${name}" onchange="sendChange('${name}', this.value, 'EnumItem')">
               ${options}
             </select>`;
@@ -465,10 +816,32 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       }
 
       case 'BrickColor': {
-        const brickColors = ['White', 'Grey', 'Light grey', 'Black', 'Really black', 'Bright red', 'Bright orange', 'Bright yellow', 'Bright green', 'Bright blue', 'Bright violet', 'Hot pink', 'Lime green', 'Cyan', 'Teal', 'Deep blue', 'Navy blue', 'Dark green', 'Brown', 'Reddish brown', 'Nougat'];
-        const options = brickColors.map(c =>
-          `<option value="${c}" ${c === prop.value ? 'selected' : ''}>${c}</option>`
-        ).join('');
+        const brickColors = [
+          'White',
+          'Grey',
+          'Light grey',
+          'Black',
+          'Really black',
+          'Bright red',
+          'Bright orange',
+          'Bright yellow',
+          'Bright green',
+          'Bright blue',
+          'Bright violet',
+          'Hot pink',
+          'Lime green',
+          'Cyan',
+          'Teal',
+          'Deep blue',
+          'Navy blue',
+          'Dark green',
+          'Brown',
+          'Reddish brown',
+          'Nougat',
+        ];
+        const options = brickColors
+          .map(c => `<option value="${c}" ${c === prop.value ? 'selected' : ''}>${c}</option>`)
+          .join('');
         inputHtml = `<select data-property="${name}" onchange="sendChange('${name}', this.value, 'BrickColor')">
           ${options}
           <option value="${value}" ${!brickColors.includes(prop.value) ? 'selected' : ''}>${value}</option>

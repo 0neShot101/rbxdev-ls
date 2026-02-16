@@ -2,7 +2,7 @@
  * Cross-platform script to copy server files into the extension
  */
 
-import { cpSync, mkdirSync, existsSync } from 'fs';
+import { cpSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const vscodeDir = join(import.meta.dir, '..');
@@ -11,7 +11,7 @@ const serverDir = join(vscodeDir, 'server');
 
 // Ensure server directory exists
 if (!existsSync(serverDir)) {
-  mkdirSync(serverDir, { recursive: true });
+  mkdirSync(serverDir, { 'recursive': true });
 }
 
 // Copy the bundled servers
@@ -26,7 +26,7 @@ const dataSource = join(rootDir, 'data');
 const dataDest = join(serverDir, 'data');
 
 if (existsSync(dataSource)) {
-  cpSync(dataSource, dataDest, { recursive: true });
+  cpSync(dataSource, dataDest, { 'recursive': true });
   console.log('Copied data/ -> server/data/');
 }
 

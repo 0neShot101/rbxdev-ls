@@ -2,9 +2,38 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.2.5] - 2026-02-15
+
+### Added
+
+- Select "Bundle & Execute in Roblox" from the play button dropdown to enable bundle mode
+- `Ctrl+Shift+E` respects the selected mode (normal execute or bundle+execute)
+- Status bar reflects current mode (`$(play)` or `$(package)`)
+- Auto-downloads `luau-bundle.exe` on first use, cached for future sessions
+- Reads `luau-bundle.config.json` from workspace root for output path
+- `rbxdev-ls.bundler.path` setting to override the bundler executable path
+- `Ctrl+Alt+E` keybinding for Bundle & Execute
+
+### Fixed
+
+- Remote spy now generates copyable Lua code for all argument types
+- Game tree shows all game children, not just hardcoded services
+- Shallow tree updates no longer replace deep tree data (smart merge)
+- Properties panel timeout increased to 5 seconds for reliable loading
+- Duplicate execute button removed from editor title bar
+
+## [0.2.4] - 2026-02-14
+
+### Fixed
+
+- Executor name now displays correctly in status bar (was showing "Roblox: Connected" instead of executor name)
+- Connection timeout caused by build script crash when MCP server wasn't built
+- Build script gracefully skips missing `mcp.js` instead of crashing
+
 ## [0.2.3] - 2026-02-14
 
 ### Added
+
 - Comprehensive documentation for all built-in functions visible on hover
   - Lua/Luau globals: `print`, `warn`, `error`, `assert`, `type`, `typeof`, `tostring`, `tonumber`, `pcall`, `xpcall`, `select`, `pairs`, `ipairs`, `next`, `unpack`, `rawget`, `rawset`, `rawequal`, `rawlen`, `setmetatable`, `getmetatable`, `require`
   - Standard libraries: `math`, `string`, `table`, `coroutine`, `bit32`, `utf8`, `os`, `buffer`, `task`, `debug`
@@ -15,6 +44,7 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 - Type cast field validation in strict mode — `{x = 0} :: {x: string}` now reports field type mismatch
 
 ### Fixed
+
 - Multi-return type checking no longer creates false union of all return values
 - `or` expressions correctly narrow away nil (`x or default` where x is `T?` produces `T | typeof(default)`)
 - Guard clause narrowing — after `if x == nil then return end`, `x` is narrowed to non-nil
@@ -24,6 +54,7 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 ## [0.2.2] - 2026-02-13
 
 ### Added
+
 - Variable tracking through assignment chains — `local RS = game:GetService'ReplicatedStorage'; local folder = RS.Models; folder.` now resolves live game children
 - Live game tree completions for variables assigned from any service (Workspace, ReplicatedStorage, CoreGui, Players, etc.)
 - Module `require()` completions from executor bridge with full metatable chain walking
@@ -33,6 +64,7 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 - Support for type annotations on variable declarations in all completion patterns
 
 ### Fixed
+
 - Literal types now assignable to base types (`{x: 1}` assignable to `{x: number}`)
 - Arithmetic operators work with number literal union types (`10 | 20 | 30`)
 - Mixed table types with indexers parse correctly (`{name: string, [number]: boolean}`)
@@ -46,16 +78,19 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 ## [0.2.1] - 2026-02-06
 
 ### Added
+
 - MCP server for AI assistant integration (GitHub Copilot, Claude, etc.)
 - Copilot language model tools for game tree, properties, execution, and script decompilation
 
 ## [0.1.3] - 2026-02-03
 
 ### Fixed
+
 - Full game tree now loads on first connect for complete autocomplete
 - Auto-updates no longer overwrite deep tree with shallow data
 
 ### Changed
+
 - `firstConnectDepth = 999` - Full tree dump on connect
 - `updateTreeDepth = 2` - Shallow updates for performance
 - Disabled automatic tree updates (use refresh button instead)
@@ -63,21 +98,25 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 ## [0.1.2] - 2026-02-03
 
 ### Fixed
+
 - Live completions now work with deeper game tree paths
 - Lazy-loaded children are now merged into completion model
 
 ### Added
+
 - Configurable bridge options via loadstring args
 - Increased default tree depth from 2 to 5 levels
 
 ## [0.1.1] - 2026-02-03
 
 ### Added
+
 - Documentation for executor bridge setup
 
 ## [0.1.0] - 2026-02-03
 
 ### Added
+
 - Initial release
 - Full Roblox API completions and type checking
 - Luau language support with type annotations

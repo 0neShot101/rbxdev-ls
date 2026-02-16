@@ -3,14 +3,7 @@
  * Shows properties of the selected instance in the Game Tree
  */
 
-import {
-  Event,
-  EventEmitter,
-  ThemeIcon,
-  TreeDataProvider,
-  TreeItem,
-  TreeItemCollapsibleState,
-} from 'vscode';
+import { Event, EventEmitter, ThemeIcon, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from 'vscode';
 
 /**
  * Represents a property entry from the executor

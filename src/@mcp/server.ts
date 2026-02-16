@@ -1051,8 +1051,7 @@ export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } =>
         const formatted = calls
           .map(call => {
             const time = new Date(call.timestamp * 1000).toISOString().slice(11, 23);
-            const pathStr = `game.${call.remotePath.join('.')}`;
-            return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Path: ${pathStr}\n  Args: ${call.arguments || '(none)'}`;
+            return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Code:\n${call.code}`;
           })
           .join('\n\n');
 

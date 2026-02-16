@@ -545,6 +545,8 @@ export interface RemoteSpyCall {
   readonly method: string;
   /** String representation of the arguments */
   readonly arguments: string;
+  /** Pre-built copyable Lua code that reproduces this remote call */
+  readonly code: string;
   /** Unix timestamp when the call occurred */
   readonly timestamp: number;
 }

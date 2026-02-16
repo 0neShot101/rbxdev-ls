@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "publisher": "rbxdev",
   "license": "MIT",
   "repository": {
@@ -375,6 +375,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable MCP server for AI assistants (GitHub Copilot, Claude, etc.)"
+        },
+        "rbxdev-ls.bundler.path": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to luau-bundle executable. Leave empty to auto-download."
         }
       }
     },
@@ -403,6 +408,11 @@
     "commands": [
       {
         "command": "rbxdev-ls.execute",
+        "title": "Execute in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.executeNormal",
         "title": "Execute in Roblox",
         "icon": "$(play)"
       },
@@ -510,6 +520,11 @@
         "command": "rbxdev-ls.copyQuickRemote",
         "title": "Quick Copy Last Remote Call",
         "icon": "$(clippy)"
+      },
+      {
+        "command": "rbxdev-ls.bundleExecute",
+        "title": "Bundle & Execute in Roblox",
+        "icon": "$(package)"
       }
     ],
     "keybindings": [
@@ -537,21 +552,24 @@
         "command": "rbxdev-ls.copyQuickRemote",
         "key": "ctrl+alt+c",
         "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.bundleExecute",
+        "key": "ctrl+alt+e",
+        "when": "editorLangId == lua || editorLangId == luau"
       }
     ],
     "menus": {
       "editor/title/run": [
         {
-          "command": "rbxdev-ls.execute",
+          "command": "rbxdev-ls.executeNormal",
           "when": "editorLangId == lua || editorLangId == luau",
           "group": "navigation@1"
-        }
-      ],
-      "editor/title": [
+        },
         {
-          "command": "rbxdev-ls.execute",
+          "command": "rbxdev-ls.bundleExecute",
           "when": "editorLangId == lua || editorLangId == luau",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "editor/context": [

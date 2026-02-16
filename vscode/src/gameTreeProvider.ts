@@ -409,12 +409,12 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   /**
-   * Refreshes the tree with new game tree data
+   * Refreshes the tree with new game tree data, merging with existing deep data
+   * so that shallow updates don't destroy the initially-loaded deep tree.
    * @param nodes - Array of root-level game tree nodes (services)
    */
   refresh = (nodes: ReadonlyArray<GameTreeNode>): void => {
-    this.rootNodes = nodes;
-    this.childrenCache.clear();
+    this.rootNodes = this.mergeNodeTrees(this.rootNodes, nodes);
     this._onDidChangeTreeData.fire(undefined);
   };
 
@@ -518,11 +518,10 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     }
 
     // Normal mode: Support lazy loading: show expand arrow if hasChildren is true OR if children array has items
-    const hasChildren = element.hasChildren === true ||
-      (element.children !== undefined && element.children.length > 0);
+    const hasChildren = element.hasChildren === true || (element.children !== undefined && element.children.length > 0);
     const item = new TreeItem(
       element.name,
-      hasChildren ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None
+      hasChildren ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None,
     );
     item.description = element.className;
     item.tooltip = `${element.className}\nPath: game.${element.path.join('.')}`;
@@ -556,7 +555,14 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       }));
     }
 
-    console.log('[GameTree] getChildren called for:', element.name, 'hasChildren:', element.hasChildren, 'children:', element.children?.length ?? 'undefined');
+    console.log(
+      '[GameTree] getChildren called for:',
+      element.name,
+      'hasChildren:',
+      element.hasChildren,
+      'children:',
+      element.children?.length ?? 'undefined',
+    );
 
     // Check if children are available in the element
     if (element.children !== undefined && element.children.length > 0) {
@@ -587,7 +593,12 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     }
 
     // If hasChildren is true but no children yet, fetch them via callback
-    console.log('[GameTree] Checking lazy load: hasChildren=', element.hasChildren, 'callback=', this.requestChildrenCallback !== undefined);
+    console.log(
+      '[GameTree] Checking lazy load: hasChildren=',
+      element.hasChildren,
+      'callback=',
+      this.requestChildrenCallback !== undefined,
+    );
     if (element.hasChildren === true && this.requestChildrenCallback !== undefined) {
       console.log('[GameTree] Fetching children for path:', element.path);
       const fetchedChildren = await this.requestChildrenCallback(element.path);
@@ -629,7 +640,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   handleDrop = async (
     target: GameTreeItem | undefined,
     dataTransfer: DataTransfer,
-    _token: CancellationToken
+    _token: CancellationToken,
   ): Promise<void> => {
     if (target === undefined || this.reparentCallback === undefined) return;
 
@@ -664,6 +675,55 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     return false;
   };
 
+  /**
+   * Merges updated (shallow) tree data with existing (deep) tree data.
+   * Preserves deeper children from the existing tree when the update only has hasChildren flags.
+   */
+  private mergeNodeTrees = (
+    existing: ReadonlyArray<GameTreeNode>,
+    updated: ReadonlyArray<GameTreeNode>,
+  ): ReadonlyArray<GameTreeNode> => {
+    if (existing.length === 0) return updated;
+
+    // Build lookup: name -> list of existing nodes (handles duplicate names)
+    const existingByName = new Map<string, GameTreeNode[]>();
+    for (const node of existing) {
+      const list = existingByName.get(node.name) ?? [];
+      list.push(node);
+      existingByName.set(node.name, list);
+    }
+
+    const consumed = new Map<string, number>();
+
+    return updated.map(newNode => {
+      const list = existingByName.get(newNode.name);
+      const idx = consumed.get(newNode.name) ?? 0;
+      consumed.set(newNode.name, idx + 1);
+
+      const existingNode = list?.[idx];
+      if (existingNode === undefined) return newNode;
+
+      // If update has full children, merge recursively to preserve deeper data
+      if (newNode.children !== undefined && newNode.children.length > 0) {
+        if (existingNode.children !== undefined && existingNode.children.length > 0) {
+          return {
+            'name': newNode.name,
+            'className': newNode.className,
+            'children': this.mergeNodeTrees(existingNode.children, newNode.children),
+          };
+        }
+        return newNode;
+      }
+
+      // Update only has hasChildren flag (shallow) but existing has full children — preserve existing
+      if (newNode.hasChildren === true && existingNode.children !== undefined && existingNode.children.length > 0) {
+        return existingNode;
+      }
+
+      return newNode;
+    });
+  };
+
   private getIconForClass = (className: string): Uri => {
     // Check direct match first
     let iconName = CLASS_ICON_MAP[className];
@@ -671,7 +731,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     // Check for partial matches if no direct match
     if (iconName === undefined) {
       if (className.includes('Value')) {
-        if (className.includes('Int') || className.includes('Number') || className.includes('Double')) iconName = 'intvalue';
+        if (className.includes('Int') || className.includes('Number') || className.includes('Double'))
+          iconName = 'intvalue';
         else if (className.includes('Bool')) iconName = 'boolvalue';
         else if (className.includes('String')) iconName = 'stringvalue';
         else if (className.includes('Object') || className.includes('Instance')) iconName = 'objectvalue';
@@ -679,15 +740,39 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
         else if (className.includes('Vector') || className.includes('Ray')) iconName = 'vector3value';
         else if (className.includes('CFrame')) iconName = 'cframevalue';
         else iconName = 'intvalue';
-      }
-      else if (className.includes('Part') || className.includes('Mesh')) iconName = 'part';
-      else if (className.includes('Light') || className.includes('Atmosphere') || className.includes('Sky') || className.includes('Effect')) iconName = 'lighting';
+      } else if (className.includes('Part') || className.includes('Mesh')) iconName = 'part';
+      else if (
+        className.includes('Light') ||
+        className.includes('Atmosphere') ||
+        className.includes('Sky') ||
+        className.includes('Effect')
+      )
+        iconName = 'lighting';
       else if (className.includes('Constraint')) iconName = 'constraint';
-      else if (className.includes('Weld') || className.includes('Joint') || className.includes('Snap') || className.includes('Glue')) iconName = 'weld';
+      else if (
+        className.includes('Weld') ||
+        className.includes('Joint') ||
+        className.includes('Snap') ||
+        className.includes('Glue')
+      )
+        iconName = 'weld';
       else if (className.includes('Motor') || className.includes('Rotate')) iconName = 'motor';
-      else if (className.includes('Force') || className.includes('Velocity') || className.includes('Gyro') || className.includes('Thrust')) iconName = 'bodyforce';
-      else if (className.includes('Animation') || className.includes('Keyframe') || className.includes('Pose')) iconName = 'animation';
-      else if (className.includes('Particle') || className.includes('Fire') || className.includes('Smoke') || className.includes('Sparkle')) iconName = 'particleemitter';
+      else if (
+        className.includes('Force') ||
+        className.includes('Velocity') ||
+        className.includes('Gyro') ||
+        className.includes('Thrust')
+      )
+        iconName = 'bodyforce';
+      else if (className.includes('Animation') || className.includes('Keyframe') || className.includes('Pose'))
+        iconName = 'animation';
+      else if (
+        className.includes('Particle') ||
+        className.includes('Fire') ||
+        className.includes('Smoke') ||
+        className.includes('Sparkle')
+      )
+        iconName = 'particleemitter';
       else if (className.includes('Beam')) iconName = 'beam';
       else if (className.includes('Trail')) iconName = 'trail';
       else if (className.includes('Humanoid')) iconName = 'humanoid';
@@ -699,10 +784,12 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       else if (className.includes('Button')) iconName = 'textlabel';
       else if (className.includes('Sound')) iconName = 'sound';
       else if (className.includes('Remote') || className.includes('Bindable')) iconName = 'remoteevent';
-      else if (className.includes('Decal') || className.includes('Texture') || className.includes('Surface')) iconName = 'decal';
+      else if (className.includes('Decal') || className.includes('Texture') || className.includes('Surface'))
+        iconName = 'decal';
       else if (className.includes('Click') || className.includes('Drag')) iconName = 'clickdetector';
       else if (className.includes('Proximity')) iconName = 'proximityprompt';
-      else if (className.includes('Selection') || className.includes('Highlight') || className.includes('Adornment')) iconName = 'highlight';
+      else if (className.includes('Selection') || className.includes('Highlight') || className.includes('Adornment'))
+        iconName = 'highlight';
       else if (className.includes('Attachment') || className.includes('Bone')) iconName = 'attachment';
       else if (className.includes('Tool') || className.includes('Accessory')) iconName = 'tool';
       else if (className.includes('Service')) iconName = 'storage';

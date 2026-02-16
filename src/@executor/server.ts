@@ -989,7 +989,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       const timeout = setTimeout(() => {
         pendingProperties.delete(id);
         resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 500); // Short timeout for hover responsiveness
+      }, 5000);
 
       pendingProperties.set(id, { resolve, reject, timeout });
       send({
