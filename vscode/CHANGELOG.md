@@ -2,6 +2,14 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.2.8] - 2026-02-15
+
+### Fixed
+
+- Game tree no longer merges siblings with the same name into one entry (index-based path disambiguation)
+- Bridge script reconnects automatically after VS Code restart (retry on failed connect)
+- Re-executing the bridge script no longer causes old/new scripts to compete (unique bridge ID per execution)
+
 ## [0.2.7] - 2026-02-15
 
 ### Fixed

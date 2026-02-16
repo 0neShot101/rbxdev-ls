@@ -691,7 +691,7 @@ export function activate(context: ExtensionContext) {
 
     // Game Tree commands
     commands.registerCommand('rbxdev-ls.copyPath', (item: GameTreeItem) => {
-      const pathStr = `game.${item.path.join('.')}`;
+      const pathStr = `game.${item.path.map(s => { const i = s.indexOf('\0'); return i >= 0 ? s.substring(0, i) : s; }).join('.')}`;
       env.clipboard.writeText(pathStr);
       window.showInformationMessage(`Copied: ${pathStr}`);
     }),
@@ -702,7 +702,7 @@ export function activate(context: ExtensionContext) {
         window.showErrorMessage('No active editor');
         return;
       }
-      const pathStr = `game.${item.path.join('.')}`;
+      const pathStr = `game.${item.path.map(s => { const i = s.indexOf('\0'); return i >= 0 ? s.substring(0, i) : s; }).join('.')}`;
       await editor.edit(editBuilder => {
         editBuilder.insert(editor.selection.active, pathStr);
       });

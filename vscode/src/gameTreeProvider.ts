@@ -502,13 +502,24 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     this.searchResults = results;
   };
 
+  /**
+   * Strips the \0index suffix from path segments for display purposes.
+   */
+  private static cleanPathForDisplay = (pathSegments: ReadonlyArray<string>): string =>
+    pathSegments.map(s => {
+      const nullIdx = s.indexOf('\0');
+      return nullIdx >= 0 ? s.substring(0, nullIdx) : s;
+    }).join('.');
+
   getTreeItem = (element: GameTreeItem): TreeItem => {
+    const displayPath = GameTreeDataProvider.cleanPathForDisplay(element.path);
+
     // In search mode, show flat results without expand arrows
     if (this.searchOptions !== undefined) {
       const item = new TreeItem(element.name, TreeItemCollapsibleState.None);
       // Show full path in description during search
-      item.description = `${element.className} — game.${element.path.join('.')}`;
-      item.tooltip = `${element.className}\nPath: game.${element.path.join('.')}`;
+      item.description = `${element.className} — game.${displayPath}`;
+      item.tooltip = `${element.className}\nPath: game.${displayPath}`;
 
       const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
       item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
@@ -524,7 +535,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       hasChildren ? TreeItemCollapsibleState.Collapsed : TreeItemCollapsibleState.None,
     );
     item.description = element.className;
-    item.tooltip = `${element.className}\nPath: game.${element.path.join('.')}`;
+    item.tooltip = `${element.className}\nPath: game.${displayPath}`;
 
     // Set contextValue for context menu conditions
     const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
@@ -532,6 +543,42 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
 
     item.iconPath = this.getIconForClass(element.className);
     return item;
+  };
+
+  /**
+   * Maps child nodes to GameTreeItems, disambiguating duplicate names
+   * by appending \0index to path segments when siblings share a name.
+   */
+  private mapChildrenToItems = (
+    children: ReadonlyArray<GameTreeNode>,
+    parentPath: ReadonlyArray<string>,
+    isService = false,
+  ): GameTreeItem[] => {
+    // Count occurrences of each name to detect duplicates
+    const nameFrequency = new Map<string, number>();
+    for (const child of children) {
+      nameFrequency.set(child.name, (nameFrequency.get(child.name) ?? 0) + 1);
+    }
+
+    const nameIndex = new Map<string, number>();
+
+    return children.map(child => {
+      const freq = nameFrequency.get(child.name)!;
+      const idx = nameIndex.get(child.name) ?? 0;
+      nameIndex.set(child.name, idx + 1);
+
+      // Only add index suffix when this name appears more than once among siblings
+      const pathSegment = freq > 1 ? `${child.name}\0${idx}` : child.name;
+
+      return {
+        'name': child.name,
+        'className': child.className,
+        'path': [...parentPath, pathSegment],
+        'children': child.children,
+        'hasChildren': child.hasChildren,
+        isService,
+      };
+    });
   };
 
   getChildren = async (element?: GameTreeItem): Promise<GameTreeItem[]> => {
@@ -545,14 +592,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     }
 
     if (element === undefined) {
-      return this.rootNodes.map(node => ({
-        'name': node.name,
-        'className': node.className,
-        'path': [node.name],
-        'children': node.children,
-        'hasChildren': node.hasChildren,
-        'isService': true,
-      }));
+      return this.mapChildrenToItems(this.rootNodes, [], true);
     }
 
     console.log(
@@ -567,14 +607,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     // Check if children are available in the element
     if (element.children !== undefined && element.children.length > 0) {
       console.log('[GameTree] Returning existing children:', element.children.length);
-      return element.children.map(child => ({
-        'name': child.name,
-        'className': child.className,
-        'path': [...element.path, child.name],
-        'children': child.children,
-        'hasChildren': child.hasChildren,
-        'isService': false,
-      }));
+      return this.mapChildrenToItems(element.children, element.path);
     }
 
     // Check if we have cached children for this path
@@ -582,14 +615,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     const cachedChildren = this.childrenCache.get(pathKey);
     if (cachedChildren !== undefined) {
       console.log('[GameTree] Returning cached children:', cachedChildren.length);
-      return cachedChildren.map(child => ({
-        'name': child.name,
-        'className': child.className,
-        'path': [...element.path, child.name],
-        'children': child.children,
-        'hasChildren': child.hasChildren,
-        'isService': false,
-      }));
+      return this.mapChildrenToItems(cachedChildren, element.path);
     }
 
     // If hasChildren is true but no children yet, fetch them via callback
@@ -606,14 +632,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       if (fetchedChildren !== undefined && fetchedChildren.length > 0) {
         // Cache the fetched children
         this.childrenCache.set(pathKey, fetchedChildren);
-        return fetchedChildren.map(child => ({
-          'name': child.name,
-          'className': child.className,
-          'path': [...element.path, child.name],
-          'children': child.children,
-          'hasChildren': child.hasChildren,
-          'isService': false,
-        }));
+        return this.mapChildrenToItems(fetchedChildren, element.path);
       }
     }
 

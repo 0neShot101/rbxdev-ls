@@ -1,6 +1,8 @@
 local HttpService = game:GetService'HttpService'
 local Players = game:GetService'Players'
 
+local BRIDGE_ID = tostring(math.random(1, 999999999))
+
 if getgenv and getgenv()._RBXDEV_BRIDGE then
 	local old = getgenv()._RBXDEV_BRIDGE
 	if old.connection then pcall(old.connection.Close, old.connection) end
@@ -225,10 +227,18 @@ local originalNamecall = nil
 -- Register this bridge instance globally for cleanup on re-execution
 if getgenv then
 	getgenv()._RBXDEV_BRIDGE = {
+		id = BRIDGE_ID,
 		connection = nil, -- updated when connection is established
 		refreshConnections = refreshConnections,
 		alive = true,
 	}
+end
+
+-- Check if this specific bridge instance is still the active one
+local isBridgeAlive = function()
+	if getgenv == nil then return bridgeAlive end
+	local bridge = getgenv()._RBXDEV_BRIDGE
+	return bridge ~= nil and bridge.id == BRIDGE_ID and bridge.alive
 end
 
 --  Networking
@@ -259,9 +269,30 @@ end
 local resolveInstancePath = function(path)
 	local instance = game
 	for _, segment in ipairs(path) do
-		local ok, child = pcall(instance.FindFirstChild, instance, segment)
-		if not ok or child == nil then return nil end
-		instance = child
+		-- Check for index-based resolution: "name\0index" (for duplicate-named siblings)
+		local sep = segment:find("\0", 1, true)
+		if sep then
+			local name = segment:sub(1, sep - 1)
+			local idx = tonumber(segment:sub(sep + 1))
+			if idx == nil then return nil end
+			local count = 0
+			local found = nil
+			for _, child in ipairs(instance:GetChildren()) do
+				if child.Name == name then
+					if count == idx then
+						found = child
+						break
+					end
+					count = count + 1
+				end
+			end
+			if found == nil then return nil end
+			instance = found
+		else
+			local ok, child = pcall(instance.FindFirstChild, instance, segment)
+			if not ok or child == nil then return nil end
+			instance = child
+		end
 	end
 	return instance
 end
@@ -1030,11 +1061,14 @@ end
 
 local connect
 connect = function()
-	if not bridgeAlive then return false end
+	if not isBridgeAlive() then return false end
 
 	local ok, ws = pcall(WebSocket.connect, CONFIG.host)
 	if not ok or ws == nil then
-		warn('[rbxdev-bridge] Failed to connect: ' .. tostring(ws))
+		-- Retry after delay (handles VS Code restart where server isn't ready yet)
+		task.delay(CONFIG.reconnectDelay, function()
+			if not connected and isBridgeAlive() then connect() end
+		end)
 		return false
 	end
 
@@ -1054,7 +1088,7 @@ connect = function()
 		connected = false
 		connection = nil
 		task.delay(CONFIG.reconnectDelay, function()
-			if not connected and bridgeAlive then connect() end
+			if not connected and isBridgeAlive() then connect() end
 		end)
 	end)
 
