@@ -2,6 +2,21 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.2.7] - 2026-02-15
+
+### Fixed
+
+- Bridge script no longer floods VS Code with redundant game tree updates (removed auto DescendantAdded/Removing listeners)
+- Re-executing the bridge script now properly replaces the old connection instead of being rejected
+- Log hooks no longer double-wrap on bridge script re-execution
+- Bridge script cleanup on re-execution (closes old WebSocket, disconnects old listeners)
+
+## [0.2.6] - 2026-02-15
+
+### Fixed
+
+- Extension failing to activate due to missing dependencies in VSIX package
+
 ## [0.2.5] - 2026-02-15
 
 ### Added

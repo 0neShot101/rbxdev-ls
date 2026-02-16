@@ -1,6 +1,13 @@
 local HttpService = game:GetService'HttpService'
 local Players = game:GetService'Players'
 
+if getgenv and getgenv()._RBXDEV_BRIDGE then
+	local old = getgenv()._RBXDEV_BRIDGE
+	if old.connection then pcall(old.connection.Close, old.connection) end
+	for _, conn in ipairs(old.refreshConnections or {}) do pcall(conn.Disconnect, conn) end
+	old.alive = false
+end
+
 local userConfig = (...) or {}
 
 local CONFIG = {
@@ -209,12 +216,20 @@ end)()
 local connection = nil
 local connected = false
 local refreshConnections = {}
-local pendingUpdate = false
-local updateDebounce = 0.5
+local bridgeAlive = true
 
 local remoteSpyEnabled = false
 local remoteSpyFilter = ''
 local originalNamecall = nil
+
+-- Register this bridge instance globally for cleanup on re-execution
+if getgenv then
+	getgenv()._RBXDEV_BRIDGE = {
+		connection = nil, -- updated when connection is established
+		refreshConnections = refreshConnections,
+		alive = true,
+	}
+end
 
 --  Networking
 
@@ -585,16 +600,9 @@ local getGameTree = function(services, depth)
 	return tree
 end
 
-local sendGameTreeUpdate
-sendGameTreeUpdate = function()
-	if pendingUpdate then return end
-	pendingUpdate = true
-	task.delay(updateDebounce, function()
-		pendingUpdate = false
-		if not connected then return end
-		send{ type = 'gameTree', data = getGameTree(nil, CONFIG.updateTreeDepth) }
-	end)
-end
+-- Game tree updates are sent only on connect and when explicitly requested by VS Code.
+-- No automatic DescendantAdded/DescendantRemoving listeners — they fire too frequently
+-- and flood VS Code with redundant tree dumps. Use the refresh button instead.
 
 --  Teleport helper
 
@@ -956,6 +964,9 @@ local handleMessage = function(rawMessage)
 end
 
 local setupLogHooks = function()
+	-- Prevent double-hooking on re-execution
+	if getgenv and getgenv()._RBXDEV_LOG_HOOKED then return end
+
 	local inHook = false
 
 	local safeLog = function(level, ...)
@@ -996,6 +1007,7 @@ local setupLogHooks = function()
 			return originalError(message, level)
 		end)
 
+		if getgenv then getgenv()._RBXDEV_LOG_HOOKED = true end
 		return
 	end
 
@@ -1011,18 +1023,15 @@ local setupLogHooks = function()
 		safeLog('warn', ...)
 		return originalWarn(...)
 	end
+
+	if getgenv then getgenv()._RBXDEV_LOG_HOOKED = true end
 end
 
-local setupEventListeners = function()
-	for _, conn in ipairs(refreshConnections) do pcall(conn.Disconnect, conn) end
-	refreshConnections = {}
-
-	table.insert(refreshConnections, game.DescendantAdded:Connect(function() sendGameTreeUpdate() end))
-	table.insert(refreshConnections, game.DescendantRemoving:Connect(function() sendGameTreeUpdate() end))
-end
 
 local connect
 connect = function()
+	if not bridgeAlive then return false end
+
 	local ok, ws = pcall(WebSocket.connect, CONFIG.host)
 	if not ok or ws == nil then
 		warn('[rbxdev-bridge] Failed to connect: ' .. tostring(ws))
@@ -1031,6 +1040,10 @@ connect = function()
 
 	connection = ws
 	connected = true
+
+	if getgenv and getgenv()._RBXDEV_BRIDGE then
+		getgenv()._RBXDEV_BRIDGE.connection = ws
+	end
 
 	send{ type = 'connected', executorName = executorName, version = executorVersion }
 	send{ type = 'gameTree', data = getGameTree(nil, CONFIG.firstConnectDepth) }
@@ -1041,7 +1054,7 @@ connect = function()
 		connected = false
 		connection = nil
 		task.delay(CONFIG.reconnectDelay, function()
-			if not connected then connect() end
+			if not connected and bridgeAlive then connect() end
 		end)
 	end)
 
@@ -1050,4 +1063,3 @@ end
 
 connect()
 setupLogHooks()
-setupEventListeners()

@@ -817,9 +817,22 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       log(`[bridge] WebSocket server started on port ${port}`);
 
       server.on('connection', (ws: WebSocket) => {
+        // If an old client is still connected, close it and accept the new one.
+        // This handles re-execution of the bridge script where the old close
+        // hasn't been processed yet.
         if (client !== undefined) {
-          ws.close(1000, 'Another client is already connected');
-          return;
+          log('[bridge] Replacing existing client connection');
+          try {
+            client.close(1000, 'Replaced by new connection');
+          } catch {
+            // Old connection may already be dead
+          }
+          client = undefined;
+          executorName = undefined;
+          if (handshakeTimeout !== undefined) {
+            clearTimeout(handshakeTimeout);
+            handshakeTimeout = undefined;
+          }
         }
 
         client = ws;
