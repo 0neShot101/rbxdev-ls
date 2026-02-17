@@ -187,15 +187,15 @@ export const setupFormattingHandler = (
       const lines = originalText.split('\n');
       let byteOffset = 0;
       for (let i = 0; i < params.range.start.line; i++) {
-        byteOffset += (lines[i]?.length ?? 0) + 1;
+        byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       }
-      const rangeStart = byteOffset + params.range.start.character;
+      const rangeStart = byteOffset + Buffer.byteLength((lines[params.range.start.line] ?? '').slice(0, params.range.start.character), 'utf8');
 
       byteOffset = 0;
       for (let i = 0; i < params.range.end.line; i++) {
-        byteOffset += (lines[i]?.length ?? 0) + 1;
+        byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       }
-      const rangeEnd = byteOffset + params.range.end.character;
+      const rangeEnd = byteOffset + Buffer.byteLength((lines[params.range.end.line] ?? '').slice(0, params.range.end.character), 'utf8');
 
       const formatted = await formatWithStyLuaRange(originalText, rangeStart, rangeEnd);
       if (formatted !== undefined && formatted !== originalText) {
@@ -214,7 +214,9 @@ export const setupFormattingHandler = (
     }
 
     const lines = originalText.split('\n');
-    const rangeLines = lines.slice(params.range.start.line, params.range.end.line + 1);
+    const startLine = params.range.start.line;
+    const endLine = params.range.end.line;
+    const rangeLines = lines.slice(startLine, endLine + 1);
     const rangeText = rangeLines.join('\n');
     const formatted = basicFormat(rangeText);
 
@@ -222,7 +224,10 @@ export const setupFormattingHandler = (
 
     return [
       {
-        'range': params.range,
+        'range': {
+          'start': { 'line': startLine, 'character': 0 },
+          'end': { 'line': endLine, 'character': (lines[endLine] ?? '').length },
+        },
         'newText': formatted,
       },
     ];

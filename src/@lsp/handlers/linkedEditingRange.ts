@@ -1,56 +1,144 @@
-import { walk } from '@parser/visitor';
+import { walkExpression, walkStatement } from '@parser/visitor';
 
-import type { Chunk, Identifier } from '@typings/ast';
+import type { Chunk, Expression, Identifier, Statement } from '@typings/ast';
 import type { ReferenceLocation } from '@typings/handlers';
 import type { DocumentManager } from '@typings/lsp';
 import type { Connection, LinkedEditingRangeParams, LinkedEditingRanges, Position } from 'vscode-languageserver';
 
-export const collectLinkedReferences = (chunk: Chunk): Map<string, ReferenceLocation[]> => {
-  const references = new Map<string, ReferenceLocation[]>();
+interface ScopeEntry {
+  readonly declarationLine: number;
+  readonly declarationColumn: number;
+  readonly references: ReferenceLocation[];
+}
 
-  const addReference = (ident: Identifier) => {
-    const locations = references.get(ident.name) ?? [];
-    locations.push({
-      'line': ident.range.start.line - 1,
-      'character': ident.range.start.column - 1,
-      'endCharacter': ident.range.end.column - 1,
-    });
-    references.set(ident.name, locations);
+const toRef = (ident: Identifier): ReferenceLocation => ({
+  'line': ident.range.start.line - 1,
+  'character': ident.range.start.column - 1,
+  'endCharacter': ident.range.end.column - 1,
+});
+
+export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
+  const entries: ScopeEntry[] = [];
+  const scopeStack: Map<string, ScopeEntry>[] = [new Map()];
+
+  const currentScope = (): Map<string, ScopeEntry> => scopeStack[scopeStack.length - 1]!;
+
+  const pushScope = (): void => {
+    scopeStack.push(new Map());
   };
 
-  walk(chunk, {
-    'visitIdentifier': node => {
-      addReference(node);
-    },
-    'visitLocalDeclaration': node => {
-      for (const name of node.names) addReference(name);
-    },
-    'visitLocalFunction': node => {
-      addReference(node.name);
-    },
-    'visitFunctionDeclaration': node => {
-      addReference(node.name.base);
-      for (const part of node.name.path) addReference(part);
-      if (node.name.method !== undefined) addReference(node.name.method);
-    },
-    'visitTypeAlias': node => {
-      addReference(node.name);
-    },
-    'visitForNumeric': node => {
-      addReference(node.variable);
-    },
-    'visitForGeneric': node => {
-      for (const v of node.variables) addReference(v);
-    },
-    'visitMemberExpression': node => {
-      addReference(node.property);
-    },
-    'visitMethodCallExpression': node => {
-      addReference(node.method);
-    },
-  });
+  const popScope = (): void => {
+    scopeStack.pop();
+  };
 
-  return references;
+  const declare = (ident: Identifier): void => {
+    const entry: ScopeEntry = {
+      'declarationLine': ident.range.start.line - 1,
+      'declarationColumn': ident.range.start.column - 1,
+      'references': [toRef(ident)],
+    };
+    currentScope().set(ident.name, entry);
+    entries.push(entry);
+  };
+
+  const resolve = (name: string): ScopeEntry | undefined => {
+    for (let i = scopeStack.length - 1; i >= 0; i--) {
+      const entry = scopeStack[i]!.get(name);
+      if (entry !== undefined) return entry;
+    }
+    return undefined;
+  };
+
+  const resolveIdent = (ident: Identifier): void => {
+    const entry = resolve(ident.name);
+    if (entry !== undefined) entry.references.push(toRef(ident));
+  };
+
+  const visitExpr = (expr: Expression): void => {
+    walkExpression(expr, {
+      'visitIdentifier': (node: Identifier) => {
+        resolveIdent(node);
+      },
+    });
+  };
+
+  const walkBody = (stmts: ReadonlyArray<Statement>): void => {
+    for (const stmt of stmts) {
+      switch (stmt.kind) {
+        case 'LocalDeclaration':
+          stmt.values.forEach(visitExpr);
+          stmt.names.forEach(declare);
+          break;
+
+        case 'LocalFunction':
+          declare(stmt.name);
+          pushScope();
+          stmt.func.params.forEach(p => { if (p.name !== undefined) declare(p.name); });
+          walkBody(stmt.func.body);
+          popScope();
+          break;
+
+        case 'FunctionDeclaration': {
+          const existing = resolve(stmt.name.base.name);
+          if (existing !== undefined) existing.references.push(toRef(stmt.name.base));
+          pushScope();
+          stmt.func.params.forEach(p => { if (p.name !== undefined) declare(p.name); });
+          walkBody(stmt.func.body);
+          popScope();
+          break;
+        }
+
+        case 'ForNumeric':
+          pushScope();
+          declare(stmt.variable);
+          walkBody(stmt.body);
+          popScope();
+          break;
+
+        case 'ForGeneric':
+          pushScope();
+          stmt.variables.forEach(declare);
+          walkBody(stmt.body);
+          popScope();
+          break;
+
+        case 'IfStatement':
+          pushScope();
+          walkBody(stmt.thenBody);
+          popScope();
+          for (const clause of stmt.elseifClauses) {
+            pushScope();
+            walkBody(clause.body);
+            popScope();
+          }
+          if (stmt.elseBody !== undefined) {
+            pushScope();
+            walkBody(stmt.elseBody);
+            popScope();
+          }
+          break;
+
+        case 'WhileStatement':
+        case 'RepeatStatement':
+        case 'DoStatement':
+          pushScope();
+          walkBody(stmt.body);
+          popScope();
+          break;
+
+        default:
+          walkStatement(stmt, {
+            'visitIdentifier': (node: Identifier) => {
+              resolveIdent(node);
+            },
+          });
+          break;
+      }
+    }
+  };
+
+  walkBody(chunk.body);
+  return entries;
 };
 
 const getWordAtPosition = (content: string, position: Position): string | undefined => {
@@ -68,7 +156,7 @@ const getWordAtPosition = (content: string, position: Position): string | undefi
   return line.slice(start, end);
 };
 
-/** Provides linked editing ranges for simultaneous identifier renaming. */
+/** Provides linked editing ranges for simultaneous identifier renaming within the same scope. */
 export const setupLinkedEditingRangeHandler = (connection: Connection, documentManager: DocumentManager): void => {
   connection.languages.onLinkedEditingRange((params: LinkedEditingRangeParams): LinkedEditingRanges | null => {
     const document = documentManager.getDocument(params.textDocument.uri);
@@ -77,16 +165,24 @@ export const setupLinkedEditingRangeHandler = (connection: Connection, documentM
     const word = getWordAtPosition(document.content, params.position);
     if (word === undefined) return null;
 
-    const references = collectLinkedReferences(document.ast);
-    const locations = references.get(word);
-    if (locations === undefined) return null;
+    const entries = collectScopedReferences(document.ast);
+    const { line, character } = params.position;
 
-    return {
-      'ranges': locations.map(loc => ({
-        'start': { 'line': loc.line, 'character': loc.character },
-        'end': { 'line': loc.line, 'character': loc.endCharacter },
-      })),
-      'wordPattern': '[a-zA-Z_]\\w*',
-    };
+    for (const entry of entries) {
+      const match = entry.references.find(
+        ref => ref.line === line && character >= ref.character && character <= ref.endCharacter,
+      );
+      if (match !== undefined) {
+        return {
+          'ranges': entry.references.map(loc => ({
+            'start': { 'line': loc.line, 'character': loc.character },
+            'end': { 'line': loc.line, 'character': loc.endCharacter },
+          })),
+          'wordPattern': '[a-zA-Z_]\\w*',
+        };
+      }
+    }
+
+    return null;
   });
 };

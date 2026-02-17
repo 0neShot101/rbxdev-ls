@@ -1,4 +1,5 @@
 import { walk } from '@parser/visitor';
+import { positionInRange } from '@utils/position';
 import { SymbolKind } from 'vscode-languageserver';
 
 import type {
@@ -30,22 +31,6 @@ const convertRange = (range: {
   'start': { 'line': range.start.line - 1, 'character': range.start.column - 1 },
   'end': { 'line': range.end.line - 1, 'character': range.end.column - 1 },
 });
-
-const positionInRange = (
-  line: number,
-  character: number,
-  range: { start: { line: number; column: number }; end: { line: number; column: number } },
-): boolean => {
-  const startLine = range.start.line - 1;
-  const endLine = range.end.line - 1;
-  const startChar = range.start.column - 1;
-  const endChar = range.end.column - 1;
-
-  if (line < startLine || line > endLine) return false;
-  if (line === startLine && character < startChar) return false;
-  if (line === endLine && character > endChar) return false;
-  return true;
-};
 
 const getCalleeName = (expr: Expression): string | undefined => {
   if (expr.kind === 'Identifier') return expr.name;
@@ -173,16 +158,10 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
     if (document === undefined || document.ast === undefined) return null;
 
     const functions = collectCallHierarchyFunctions(document.ast.body);
-    const { line, character } = params.position;
+    const pos = { 'line': params.position.line, 'character': params.position.character };
 
     for (const func of functions) {
-      if (
-        positionInRange(line, character, {
-          'start': { 'line': func.range.start.line + 1, 'column': func.range.start.character + 1 },
-          'end': { 'line': func.range.end.line + 1, 'column': func.range.end.character + 1 },
-        })
-      )
-        return [functionToItem(func, params.textDocument.uri)];
+      if (positionInRange(pos, func.range)) return [functionToItem(func, params.textDocument.uri)];
     }
 
     return null;
@@ -249,26 +228,31 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
 
       const callSites = new Map<string, Range[]>();
 
-      const walkBody = (stmts: ReadonlyArray<Statement>): void => {
-        for (const stmt of stmts) {
-          if (stmt.kind === 'CallStatement') {
-            const name =
-              stmt.expression.kind === 'CallExpression'
-                ? getCalleeName(stmt.expression.callee)
-                : stmt.expression.kind === 'MethodCallExpression'
-                  ? stmt.expression.method.name
-                  : undefined;
+      const collectFromBody = (stmts: ReadonlyArray<Statement>): void => {
+        const fakeChunk: Chunk = {
+          'kind': 'Chunk',
+          'body': stmts as Statement[],
+          'comments': [],
+          'range': targetFunc.range as unknown as Chunk['range'],
+        };
 
-            if (name !== undefined) {
-              const ranges = callSites.get(name) ?? [];
-              ranges.push(convertRange(stmt.expression.range));
-              callSites.set(name, ranges);
-            }
-          }
-        }
+        walk(fakeChunk, {
+          'visitCallExpression': (node: CallExpression) => {
+            const name = getCalleeName(node.callee);
+            if (name === undefined) return;
+            const ranges = callSites.get(name) ?? [];
+            ranges.push(convertRange(node.range));
+            callSites.set(name, ranges);
+          },
+          'visitMethodCallExpression': (node: MethodCallExpression) => {
+            const ranges = callSites.get(node.method.name) ?? [];
+            ranges.push(convertRange(node.range));
+            callSites.set(node.method.name, ranges);
+          },
+        });
       };
 
-      walkBody(targetFunc.bodyStatements);
+      collectFromBody(targetFunc.bodyStatements);
 
       const results: CallHierarchyOutgoingCall[] = [];
       for (const [calledName, ranges] of callSites) {

@@ -6,7 +6,7 @@ import {
   type InitializeResult,
 } from 'vscode-languageserver/node';
 
-import { serverCapabilities } from './capabilities';
+import { serverCapabilities } from '@core/capabilities';
 
 /** Type alias for the LSP Connection interface. */
 export type ConnectionInstance = Connection;

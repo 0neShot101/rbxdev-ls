@@ -18,7 +18,7 @@ import {
 } from '@lsp/handlers/hover';
 import { isTypeAlias } from '@lsp/handlers/implementation';
 import { collectInlayHints } from '@lsp/handlers/inlayHints';
-import { collectLinkedReferences } from '@lsp/handlers/linkedEditingRange';
+import { collectScopedReferences } from '@lsp/handlers/linkedEditingRange';
 import { collectReferences } from '@lsp/handlers/references';
 import { collectRenameReferences, isValidIdentifier } from '@lsp/handlers/rename';
 import { collectContainingRanges } from '@lsp/handlers/selectionRange';
@@ -385,12 +385,13 @@ describe('Document Link Handler', () => {
 });
 
 describe('Linked Editing Range Handler', () => {
-  test('collectLinkedReferences finds matching references', () => {
+  test('collectScopedReferences finds matching references by scope', () => {
     const chunk = parseCode('local x = 1\nprint(x)');
-    const refs = collectLinkedReferences(chunk);
-    const xRefs = refs.get('x');
-    expect(xRefs).toBeDefined();
-    expect(xRefs!.length).toBeGreaterThanOrEqual(2);
+    const entries = collectScopedReferences(chunk);
+    expect(entries.length).toBeGreaterThan(0);
+    const xEntry = entries.find(e => e.declarationLine === 0);
+    expect(xEntry).toBeDefined();
+    expect(xEntry!.references.length).toBeGreaterThanOrEqual(1);
   });
 });
 

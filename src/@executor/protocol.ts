@@ -41,7 +41,7 @@ export const isGameTreeMessage = (msg: unknown): msg is GameTreeMessage =>
   isRecord(msg) && msg['type'] === 'gameTree' && Array.isArray(msg['data']);
 
 export const isRuntimeErrorMessage = (msg: unknown): msg is RuntimeErrorMessage =>
-  isRecord(msg) && msg['type'] === 'runtimeError' && typeof msg['error'] === 'object';
+  isRecord(msg) && msg['type'] === 'runtimeError' && typeof msg['error'] === 'object' && msg['error'] !== null;
 
 export const isLogMessage = (msg: unknown): msg is LogMessage =>
   isRecord(msg) && msg['type'] === 'log' && hasStringField(msg, 'level') && hasStringField(msg, 'message');
@@ -63,7 +63,7 @@ export const isSetRemoteSpyFilterResultMessage =
   createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
 
 export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
-  isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object';
+  isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object' && msg['call'] !== null;
 
 const clientMessageValidators: Record<string, (msg: unknown) => msg is ClientMessage> = {
   'connected': isConnectedMessage,

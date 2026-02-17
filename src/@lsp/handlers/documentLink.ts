@@ -17,6 +17,7 @@ const decodeFilePath = (documentUri: string): string | undefined => {
   }
 };
 
+/** Collects document links from require() calls with relative paths. */
 export const collectRequireLinks = (chunk: Chunk, documentUri: string): DocumentLink[] => {
   const links: DocumentLink[] = [];
 
