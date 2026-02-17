@@ -140,24 +140,19 @@ const ensureBundler = async (context: ExtensionContext): Promise<string> => {
       }
 
       return new Promise<string>((resolve, reject) => {
-        execFile(
-          'curl',
-          ['-fSL', '-o', bundlerPath, BUNDLER_URL],
-          { 'timeout': 300000 },
-          (error, _stdout, stderr) => {
-            if (error) {
-              fs.unlink(bundlerPath, () => {});
-              reject(new Error(stderr || error.message));
-              return;
-            }
-            if (fs.existsSync(bundlerPath) === false || fs.statSync(bundlerPath).size === 0) {
-              fs.unlink(bundlerPath, () => {});
-              reject(new Error('Download produced an empty file'));
-              return;
-            }
-            resolve(bundlerPath);
-          },
-        );
+        execFile('curl', ['-fSL', '-o', bundlerPath, BUNDLER_URL], { 'timeout': 300000 }, (error, _stdout, stderr) => {
+          if (error) {
+            fs.unlink(bundlerPath, () => {});
+            reject(new Error(stderr || error.message));
+            return;
+          }
+          if (fs.existsSync(bundlerPath) === false || fs.statSync(bundlerPath).size === 0) {
+            fs.unlink(bundlerPath, () => {});
+            reject(new Error('Download produced an empty file'));
+            return;
+          }
+          resolve(bundlerPath);
+        });
       });
     },
   );
@@ -691,7 +686,12 @@ export function activate(context: ExtensionContext) {
 
     // Game Tree commands
     commands.registerCommand('rbxdev-ls.copyPath', (item: GameTreeItem) => {
-      const pathStr = `game.${item.path.map(s => { const i = s.indexOf('\0'); return i >= 0 ? s.substring(0, i) : s; }).join('.')}`;
+      const pathStr = `game.${item.path
+        .map(s => {
+          const i = s.indexOf('\0');
+          return i >= 0 ? s.substring(0, i) : s;
+        })
+        .join('.')}`;
       env.clipboard.writeText(pathStr);
       window.showInformationMessage(`Copied: ${pathStr}`);
     }),
@@ -702,7 +702,12 @@ export function activate(context: ExtensionContext) {
         window.showErrorMessage('No active editor');
         return;
       }
-      const pathStr = `game.${item.path.map(s => { const i = s.indexOf('\0'); return i >= 0 ? s.substring(0, i) : s; }).join('.')}`;
+      const pathStr = `game.${item.path
+        .map(s => {
+          const i = s.indexOf('\0');
+          return i >= 0 ? s.substring(0, i) : s;
+        })
+        .join('.')}`;
       await editor.edit(editBuilder => {
         editBuilder.insert(editor.selection.active, pathStr);
       });
@@ -1474,10 +1479,7 @@ export function activate(context: ExtensionContext) {
         .reverse()
         .map(call => {
           // Show a single-line preview for the picker
-          const preview =
-            call.code.includes('\n')
-              ? call.code.split('\n').pop() ?? call.code
-              : call.code;
+          const preview = call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code;
           return {
             'label': `${call.remoteName}`,
             'description': call.method,
@@ -1514,10 +1516,7 @@ export function activate(context: ExtensionContext) {
         .slice(-20)
         .reverse()
         .map(call => {
-          const preview =
-            call.code.includes('\n')
-              ? call.code.split('\n').pop() ?? call.code
-              : call.code;
+          const preview = call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code;
           return {
             'label': `${call.remoteName}`,
             'description': call.method,

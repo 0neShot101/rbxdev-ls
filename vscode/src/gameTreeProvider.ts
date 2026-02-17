@@ -506,10 +506,12 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Strips the \0index suffix from path segments for display purposes.
    */
   private static cleanPathForDisplay = (pathSegments: ReadonlyArray<string>): string =>
-    pathSegments.map(s => {
-      const nullIdx = s.indexOf('\0');
-      return nullIdx >= 0 ? s.substring(0, nullIdx) : s;
-    }).join('.');
+    pathSegments
+      .map(s => {
+        const nullIdx = s.indexOf('\0');
+        return nullIdx >= 0 ? s.substring(0, nullIdx) : s;
+      })
+      .join('.');
 
   getTreeItem = (element: GameTreeItem): TreeItem => {
     const displayPath = GameTreeDataProvider.cleanPathForDisplay(element.path);

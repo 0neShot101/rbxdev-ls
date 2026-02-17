@@ -43,17 +43,13 @@
           "name": "string.quoted.double.luau",
           "begin": "\"",
           "end": "\"",
-          "patterns": [
-            { "include": "#string-escapes" }
-          ]
+          "patterns": [{ "include": "#string-escapes" }]
         },
         {
           "name": "string.quoted.single.luau",
           "begin": "'",
           "end": "'",
-          "patterns": [
-            { "include": "#string-escapes" }
-          ]
+          "patterns": [{ "include": "#string-escapes" }]
         },
         {
           "name": "string.quoted.other.multiline.luau",
@@ -82,9 +78,7 @@
               "endCaptures": {
                 "0": { "name": "punctuation.definition.interpolation.end.luau" }
               },
-              "patterns": [
-                { "include": "$self" }
-              ]
+              "patterns": [{ "include": "$self" }]
             }
           ]
         }

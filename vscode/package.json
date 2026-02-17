@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "publisher": "rbxdev",
   "license": "MIT",
   "repository": {
@@ -68,7 +68,9 @@
               "description": "The Luau code to execute in the game"
             }
           },
-          "required": ["code"]
+          "required": [
+            "code"
+          ]
         }
       },
       {
@@ -83,12 +85,17 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Optional path to a specific node (e.g., [\"Workspace\", \"Folder\"]). If omitted, returns all services."
             },
             "format": {
               "type": "string",
-              "enum": ["tree", "json"],
+              "enum": [
+                "tree",
+                "json"
+              ],
               "description": "Output format: 'tree' for human-readable, 'json' for structured data. Defaults to 'tree'."
             }
           }
@@ -106,16 +113,22 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
             },
             "properties": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Optional list of specific property names to fetch"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -130,7 +143,9 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
             },
             "property": {
@@ -146,7 +161,12 @@
               "description": "The type of the value (string, number, boolean, Vector3, Color3, CFrame, UDim2)"
             }
           },
-          "required": ["path", "property", "value", "valueType"]
+          "required": [
+            "path",
+            "property",
+            "value",
+            "valueType"
+          ]
         }
       },
       {
@@ -161,11 +181,15 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the target instance (e.g., [\"Workspace\", \"SpawnLocation\"])"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -180,11 +204,15 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the instance to delete (e.g., [\"Workspace\", \"Part\"])"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -199,16 +227,23 @@
           "properties": {
             "sourcePath": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the instance to move"
             },
             "targetPath": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the new parent instance"
             }
           },
-          "required": ["sourcePath", "targetPath"]
+          "required": [
+            "sourcePath",
+            "targetPath"
+          ]
         }
       },
       {
@@ -223,16 +258,23 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the parent instance"
             },
             "format": {
               "type": "string",
-              "enum": ["tree", "json"],
+              "enum": [
+                "tree",
+                "json"
+              ],
               "description": "Output format: 'tree' for human-readable, 'json' for structured data"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -247,11 +289,15 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the script instance (e.g., [\"ReplicatedStorage\", \"MyModule\"])"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -270,7 +316,9 @@
             },
             "parentPath": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the parent instance (e.g., [\"Workspace\"])"
             },
             "name": {
@@ -278,7 +326,10 @@
               "description": "Optional name for the new instance"
             }
           },
-          "required": ["className", "parentPath"]
+          "required": [
+            "className",
+            "parentPath"
+          ]
         }
       },
       {
@@ -293,11 +344,15 @@
           "properties": {
             "path": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Path to the instance to clone (e.g., [\"Workspace\", \"Part\"])"
             }
           },
-          "required": ["path"]
+          "required": [
+            "path"
+          ]
         }
       },
       {
@@ -321,8 +376,13 @@
     "languages": [
       {
         "id": "luau",
-        "aliases": ["Luau", "luau"],
-        "extensions": [".luau"],
+        "aliases": [
+          "Luau",
+          "luau"
+        ],
+        "extensions": [
+          ".luau"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./images/luau.svg",
@@ -331,8 +391,13 @@
       },
       {
         "id": "lua",
-        "aliases": ["Lua", "lua"],
-        "extensions": [".lua"],
+        "aliases": [
+          "Lua",
+          "lua"
+        ],
+        "extensions": [
+          ".lua"
+        ],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./images/lua.svg",
@@ -358,7 +423,11 @@
         "rbxdev-ls.typeCheckMode": {
           "type": "string",
           "default": "strict",
-          "enum": ["nocheck", "nonstrict", "strict"],
+          "enum": [
+            "nocheck",
+            "nonstrict",
+            "strict"
+          ],
           "description": "Type checking mode (matches --!strict, --!nonstrict, --!nocheck)"
         },
         "rbxdev-ls.enableSuncApi": {
