@@ -925,7 +925,6 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 			local logRemoteCall = function(self, method, ...)
 				local args = { ... }
 				pcall(function()
-					if checkcaller and checkcaller() then return end
 					if not remoteSpyEnabled or not connected then return end
 					if typeof(self) ~= 'Instance' then return end
 
