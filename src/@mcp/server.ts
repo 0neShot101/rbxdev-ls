@@ -1,5 +1,7 @@
+import { createServer } from 'net';
+
+import { createProxyBridge } from '@executor/proxy';
 import { createExecutorBridge } from '@executor/server';
-import type { ExecutorBridge, LogEntry } from '@typings/bridge';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -9,6 +11,7 @@ import {
   ReadResourceRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { ExecutorBridge, LogEntry } from '@typings/bridge';
 
 import type { GameTreeNode } from '@typings/protocol';
 
@@ -56,6 +59,18 @@ const getConfiguredPort = (): number => {
 
   return DEFAULT_BRIDGE_PORT;
 };
+
+const isPortAvailable = (port: number): Promise<boolean> =>
+  new Promise(resolve => {
+    const tester = createServer();
+    tester.once('error', () => {
+      resolve(false);
+    });
+    tester.once('listening', () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(port, '127.0.0.1');
+  });
 
 export const formatGameTreeNode = (node: GameTreeNode, indent: number = 0): string => {
   const prefix = '  '.repeat(indent);
@@ -292,14 +307,14 @@ export const tools: Tool[] = [
 ];
 
 /** Creates and configures the MCP server with all tools and resources. */
-export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } => {
+export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Server; bridge: ExecutorBridge } => {
   const logBuffer: LogEntry[] = [];
 
-  const log = (message: string): void => {
-    console.error(`[mcp] ${message}`);
-  };
-
-  const bridge = createExecutorBridge(log);
+  const bridge =
+    injectedBridge ??
+    createExecutorBridge((message: string) => {
+      console.error(`[mcp] ${message}`);
+    });
 
   bridge.onLog(entry => {
     logBuffer.push(entry);
@@ -636,12 +651,21 @@ export const createMcpServer = (): { server: Server; bridge: ExecutorBridge } =>
 /** Starts the MCP server with stdio transport. */
 export const startMcpServer = async (): Promise<void> => {
   const port = getConfiguredPort();
-  const { server, bridge } = createMcpServer();
+
+  const log = (message: string): void => {
+    console.error(`[mcp] ${message}`);
+  };
+
+  const available = await isPortAvailable(port);
+  if (available === false) log(`Port ${port} in use — connecting as proxy client`);
+
+  const bridge = available ? createExecutorBridge(log) : createProxyBridge(log);
+  const { server } = createMcpServer(bridge);
 
   bridge.start(port);
-  console.error(`[mcp] Executor bridge started on port ${port}`);
+  log(`Executor bridge started on port ${port}${available === false ? ' (proxy mode)' : ''}`);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[mcp] MCP server connected via stdio');
+  log('MCP server connected via stdio');
 };

@@ -308,3 +308,19 @@ export type ClientMessage =
   | SetRemoteSpyEnabledResultMessage
   | SetRemoteSpyFilterResultMessage
   | RemoteSpyMessage;
+
+export interface ProxyHandshakeMessage {
+  readonly type: 'proxyHandshake';
+}
+
+export interface ProxyWelcomeMessage {
+  readonly type: 'proxyWelcome';
+  readonly isConnected: boolean;
+  readonly executorName: string | undefined;
+}
+
+export interface ProxyStatusChangeMessage {
+  readonly type: 'proxyStatusChange';
+  readonly status: 'connected' | 'disconnected';
+  readonly executorName?: string;
+}

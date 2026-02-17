@@ -1,6 +1,6 @@
 {
   "name": "rbxdev-ls",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/index.js",
   "bin": {
