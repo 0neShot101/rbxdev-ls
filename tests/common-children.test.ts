@@ -1,33 +1,19 @@
-/**
- * Tests for common instance children type hints
- * Run with: bun tests/common-children.test.ts
- *
- * Tests verify that:
- * - Common children patterns resolve to expected types
- * - Inheritance is handled correctly (e.g., Model children work on Model subclasses)
- * - Non-existent children return undefined
- */
+import { getCommonChildType } from '@definitions/commonChildren';
+import { buildGlobalEnvironment } from '@definitions/globals';
+import { describe, expect, test } from 'bun:test';
 
-import { buildGlobalEnvironment } from '../src/@definitions/globals';
-import { getCommonChildType, COMMON_CHILDREN } from '../src/@definitions/commonChildren';
-import type { LuauType, ClassType } from '../src/@typings/types';
+import type { ClassType, LuauType } from '@typings/types';
 
 const globalEnv = buildGlobalEnvironment();
 
-/**
- * Helper to get the superclass name from a class
- */
 const getSuperclassName = (className: string): string | undefined => {
   const classType = globalEnv.robloxClasses.get(className);
-  if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined) {
-    return classType.superclass.name;
+  if (classType === undefined || classType.kind !== 'Class' || classType.superclass === undefined) {
+    return undefined;
   }
-  return undefined;
+  return classType.superclass.name;
 };
 
-/**
- * Resolves a TypeReference to its actual class type
- */
 const resolveTypeReference = (type: LuauType): LuauType => {
   if (type.kind === 'TypeReference') {
     const classType = globalEnv.robloxClasses.get(type.name);
@@ -36,9 +22,6 @@ const resolveTypeReference = (type: LuauType): LuauType => {
   return type;
 };
 
-/**
- * Mimics the resolveMemberType function with common children support
- */
 const resolveMemberType = (type: LuauType, memberName: string): LuauType | undefined => {
   const resolvedType = resolveTypeReference(type);
 
@@ -67,142 +50,119 @@ const resolveMemberType = (type: LuauType, memberName: string): LuauType | undef
   return undefined;
 };
 
-let testsPassed = 0;
-let testsFailed = 0;
-
 const expectChildType = (parentClass: string, childName: string, expectedType: string) => {
-  const parentType = globalEnv.robloxClasses.get(parentClass);
-  if (parentType === undefined) {
-    console.log(`FAIL: "${parentClass}.${childName}" => parent class not found`);
-    testsFailed++;
-    return;
-  }
+  test(`${parentClass}.${childName} resolves to ${expectedType}`, () => {
+    const parentType = globalEnv.robloxClasses.get(parentClass);
+    expect(parentType).toBeDefined();
 
-  const result = resolveMemberType(parentType, childName);
-  if (result === undefined) {
-    console.log(`FAIL: "${parentClass}.${childName}" => undefined (expected ${expectedType})`);
-    testsFailed++;
-    return;
-  }
-
-  if (result.kind !== 'Class') {
-    console.log(`FAIL: "${parentClass}.${childName}" => ${result.kind} (expected Class ${expectedType})`);
-    testsFailed++;
-    return;
-  }
-
-  if (result.name !== expectedType) {
-    console.log(`FAIL: "${parentClass}.${childName}" => Class ${result.name} (expected ${expectedType})`);
-    testsFailed++;
-    return;
-  }
-
-  console.log(`PASS: "${parentClass}.${childName}" => ${expectedType}`);
-  testsPassed++;
+    const result = resolveMemberType(parentType!, childName);
+    expect(result).toBeDefined();
+    expect(result!.kind).toBe('Class');
+    expect((result as ClassType).name).toBe(expectedType);
+  });
 };
 
 const expectChildUndefined = (parentClass: string, childName: string) => {
-  const parentType = globalEnv.robloxClasses.get(parentClass);
-  if (parentType === undefined) {
-    console.log(`FAIL: "${parentClass}.${childName}" => parent class not found`);
-    testsFailed++;
-    return;
-  }
+  test(`${parentClass}.${childName} resolves to undefined`, () => {
+    const parentType = globalEnv.robloxClasses.get(parentClass);
+    expect(parentType).toBeDefined();
 
-  const result = resolveMemberType(parentType, childName);
-  if (result === undefined) {
-    console.log(`PASS: "${parentClass}.${childName}" => undefined (expected undefined)`);
-    testsPassed++;
-    return;
-  }
-
-  console.log(`FAIL: "${parentClass}.${childName}" => ${result.kind} (expected undefined)`);
-  testsFailed++;
+    const result = resolveMemberType(parentType!, childName);
+    expect(result).toBeUndefined();
+  });
 };
 
-console.log('=== Common Children Type Hints Tests ===\n');
+describe('Common Children Type Hints', () => {
+  describe('Model Children (Character)', () => {
+    expectChildType('Model', 'Humanoid', 'Humanoid');
+    expectChildType('Model', 'HumanoidRootPart', 'BasePart');
+    expectChildType('Model', 'Head', 'BasePart');
+    expectChildType('Model', 'Torso', 'BasePart');
+    expectChildType('Model', 'UpperTorso', 'BasePart');
+    expectChildType('Model', 'LowerTorso', 'BasePart');
+    expectChildType('Model', 'LeftArm', 'BasePart');
+    expectChildType('Model', 'RightArm', 'BasePart');
+    expectChildType('Model', 'PrimaryPart', 'BasePart');
+  });
 
-console.log('--- Model Children (Character) ---');
-expectChildType('Model', 'Humanoid', 'Humanoid');
-expectChildType('Model', 'HumanoidRootPart', 'BasePart');
-expectChildType('Model', 'Head', 'BasePart');
-expectChildType('Model', 'Torso', 'BasePart');
-expectChildType('Model', 'UpperTorso', 'BasePart');
-expectChildType('Model', 'LowerTorso', 'BasePart');
-expectChildType('Model', 'LeftArm', 'BasePart');
-expectChildType('Model', 'RightArm', 'BasePart');
-expectChildType('Model', 'PrimaryPart', 'BasePart');
+  describe('Player Children', () => {
+    expectChildType('Player', 'Character', 'Model');
+    expectChildType('Player', 'Backpack', 'Backpack');
+    expectChildType('Player', 'PlayerGui', 'PlayerGui');
+    expectChildType('Player', 'PlayerScripts', 'PlayerScripts');
+  });
 
-console.log('\n--- Player Children ---');
-expectChildType('Player', 'Character', 'Model');
-expectChildType('Player', 'Backpack', 'Backpack');
-expectChildType('Player', 'PlayerGui', 'PlayerGui');
-expectChildType('Player', 'PlayerScripts', 'PlayerScripts');
+  describe('Workspace Children', () => {
+    expectChildType('Workspace', 'CurrentCamera', 'Camera');
+    expectChildType('Workspace', 'Terrain', 'Terrain');
+  });
 
-console.log('\n--- Workspace Children ---');
-expectChildType('Workspace', 'CurrentCamera', 'Camera');
-expectChildType('Workspace', 'Terrain', 'Terrain');
+  describe('Tool/Accessory Children', () => {
+    expectChildType('Tool', 'Handle', 'BasePart');
+    expectChildType('Accessory', 'Handle', 'BasePart');
+  });
 
-console.log('\n--- Tool/Accessory Children ---');
-expectChildType('Tool', 'Handle', 'BasePart');
-expectChildType('Accessory', 'Handle', 'BasePart');
+  describe('GUI Children', () => {
+    expectChildType('ScreenGui', 'Frame', 'Frame');
+    expectChildType('Frame', 'UIListLayout', 'UIListLayout');
+    expectChildType('Frame', 'UICorner', 'UICorner');
+    expectChildType('Frame', 'UIStroke', 'UIStroke');
+    expectChildType('TextButton', 'UICorner', 'UICorner');
+  });
 
-console.log('\n--- GUI Children ---');
-expectChildType('ScreenGui', 'Frame', 'Frame');
-expectChildType('Frame', 'UIListLayout', 'UIListLayout');
-expectChildType('Frame', 'UICorner', 'UICorner');
-expectChildType('Frame', 'UIStroke', 'UIStroke');
-expectChildType('TextButton', 'UICorner', 'UICorner');
+  describe('BasePart Children', () => {
+    expectChildType('BasePart', 'Attachment', 'Attachment');
+    expectChildType('BasePart', 'ClickDetector', 'ClickDetector');
+    expectChildType('BasePart', 'ProximityPrompt', 'ProximityPrompt');
+    expectChildType('BasePart', 'Sound', 'Sound');
+    expectChildType('BasePart', 'ParticleEmitter', 'ParticleEmitter');
+    expectChildType('BasePart', 'PointLight', 'PointLight');
+  });
 
-console.log('\n--- BasePart Children ---');
-expectChildType('BasePart', 'Attachment', 'Attachment');
-expectChildType('BasePart', 'ClickDetector', 'ClickDetector');
-expectChildType('BasePart', 'ProximityPrompt', 'ProximityPrompt');
-expectChildType('BasePart', 'Sound', 'Sound');
-expectChildType('BasePart', 'ParticleEmitter', 'ParticleEmitter');
-expectChildType('BasePart', 'PointLight', 'PointLight');
+  describe('Humanoid/Animator Children', () => {
+    expectChildType('Humanoid', 'Animator', 'Animator');
+    expectChildType('Sound', 'EchoSoundEffect', 'EchoSoundEffect');
+    expectChildType('Sound', 'ReverbSoundEffect', 'ReverbSoundEffect');
+  });
 
-console.log('\n--- Humanoid/Animator Children ---');
-expectChildType('Humanoid', 'Animator', 'Animator');
-expectChildType('Sound', 'EchoSoundEffect', 'EchoSoundEffect');
-expectChildType('Sound', 'ReverbSoundEffect', 'ReverbSoundEffect');
+  describe('StarterPlayer Children', () => {
+    expectChildType('StarterPlayer', 'StarterPlayerScripts', 'StarterPlayerScripts');
+    expectChildType('StarterPlayer', 'StarterCharacterScripts', 'StarterCharacterScripts');
+  });
 
-console.log('\n--- StarterPlayer Children ---');
-expectChildType('StarterPlayer', 'StarterPlayerScripts', 'StarterPlayerScripts');
-expectChildType('StarterPlayer', 'StarterCharacterScripts', 'StarterCharacterScripts');
+  describe('Negative Tests (should be undefined)', () => {
+    expectChildUndefined('Model', 'NonExistentChild');
+    expectChildUndefined('Player', 'SomeRandomChild');
+    expectChildUndefined('Instance', 'Humanoid');
+  });
 
-console.log('\n--- Negative Tests (should be undefined) ---');
-expectChildUndefined('Model', 'NonExistentChild');
-expectChildUndefined('Player', 'SomeRandomChild');
-expectChildUndefined('Instance', 'Humanoid');
+  describe('Chained Access Tests', () => {
+    test('Player.Character.Humanoid resolves to Humanoid', () => {
+      const playerType = globalEnv.robloxClasses.get('Player');
+      expect(playerType).toBeDefined();
 
-console.log('\n--- Chained Access Tests ---');
-const playerType = globalEnv.robloxClasses.get('Player');
-if (playerType !== undefined) {
-  const characterType = resolveMemberType(playerType, 'Character');
-  if (characterType !== undefined && characterType.kind === 'Class') {
-    const humanoidType = resolveMemberType(characterType, 'Humanoid');
-    if (humanoidType !== undefined && humanoidType.kind === 'Class' && humanoidType.name === 'Humanoid') {
-      console.log('PASS: "Player.Character.Humanoid" => Humanoid (chained)');
-      testsPassed++;
-    } else {
-      console.log('FAIL: "Player.Character.Humanoid" => wrong type or undefined');
-      testsFailed++;
-    }
+      const characterType = resolveMemberType(playerType!, 'Character');
+      expect(characterType).toBeDefined();
+      expect(characterType!.kind).toBe('Class');
 
-    const hrpType = resolveMemberType(characterType, 'HumanoidRootPart');
-    if (hrpType !== undefined && hrpType.kind === 'Class' && hrpType.name === 'BasePart') {
-      console.log('PASS: "Player.Character.HumanoidRootPart" => BasePart (chained)');
-      testsPassed++;
-    } else {
-      console.log('FAIL: "Player.Character.HumanoidRootPart" => wrong type or undefined');
-      testsFailed++;
-    }
-  }
-}
+      const humanoidType = resolveMemberType(characterType!, 'Humanoid');
+      expect(humanoidType).toBeDefined();
+      expect(humanoidType!.kind).toBe('Class');
+      expect((humanoidType as ClassType).name).toBe('Humanoid');
+    });
 
-console.log(`\n=== Results: ${testsPassed} passed, ${testsFailed} failed ===`);
+    test('Player.Character.HumanoidRootPart resolves to BasePart', () => {
+      const playerType = globalEnv.robloxClasses.get('Player');
+      expect(playerType).toBeDefined();
 
-if (testsFailed > 0) {
-  process.exit(1);
-}
+      const characterType = resolveMemberType(playerType!, 'Character');
+      expect(characterType).toBeDefined();
+      expect(characterType!.kind).toBe('Class');
+
+      const hrpType = resolveMemberType(characterType!, 'HumanoidRootPart');
+      expect(hrpType).toBeDefined();
+      expect(hrpType!.kind).toBe('Class');
+      expect((hrpType as ClassType).name).toBe('BasePart');
+    });
+  });
+});

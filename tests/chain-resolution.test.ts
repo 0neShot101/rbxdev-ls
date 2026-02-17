@@ -1,21 +1,10 @@
-/**
- * Comprehensive tests for expression chain resolution in autocompletion
- * Run with: bun tests/chain-resolution.test.ts
- *
- * Tests verify that:
- * - game:GetService('ServiceName') returns the correct service class
- * - Property access chains work correctly
- * - Method call return types are resolved
- * - TypeReference types are properly resolved
- */
+import { buildGlobalEnvironment } from '@definitions/globals';
+import { describe, expect, test } from 'bun:test';
 
-import { buildGlobalEnvironment } from '../src/@definitions/globals';
-
-import type { ClassType, LuauType } from '../src/@typings/types';
+import type { ClassType, LuauType } from '@typings/types';
 
 const globalEnv = buildGlobalEnvironment();
 
-// Map of service names to their class types
 const SERVICE_CLASS_MAP: ReadonlyMap<string, string> = new Map([
   ['Players', 'Players'],
   ['Workspace', 'Workspace'],
@@ -59,10 +48,9 @@ const SERVICE_CLASS_MAP: ReadonlyMap<string, string> = new Map([
   ['GroupService', 'GroupService'],
 ]);
 
-// Matches the extractExpressionChain function from completion.ts
 const extractExpressionChain = (
   beforeCursor: string,
-): { expression: string; prefix: string; isMethodAccess: boolean } | undefined => {
+): { 'expression': string; 'prefix': string; 'isMethodAccess': boolean } | undefined => {
   const chainMatch = beforeCursor.match(
     /([a-zA-Z_]\w*(?:\s*\.\s*[a-zA-Z_]\w*|\s*:\s*[a-zA-Z_]\w*|\s*\([^)]*\)|\s*\[[^\]]*\]|\s*'[^']*'|\s*"[^"]*")*)\s*([.:])(\w*)$/,
   );
@@ -81,7 +69,6 @@ const extractExpressionChain = (
   return undefined;
 };
 
-// Matches the resolveTypeReference function from completion.ts
 const resolveTypeReference = (type: LuauType): LuauType => {
   if (type.kind === 'TypeReference') {
     const className = type.name;
@@ -91,7 +78,6 @@ const resolveTypeReference = (type: LuauType): LuauType => {
   return type;
 };
 
-// Matches the resolveMemberType function from completion.ts
 const resolveMemberType = (type: LuauType, memberName: string): LuauType | undefined => {
   const resolvedType = resolveTypeReference(type);
 
@@ -113,11 +99,10 @@ const resolveMemberType = (type: LuauType, memberName: string): LuauType | undef
   return undefined;
 };
 
-// Expression parser matching completion.ts implementation
 type ExprPart =
-  | { kind: 'property'; name: string }
-  | { kind: 'method'; name: string; args: string }
-  | { kind: 'call'; args: string };
+  | { 'kind': 'property'; 'name': string }
+  | { 'kind': 'method'; 'name': string; 'args': string }
+  | { 'kind': 'call'; 'args': string };
 
 const parseExpression = (expression: string): ExprPart[] => {
   const parts: ExprPart[] = [];
@@ -197,7 +182,6 @@ const parseExpression = (expression: string): ExprPart[] => {
   return parts;
 };
 
-// Full expression type resolver matching completion.ts implementation
 const resolveExpressionType = (expression: string): LuauType | undefined => {
   const parts = parseExpression(expression);
 
@@ -209,7 +193,6 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
 
   let currentType: LuauType | undefined;
 
-  // Check global symbols
   const globalSymbol = globalEnv.env.globalScope.symbols.get(firstName);
   if (globalSymbol !== undefined) {
     currentType = globalSymbol.type;
@@ -222,13 +205,11 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
 
   if (currentType === undefined) return undefined;
 
-  // Resolve chain
   for (let partIdx = 1; partIdx < parts.length; partIdx++) {
     const part = parts[partIdx];
     if (part === undefined) break;
 
     if (part.kind === 'property') {
-      // Special case: game.ServiceName
       if (partIdx === 1 && firstName === 'game') {
         const serviceClassName = SERVICE_CLASS_MAP.get(part.name);
         if (serviceClassName !== undefined) {
@@ -243,7 +224,6 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
       currentType = resolveMemberType(currentType, part.name);
       if (currentType === undefined) return undefined;
     } else if (part.kind === 'method') {
-      // Special case: GetService
       if (part.name === 'GetService') {
         const serviceMatch = part.args.match(/["'](\w+)["']/);
         if (serviceMatch !== null) {
@@ -258,7 +238,6 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
         }
       }
 
-      // Special case: FindFirstChildOfClass/FindFirstChildWhichIsA
       if (part.name === 'FindFirstChildOfClass' || part.name === 'FindFirstChildWhichIsA') {
         const classMatch = part.args.match(/["'](\w+)["']/);
         if (classMatch !== null) {
@@ -273,11 +252,9 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
         }
       }
 
-      // For other methods, try to get return type (checking superclass chain)
       if (currentType !== undefined) {
         const resolvedCurrent = resolveTypeReference(currentType);
         if (resolvedCurrent.kind === 'Class') {
-          // Search for method in class and all superclasses
           let searchClass: ClassType | undefined = resolvedCurrent;
           while (searchClass !== undefined) {
             const method = searchClass.methods.get(part.name);
@@ -290,7 +267,6 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
           if (searchClass !== undefined) continue;
         }
       }
-      // If we can't resolve the method, return undefined
       return undefined;
     } else if (part.kind === 'call') {
       if (currentType !== undefined && currentType.kind === 'Function') {
@@ -302,51 +278,9 @@ const resolveExpressionType = (expression: string): LuauType | undefined => {
   return currentType;
 };
 
-// Test utilities
-let testsPassed = 0;
-let testsFailed = 0;
-
-const expectType = (expression: string, expectedClassName: string) => {
-  const result = resolveExpressionType(expression);
-  if (result === undefined) {
-    console.log(`FAIL: "${expression}" => undefined (expected ${expectedClassName})`);
-    testsFailed++;
-    return;
-  }
-  if (result.kind !== 'Class') {
-    console.log(`FAIL: "${expression}" => ${result.kind} (expected Class ${expectedClassName})`);
-    testsFailed++;
-    return;
-  }
-  if (result.name !== expectedClassName) {
-    console.log(`FAIL: "${expression}" => Class ${result.name} (expected ${expectedClassName})`);
-    testsFailed++;
-    return;
-  }
-  console.log(`PASS: "${expression}" => ${expectedClassName}`);
-  testsPassed++;
-};
-
-const expectUndefined = (expression: string) => {
-  const result = resolveExpressionType(expression);
-  if (result === undefined) {
-    console.log(`PASS: "${expression}" => undefined (expected undefined)`);
-    testsPassed++;
-    return;
-  }
-  console.log(`FAIL: "${expression}" => ${result.kind} (expected undefined)`);
-  testsFailed++;
-};
-
-// Test simulating the full completion flow with beforeCursor string
-const testCompletion = (beforeCursor: string, expectedClassName: string) => {
+const resolveCompletion = (beforeCursor: string): LuauType | undefined => {
   const chainInfo = extractExpressionChain(beforeCursor);
-
-  if (chainInfo === undefined) {
-    console.log(`FAIL: "${beforeCursor}" => no chain (expected ${expectedClassName})`);
-    testsFailed++;
-    return;
-  }
+  if (chainInfo === undefined) return undefined;
 
   let resolvedType = resolveExpressionType(chainInfo.expression);
 
@@ -357,86 +291,297 @@ const testCompletion = (beforeCursor: string, expectedClassName: string) => {
     }
   }
 
-  if (resolvedType === undefined) {
-    console.log(`FAIL: "${beforeCursor}" => undefined (expected ${expectedClassName})`);
-    testsFailed++;
-    return;
-  }
-
-  if (resolvedType.kind === 'Class' && resolvedType.name === expectedClassName) {
-    console.log(`PASS: "${beforeCursor}" => ${expectedClassName}`);
-    testsPassed++;
-    return;
-  }
-
-  if (resolvedType.kind === 'Class') {
-    console.log(`FAIL: "${beforeCursor}" => Class ${resolvedType.name} (expected ${expectedClassName})`);
-  } else {
-    console.log(`FAIL: "${beforeCursor}" => ${resolvedType.kind} (expected Class ${expectedClassName})`);
-  }
-  testsFailed++;
+  return resolvedType;
 };
 
-// Run tests
-console.log('=== Chain Resolution Tests ===\n');
+describe('Basic Expression Resolution', () => {
+  test('game resolves to DataModel', () => {
+    const result = resolveExpressionType('game');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('DataModel');
+  });
 
-console.log('--- Basic Expression Resolution ---');
-expectType('game', 'DataModel');
-expectType('workspace', 'Workspace');
+  test('workspace resolves to Workspace', () => {
+    const result = resolveExpressionType('workspace');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Workspace');
+  });
+});
 
-console.log('\n--- GetService Resolution ---');
-expectType('game:GetService("Players")', 'Players');
-expectType('game:GetService("Workspace")', 'Workspace');
-expectType('game:GetService("RunService")', 'RunService');
-expectType('game:GetService("TweenService")', 'TweenService');
-expectType("game:GetService('Players')", 'Players');
+describe('GetService Resolution', () => {
+  test('game:GetService("Players") resolves to Players', () => {
+    const result = resolveExpressionType('game:GetService("Players")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
 
-console.log('\n--- Property Access Resolution ---');
-expectType('game.Players', 'Players');
-expectType('game.Workspace', 'Workspace');
-expectType('workspace.CurrentCamera', 'Camera');
+  test('game:GetService("Workspace") resolves to Workspace', () => {
+    const result = resolveExpressionType('game:GetService("Workspace")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Workspace');
+  });
 
-console.log('\n--- Chain Resolution (Key Tests) ---');
-expectType('game:GetService("Players").LocalPlayer', 'Player');
-expectType('game.Players.LocalPlayer', 'Player');
-expectType('game.Players.LocalPlayer.Character', 'Model');
+  test('game:GetService("RunService") resolves to RunService', () => {
+    const result = resolveExpressionType('game:GetService("RunService")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('RunService');
+  });
 
-console.log('\n--- FindFirstChildOfClass/WhichIsA Resolution ---');
-expectType('game.Workspace:FindFirstChildOfClass("Part")', 'Part');
-expectType('game.Workspace:FindFirstChildWhichIsA("BasePart")', 'BasePart');
+  test('game:GetService("TweenService") resolves to TweenService', () => {
+    const result = resolveExpressionType('game:GetService("TweenService")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('TweenService');
+  });
 
-console.log('\n--- Completion Handler Integration ---');
-testCompletion('game.', 'DataModel');
-testCompletion('game.Players.', 'Players');
-testCompletion('game:GetService("Players").', 'Players');
-testCompletion('game:GetService("Players").LocalPlayer.', 'Player');
-testCompletion('game.Players.LocalPlayer.', 'Player');
-testCompletion('game.Players.LocalPlayer.Character.', 'Model');
-testCompletion('workspace.', 'Workspace');
-testCompletion('workspace.CurrentCamera.', 'Camera');
+  test("game:GetService('Players') resolves to Players with single quotes", () => {
+    const result = resolveExpressionType("game:GetService('Players')");
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+});
 
-console.log('\n--- Method Access Completions ---');
-testCompletion('game:', 'DataModel');
-testCompletion('game.Players:', 'Players');
-testCompletion('game:GetService("Players"):', 'Players');
-testCompletion('game.Players.LocalPlayer:', 'Player');
+describe('Property Access Resolution', () => {
+  test('game.Players resolves to Players', () => {
+    const result = resolveExpressionType('game.Players');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
 
-console.log('\n--- Edge Cases ---');
-testCompletion("game:GetService('Players').", 'Players');
-testCompletion("game:GetService('Players').LocalPlayer.", 'Player');
-testCompletion("game : GetService ( 'Players' ) .", 'Players');
+  test('game.Workspace resolves to Workspace', () => {
+    const result = resolveExpressionType('game.Workspace');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Workspace');
+  });
 
-console.log('\n--- Chained WaitForChild/FindFirstChild Tests ---');
-expectType('workspace:WaitForChild("X")', 'Instance');
-expectType('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds")', 'Instance');
-expectType('workspace:FindFirstChild("X")', 'Instance');
-expectType('workspace:FindFirstChild("X"):FindFirstChild("Y")', 'Instance');
-expectType('workspace:WaitForChild("X"):FindFirstChild("Y")', 'Instance');
-testCompletion('workspace:WaitForChild("X"):', 'Instance');
-testCompletion('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds"):', 'Instance');
+  test('workspace.CurrentCamera resolves to Camera', () => {
+    const result = resolveExpressionType('workspace.CurrentCamera');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Camera');
+  });
+});
 
-console.log(`\n=== Results: ${testsPassed} passed, ${testsFailed} failed ===`);
+describe('Chain Resolution', () => {
+  test('game:GetService("Players").LocalPlayer resolves to Player', () => {
+    const result = resolveExpressionType('game:GetService("Players").LocalPlayer');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
 
-if (testsFailed > 0) {
-  process.exit(1);
-}
+  test('game.Players.LocalPlayer resolves to Player', () => {
+    const result = resolveExpressionType('game.Players.LocalPlayer');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
+
+  test('game.Players.LocalPlayer.Character resolves to Model', () => {
+    const result = resolveExpressionType('game.Players.LocalPlayer.Character');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Model');
+  });
+});
+
+describe('FindFirstChildOfClass/WhichIsA Resolution', () => {
+  test('game.Workspace:FindFirstChildOfClass("Part") resolves to Part', () => {
+    const result = resolveExpressionType('game.Workspace:FindFirstChildOfClass("Part")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Part');
+  });
+
+  test('game.Workspace:FindFirstChildWhichIsA("BasePart") resolves to BasePart', () => {
+    const result = resolveExpressionType('game.Workspace:FindFirstChildWhichIsA("BasePart")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('BasePart');
+  });
+});
+
+describe('Completion Handler Integration', () => {
+  test('game. resolves to DataModel', () => {
+    const result = resolveCompletion('game.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('DataModel');
+  });
+
+  test('game.Players. resolves to Players', () => {
+    const result = resolveCompletion('game.Players.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+
+  test('game:GetService("Players"). resolves to Players', () => {
+    const result = resolveCompletion('game:GetService("Players").');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+
+  test('game:GetService("Players").LocalPlayer. resolves to Player', () => {
+    const result = resolveCompletion('game:GetService("Players").LocalPlayer.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
+
+  test('game.Players.LocalPlayer. resolves to Player', () => {
+    const result = resolveCompletion('game.Players.LocalPlayer.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
+
+  test('game.Players.LocalPlayer.Character. resolves to Model', () => {
+    const result = resolveCompletion('game.Players.LocalPlayer.Character.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Model');
+  });
+
+  test('workspace. resolves to Workspace', () => {
+    const result = resolveCompletion('workspace.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Workspace');
+  });
+
+  test('workspace.CurrentCamera. resolves to Camera', () => {
+    const result = resolveCompletion('workspace.CurrentCamera.');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Camera');
+  });
+});
+
+describe('Method Access Completions', () => {
+  test('game: resolves to DataModel', () => {
+    const result = resolveCompletion('game:');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('DataModel');
+  });
+
+  test('game.Players: resolves to Players', () => {
+    const result = resolveCompletion('game.Players:');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+
+  test('game:GetService("Players"): resolves to Players', () => {
+    const result = resolveCompletion('game:GetService("Players"):');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+
+  test('game.Players.LocalPlayer: resolves to Player', () => {
+    const result = resolveCompletion('game.Players.LocalPlayer:');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
+});
+
+describe('Edge Cases', () => {
+  test("game:GetService('Players'). resolves to Players with single quotes", () => {
+    const result = resolveCompletion("game:GetService('Players').");
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+
+  test("game:GetService('Players').LocalPlayer. resolves to Player with single quotes", () => {
+    const result = resolveCompletion("game:GetService('Players').LocalPlayer.");
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Player');
+  });
+
+  test("game : GetService ( 'Players' ) . resolves to Players with extra whitespace", () => {
+    const result = resolveCompletion("game : GetService ( 'Players' ) .");
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Players');
+  });
+});
+
+describe('WaitForChild Chains', () => {
+  test('Instance class has WaitForChild method', () => {
+    const instanceClass = globalEnv.robloxClasses.get('Instance');
+    expect(instanceClass).toBeDefined();
+    expect(instanceClass?.kind).toBe('Class');
+    const waitForChild = (instanceClass as ClassType).methods.get('WaitForChild');
+    expect(waitForChild).toBeDefined();
+  });
+
+  test('workspace:WaitForChild("X") resolves to Instance', () => {
+    const result = resolveExpressionType('workspace:WaitForChild("X")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds") resolves to Instance', () => {
+    const result = resolveExpressionType('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:FindFirstChild("X") resolves to Instance', () => {
+    const result = resolveExpressionType('workspace:FindFirstChild("X")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:FindFirstChild("X"):FindFirstChild("Y") resolves to Instance', () => {
+    const result = resolveExpressionType('workspace:FindFirstChild("X"):FindFirstChild("Y")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:WaitForChild("X"):FindFirstChild("Y") resolves to Instance', () => {
+    const result = resolveExpressionType('workspace:WaitForChild("X"):FindFirstChild("Y")');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:WaitForChild("X"): completion resolves to Instance', () => {
+    const result = resolveCompletion('workspace:WaitForChild("X"):');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds"): completion resolves to Instance', () => {
+    const result = resolveCompletion('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds"):');
+    expect(result).toBeDefined();
+    expect(result?.kind).toBe('Class');
+    expect((result as ClassType).name).toBe('Instance');
+  });
+
+  test('extractExpressionChain parses WaitForChild chain correctly', () => {
+    const chain = extractExpressionChain('workspace:WaitForChild("CamperVan"):WaitForChild("AC6_FE_Sounds"):');
+    expect(chain).toBeDefined();
+    expect(chain?.expression).toBeDefined();
+    expect(chain?.isMethodAccess).toBe(true);
+  });
+});
