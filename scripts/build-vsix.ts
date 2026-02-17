@@ -107,7 +107,7 @@ step('Clean stale output files', () => {
 });
 
 step('Package VSIX', () => {
-  run('npx vsce package --no-dependencies', vscodeDir);
+  run('npx vsce package', vscodeDir);
 });
 
 const vsixFiles = readdirSync(vscodeDir)
