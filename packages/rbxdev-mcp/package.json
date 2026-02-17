@@ -1,0 +1,39 @@
+{
+  "name": "@oneshot101/rbxdev-mcp",
+  "version": "0.3.2",
+  "description": "MCP server for connecting AI tools (Claude, Cursor, etc.) to live Roblox game instances",
+  "bin": {
+    "rbxdev-mcp": "./mcp.js"
+  },
+  "files": [
+    "mcp.js",
+    "README.md"
+  ],
+  "keywords": [
+    "roblox",
+    "mcp",
+    "model-context-protocol",
+    "luau",
+    "lua",
+    "claude",
+    "cursor",
+    "ai",
+    "game",
+    "executor",
+    "language-server"
+  ],
+  "author": "Andrew",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0neShot101/rbxdev-ls",
+    "directory": "packages/rbxdev-mcp"
+  },
+  "homepage": "https://github.com/0neShot101/rbxdev-ls#mcp-server",
+  "bugs": {
+    "url": "https://github.com/0neShot101/rbxdev-ls/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

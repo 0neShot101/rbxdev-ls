@@ -24,7 +24,9 @@
     "type-check": "tsc --noEmit",
     "test": "bun test",
     "fetch-api": "bun scripts/fetch-roblox-api.ts && bun scripts/fetch-sunc-api.ts",
-    "build:vsix": "bun scripts/build-vsix.ts"
+    "build:vsix": "bun scripts/build-vsix.ts",
+    "publish:mcp": "bun scripts/publish-mcp.ts",
+    "publish:mcp:dry": "bun scripts/publish-mcp.ts --dry-run"
   },
   "keywords": [
     "roblox",

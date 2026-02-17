@@ -46,7 +46,7 @@
         "toolReferenceName": "roblox-status",
         "displayName": "Get Roblox Bridge Status",
         "description": "Get the current status of the Roblox executor bridge connection. Returns whether the bridge is running, connected, and the executor name if connected.",
-        "modelDescription": "Get the current connection status of the Roblox executor bridge. Use this to check if you can interact with the game.",
+        "modelDescription": "Check if the Roblox executor bridge is connected. ALWAYS call this first before using any other Roblox tools. If not connected, no other tools will work. Returns isRunning, isConnected, executorName, and the number of services in the game tree.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -58,7 +58,7 @@
         "toolReferenceName": "roblox-execute",
         "displayName": "Execute Luau Code",
         "description": "Execute Luau code in the connected Roblox game. The code runs in the executor environment with access to the full Roblox API.",
-        "modelDescription": "Execute Luau/Lua code in the connected Roblox game. Returns the result or error from execution. Use this to run scripts, query game state, or modify the game.",
+        "modelDescription": "Execute Luau code in the connected Roblox game with full Roblox API access (game, workspace, Players, Instance.new, Vector3, CFrame, etc.). Use 'return <expr>' to get a value back. Write complete scripts in a single call rather than multiple calls. The code runs on the CLIENT side. If execution errors occur, read the error carefully and fix the code.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -78,7 +78,7 @@
         "toolReferenceName": "roblox-tree",
         "displayName": "Get Roblox Game Tree",
         "description": "Get the current game hierarchy tree from the connected Roblox game. Returns the structure of services and their children.",
-        "modelDescription": "Get the game hierarchy/structure from the connected Roblox game. Returns services like Workspace, Players, ReplicatedStorage and their children. Use path parameter to get a subtree.",
+        "modelDescription": "Get the game hierarchy tree showing all services and instances. IMPORTANT: Always explore the game tree before trying to interact with specific instances — don't guess at paths, look them up. Use the path parameter to drill into a specific subtree (e.g., [\"Workspace\"]). Use 'json' format when you need structured data for programmatic use. The tree only shows a few levels deep — use get_children for deeper exploration.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -106,7 +106,7 @@
         "toolReferenceName": "roblox-props",
         "displayName": "Get Instance Properties",
         "description": "Get property values from an instance in the Roblox game.",
-        "modelDescription": "Get property values from a Roblox instance. Specify the path to the instance (e.g., [\"Workspace\", \"Part\"]) and optionally which specific properties to retrieve.",
+        "modelDescription": "Read property values from any Roblox instance. ALWAYS read properties before modifying them with set_property — this tells you the current value and the correct valueType to use. Pass specific property names in the 'properties' array for faster results, or omit it to get all properties. Returns name, value, and valueType for each property.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -136,7 +136,7 @@
         "toolReferenceName": "roblox-set-prop",
         "displayName": "Set Instance Property",
         "description": "Set a property value on an instance in the Roblox game.",
-        "modelDescription": "Set a property value on a Roblox instance. Supports various types including string, number, boolean, Vector3, Color3, CFrame, UDim2.",
+        "modelDescription": "Set a property on a Roblox instance. You MUST specify the correct valueType. Common types: 'string', 'number', 'boolean', 'Vector3' (value: '1, 2, 3'), 'Color3' (value: '255, 0, 0' as RGB), 'CFrame' (value: '0, 5, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1'), 'UDim2' (value: '0, 100, 0, 50'), 'EnumItem' (value: 'Enum.Material.Neon'). Use get_properties first to check the current value and type.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -174,7 +174,7 @@
         "toolReferenceName": "roblox-teleport",
         "displayName": "Teleport Player",
         "description": "Teleport the local player to an instance's position in the Roblox game.",
-        "modelDescription": "Teleport the local player to a specific instance's position. The instance must have a Position or CFrame property.",
+        "modelDescription": "Teleport the local player to an instance's position. The target must be a BasePart or Model with a Position/CFrame. Use get_game_tree to find valid targets first.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -197,7 +197,7 @@
         "toolReferenceName": "roblox-delete",
         "displayName": "Delete Instance",
         "description": "Delete an instance from the Roblox game. This is permanent and cannot be undone.",
-        "modelDescription": "Delete an instance from the Roblox game. Use with caution as this cannot be undone.",
+        "modelDescription": "Permanently delete an instance from the game. WARNING: This cannot be undone. Always confirm with the user before deleting. Verify the path is correct using get_game_tree first.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -220,7 +220,7 @@
         "toolReferenceName": "roblox-reparent",
         "displayName": "Reparent Instance",
         "description": "Move an instance to a new parent in the Roblox game hierarchy.",
-        "modelDescription": "Move a Roblox instance to a new parent. Changes the Parent property of the instance.",
+        "modelDescription": "Move an instance to a new parent in the game hierarchy. sourcePath is the instance to move, targetPath is its new parent. Both paths must exist — verify with get_game_tree first.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -251,7 +251,7 @@
         "toolReferenceName": "roblox-children",
         "displayName": "Get Instance Children",
         "description": "Get the children of an instance in the Roblox game.",
-        "modelDescription": "Get the children of a Roblox instance. Used for exploring parts of the game tree that weren't initially loaded.",
+        "modelDescription": "Get the direct children of an instance. Use this to explore deeper into the game tree when get_game_tree doesn't show enough depth. Essential for navigating large hierarchies like PlayerGui, StarterGui, or deeply nested models.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -282,7 +282,7 @@
         "toolReferenceName": "roblox-script",
         "displayName": "Get Script Source",
         "description": "Get the decompiled source code of a Script, LocalScript, or ModuleScript in the Roblox game.",
-        "modelDescription": "Get the decompiled source code of a script instance. Works with Script, LocalScript, and ModuleScript. Requires the executor to have decompiler support.",
+        "modelDescription": "Decompile and read the source code of a Script, LocalScript, or ModuleScript. Useful for understanding game logic, debugging, or reverse engineering. Find script paths using get_game_tree first — scripts show as Script/LocalScript/ModuleScript class names in the tree.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -305,7 +305,7 @@
         "toolReferenceName": "roblox-create",
         "displayName": "Create Roblox Instance",
         "description": "Create a new instance in the Roblox game as a child of the specified parent.",
-        "modelDescription": "Create a new Roblox instance. Specify the class name (e.g., 'Part', 'Folder', 'Script'), optional instance name, and the parent path.",
+        "modelDescription": "Create a new Roblox instance as a child of the specified parent. Common classes: 'Part', 'MeshPart', 'Model', 'Folder', 'Script', 'LocalScript', 'ModuleScript', 'ScreenGui', 'Frame', 'TextLabel', 'TextButton'. After creating, use set_property to configure its properties (Size, Position, Color, etc.).",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -337,7 +337,7 @@
         "toolReferenceName": "roblox-clone",
         "displayName": "Clone Roblox Instance",
         "description": "Clone an existing instance in the Roblox game.",
-        "modelDescription": "Clone (duplicate) a Roblox instance. The clone will be created as a sibling of the original.",
+        "modelDescription": "Clone (duplicate) an instance including all its children and properties. The clone is created as a sibling of the original. Useful for duplicating parts, models, or UI elements. Use reparent_instance after to move the clone elsewhere if needed.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
@@ -360,7 +360,7 @@
         "toolReferenceName": "roblox-remote-spy",
         "displayName": "Get Remote Spy Calls",
         "description": "Get recently captured remote calls from the Remote Spy feature.",
-        "modelDescription": "Get recent FireServer and InvokeServer calls captured by Remote Spy. Requires Remote Spy to be enabled. Returns remote name, path, method, and arguments.",
+        "modelDescription": "Get recently captured RemoteEvent:FireServer and RemoteFunction:InvokeServer calls. IMPORTANT: Remote Spy must be enabled first (use the 'Enable Remote Spy' command or execute code to enable it). Returns the remote name, type, method, and reproducible Luau code for each call. Useful for reverse engineering client-server communication and understanding game mechanics.",
         "canBeReferencedInPrompt": true,
         "inputSchema": {
           "type": "object",
