@@ -1,26 +1,17 @@
-/**
- * Code Action Handler
- * Provides quick fixes and refactoring suggestions
- */
-
+import { walk } from '@parser/visitor';
+import { typeToString } from '@typings/types';
 import { CodeActionKind } from 'vscode-languageserver';
 
-import type { DocumentManager } from '@lsp/documents';
-import type { CodeAction, CodeActionParams, Connection, TextDocuments, TextEdit } from 'vscode-languageserver';
+import type { DocumentManager } from '@typings/lsp';
+import type { CodeAction, CodeActionParams, Connection, Range, TextDocuments, TextEdit } from 'vscode-languageserver';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
-/**
- * Map of deprecated Roblox API names to their modern replacements.
- * Used to provide quick-fix suggestions for deprecated API usage.
- */
-const DEPRECATION_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
-  // Player methods
+export const DEPRECATION_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
   ['IsInGroup', 'IsInGroupAsync'],
   ['GetRankInGroup', 'GetRankInGroupAsync'],
   ['GetRoleInGroup', 'GetRoleInGroupAsync'],
-  ['IsFriendsWith', 'IsFriendsWith'], // Same name but async version
+  ['IsFriendsWith', 'IsFriendsWith'],
   ['GetFriendsOnline', 'GetFriendsOnline'],
-  // Instance methods
   ['children', 'GetChildren'],
   ['getChildren', 'GetChildren'],
   ['isA', 'IsA'],
@@ -33,46 +24,31 @@ const DEPRECATION_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
   ['destroy', 'Destroy'],
   ['remove', 'Destroy'],
   ['Remove', 'Destroy'],
-  // Humanoid
   ['LoadAnimation', 'Animator:LoadAnimation'],
-  // CFrame
   ['p', 'Position'],
-  // connect/Connect
   ['connect', 'Connect'],
-  // Workspace
   ['CurrentCamera', 'Camera'],
 ]);
 
-/**
- * Registers the code action handler with the LSP connection.
- * Provides quick fixes for deprecation warnings and unknown identifier errors.
- * @param connection - The LSP connection to register the handler on
- * @param documents - The text documents manager for accessing document content
- * @param _documentManager - The document manager (unused, kept for interface consistency)
- * @returns void
- */
+const getSelectionText = (doc: TextDocument, range: Range): string | undefined => {
+  const text = doc.getText(range);
+  if (text.trim().length === 0) return undefined;
+  return text;
+};
+
+/** Provides quick fixes, refactors, and source actions for Luau code. */
 export const setupCodeActionHandler = (
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  _documentManager: DocumentManager,
+  documentManager: DocumentManager,
 ): void => {
-  /**
-   * Handles the code action request by generating quick fixes for diagnostics.
-   * Processes deprecation warnings and unknown identifier errors to provide
-   * appropriate replacement suggestions.
-   * @param params - The code action parameters containing document URI, range, and diagnostics
-   * @returns An array of code actions that can be applied to fix the issues
-   */
   connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
     const doc = documents.get(params.textDocument.uri);
     if (doc === undefined) return [];
 
     const actions: CodeAction[] = [];
 
-    // Check each diagnostic for potential fixes
     for (const diagnostic of params.context.diagnostics) {
-      // Only handle our own diagnostics - check source or code
-      // VS Code may pass diagnostics with source as undefined in some cases
       const isOurDiagnostic =
         diagnostic.source === 'rbxdev-ls' ||
         diagnostic.code === 'W001' ||
@@ -81,10 +57,7 @@ export const setupCodeActionHandler = (
 
       if (isOurDiagnostic === false) continue;
 
-      // Check for deprecation warnings
       if (diagnostic.message.includes('is deprecated')) {
-        // Extract the deprecated name from the message
-        // Try straight quotes first, then curly quotes
         let nameMatch = diagnostic.message.match(/'([^']+)' is deprecated/);
         if (nameMatch === null) {
           nameMatch = diagnostic.message.match(/['']([^'']+)[''] is deprecated/);
@@ -94,7 +67,6 @@ export const setupCodeActionHandler = (
         const deprecatedName = nameMatch[1];
         if (deprecatedName === undefined) continue;
 
-        // Check if we have a replacement
         const replacement = DEPRECATION_REPLACEMENTS.get(deprecatedName);
         if (replacement !== undefined) {
           const edit: TextEdit = {
@@ -115,7 +87,6 @@ export const setupCodeActionHandler = (
           });
         }
 
-        // Also check if the message contains a "Use X instead" hint
         let useInsteadMatch = diagnostic.message.match(/Use '([^']+)' instead/);
         if (useInsteadMatch === null) {
           useInsteadMatch = diagnostic.message.match(/Use ['']([^'']+)[''] instead/);
@@ -143,13 +114,11 @@ export const setupCodeActionHandler = (
         }
       }
 
-      // Add quick fix for "Unknown identifier" to add local declaration
       if (diagnostic.message.startsWith('Unknown identifier')) {
         const identMatch = diagnostic.message.match(/Unknown identifier ['']([^'']+)['']/);
         if (identMatch !== null) {
           const identName = identMatch[1];
           if (identName !== undefined) {
-            // Get the line content to find indentation
             const lineText = doc.getText({
               'start': { 'line': diagnostic.range.start.line, 'character': 0 },
               'end': { 'line': diagnostic.range.start.line, 'character': 1000 },
@@ -178,6 +147,163 @@ export const setupCodeActionHandler = (
           }
         }
       }
+
+      if (diagnostic.message.includes('unused') || diagnostic.message.includes('Unused')) {
+        const unusedMatch = diagnostic.message.match(/['']([^'']+)['']/);
+        if (unusedMatch !== null) {
+          const varName = unusedMatch[1];
+          if (varName !== undefined && varName.startsWith('_') === false) {
+            actions.push({
+              'title': `Prefix '${varName}' with '_'`,
+              'kind': CodeActionKind.QuickFix,
+              'diagnostics': [diagnostic],
+              'edit': {
+                'changes': {
+                  [params.textDocument.uri]: [
+                    {
+                      'range': diagnostic.range,
+                      'newText': `_${varName}`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        }
+      }
+    }
+
+    const selectedText = getSelectionText(doc, params.range);
+    const isSelection =
+      params.range.start.line !== params.range.end.line || params.range.start.character !== params.range.end.character;
+
+    if (selectedText !== undefined && isSelection) {
+      const lineText = doc.getText({
+        'start': { 'line': params.range.start.line, 'character': 0 },
+        'end': { 'line': params.range.start.line, 'character': 1000 },
+      });
+      const indentMatch = lineText.match(/^(\s*)/);
+      const indent = indentMatch?.[1] ?? '';
+
+      actions.push({
+        'title': 'Extract to local variable',
+        'kind': CodeActionKind.RefactorExtract,
+        'edit': {
+          'changes': {
+            [params.textDocument.uri]: [
+              {
+                'range': {
+                  'start': { 'line': params.range.start.line, 'character': 0 },
+                  'end': { 'line': params.range.start.line, 'character': 0 },
+                },
+                'newText': `${indent}local extracted = ${selectedText}\n`,
+              },
+              {
+                'range': params.range,
+                'newText': 'extracted',
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    const parsedDoc = documentManager.getDocument(params.textDocument.uri);
+    if (parsedDoc?.ast !== undefined && parsedDoc.typeCheckResult !== undefined) {
+      const allSymbols = parsedDoc.typeCheckResult.allSymbols;
+
+      walk(parsedDoc.ast, {
+        'visitLocalDeclaration': node => {
+          for (let i = 0; i < node.names.length; i++) {
+            const name = node.names[i];
+            const typeAnnotation = node.types[i];
+            if (name === undefined || typeAnnotation !== undefined) continue;
+
+            const nameLine = name.range.start.line - 1;
+            if (nameLine !== params.range.start.line) continue;
+
+            const nameStart = name.range.start.column - 1;
+            const nameEnd = name.range.end.column - 1;
+            if (params.range.start.character < nameStart || params.range.start.character > nameEnd) continue;
+
+            const symbolType = allSymbols.get(name.name);
+            if (symbolType === undefined || symbolType.kind === 'Any' || symbolType.kind === 'Unknown') continue;
+
+            const typeStr = typeToString(symbolType);
+            if (typeStr === 'nil' || typeStr.length > 60 || typeStr.includes('not found')) continue;
+
+            actions.push({
+              'title': `Add type annotation: ${typeStr}`,
+              'kind': CodeActionKind.QuickFix,
+              'edit': {
+                'changes': {
+                  [params.textDocument.uri]: [
+                    {
+                      'range': {
+                        'start': { 'line': nameLine, 'character': nameEnd },
+                        'end': { 'line': nameLine, 'character': nameEnd },
+                      },
+                      'newText': `: ${typeStr}`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        },
+      });
+    }
+
+    if (parsedDoc?.ast !== undefined) {
+      walk(parsedDoc.ast, {
+        'visitStringLiteral': node => {
+          const nodeLine = node.range.start.line - 1;
+          const nodeStart = node.range.start.column - 1;
+          const nodeEnd = node.range.end.column - 1;
+
+          if (nodeLine !== params.range.start.line) return;
+          if (params.range.start.character < nodeStart || params.range.start.character > nodeEnd) return;
+
+          const raw = node.raw;
+          if (raw.startsWith('"')) {
+            actions.push({
+              'title': 'Convert to single quotes',
+              'kind': CodeActionKind.RefactorRewrite,
+              'edit': {
+                'changes': {
+                  [params.textDocument.uri]: [
+                    {
+                      'range': {
+                        'start': { 'line': nodeLine, 'character': nodeStart },
+                        'end': { 'line': nodeLine, 'character': nodeEnd },
+                      },
+                      'newText': `'${node.value.replace(/'/g, "\\'")}'`,
+                    },
+                  ],
+                },
+              },
+            });
+          } else if (raw.startsWith("'")) {
+            actions.push({
+              'title': 'Convert to double quotes',
+              'kind': CodeActionKind.RefactorRewrite,
+              'edit': {
+                'changes': {
+                  [params.textDocument.uri]: [
+                    {
+                      'range': {
+                        'start': { 'line': nodeLine, 'character': nodeStart },
+                        'end': { 'line': nodeLine, 'character': nodeEnd },
+                      },
+                      'newText': `"${node.value.replace(/"/g, '\\"')}"`,
+                    },
+                  ],
+                },
+              },
+            });
+          }
+        },
+      });
     }
 
     return actions;

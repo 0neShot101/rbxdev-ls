@@ -1,11 +1,3 @@
-/**
- * Sunc Executor API Definitions
- *
- * This module provides type definitions and conversion utilities for the Sunc executor API.
- * Sunc is a Roblox script executor, and this module defines types for its custom functions,
- * namespaces, and HTTP request/response structures. Based on https://sunc.su/ documentation.
- */
-
 import {
   AnyType,
   BooleanType,
@@ -20,12 +12,9 @@ import {
   type TableType,
 } from '@typings/types';
 
-/**
- * HTTP Request Options table type for the request() function.
- *
- * This type defines the structure of the options table passed to HTTP request functions
- * in executor environments. It includes URL, HTTP method, headers, body, and cookies.
- */
+import type { SuncApiDefinition, SuncFunction, SuncParameter } from '@typings/definitions';
+
+/** HTTP request options table type passed to executor request functions. */
 export const RequestOptionsType: TableType = createTableType(
   new Map([
     ['Url', { 'type': StringType, 'readonly': false, 'optional': false }],
@@ -50,12 +39,7 @@ export const RequestOptionsType: TableType = createTableType(
   ]),
 );
 
-/**
- * HTTP Response table type returned by the request() function.
- *
- * This type defines the structure of the response object returned from HTTP requests,
- * including success status, status code, status message, response headers, and body.
- */
+/** HTTP response table type returned from executor request functions. */
 export const RequestResponseType: TableType = createTableType(
   new Map([
     ['Success', { 'type': BooleanType, 'readonly': true, 'optional': false }],
@@ -73,73 +57,6 @@ export const RequestResponseType: TableType = createTableType(
   ]),
 );
 
-/**
- * Represents the complete Sunc API definition structure.
- *
- * This interface models the top-level structure of the Sunc API, containing
- * global functions and namespaces (like debug, Drawing, etc.).
- */
-export interface SuncApiDefinition {
-  /** Array of all global functions provided by the executor */
-  readonly functions: ReadonlyArray<SuncFunction>;
-  /** Array of namespaces containing grouped functions */
-  readonly namespaces: ReadonlyArray<SuncNamespace>;
-}
-
-/**
- * Represents a function definition in the Sunc API.
- *
- * This interface models a single function with its parameters, return type,
- * and optional documentation.
- */
-export interface SuncFunction {
-  /** The name of the function (e.g., 'hookfunction', 'getgenv', 'readfile') */
-  readonly name: string;
-  /** Array of parameters the function accepts */
-  readonly params: ReadonlyArray<SuncParameter>;
-  /** The return type as a string (e.g., 'boolean', 'table', 'Instance') */
-  readonly returnType: string;
-  /** Optional description of what the function does */
-  readonly description?: string;
-  /** Optional code example demonstrating usage */
-  readonly example?: string;
-}
-
-/**
- * Represents a parameter in a Sunc function definition.
- */
-export interface SuncParameter {
-  /** The name of the parameter */
-  readonly name: string;
-  /** The type of the parameter as a string */
-  readonly type: string;
-  /** Whether the parameter is optional (defaults to false) */
-  readonly optional?: boolean;
-}
-
-/**
- * Represents a namespace in the Sunc API.
- *
- * Namespaces group related functions together, such as the 'debug' namespace
- * for debugging utilities or the 'Drawing' namespace for rendering.
- */
-export interface SuncNamespace {
-  /** The name of the namespace (e.g., 'debug', 'Drawing') */
-  readonly name: string;
-  /** Array of functions contained within this namespace */
-  readonly functions: ReadonlyArray<SuncFunction>;
-}
-
-/**
- * Converts a Sunc type name string to a Luau type representation.
- *
- * This function handles common type names used in the Sunc API, including
- * primitives (string, number, boolean), special types (function, table, thread),
- * and union types (using '|' separator).
- *
- * @param typeName - The type name as a string from the Sunc API definition
- * @returns The corresponding LuauType representation
- */
 const suncTypeToLuau = (typeName: string): LuauType => {
   switch (typeName.toLowerCase()) {
     case 'string':
@@ -175,12 +92,6 @@ const suncTypeToLuau = (typeName: string): LuauType => {
   }
 };
 
-/**
- * Converts an array of Sunc parameters to Luau function parameters.
- *
- * @param params - Array of Sunc parameter definitions to convert
- * @returns Array of FunctionParam objects for use in Luau function types
- */
 const convertSuncParams = (params: ReadonlyArray<SuncParameter>): FunctionParam[] =>
   params.map(p => ({
     'name': p.name,
@@ -188,15 +99,6 @@ const convertSuncParams = (params: ReadonlyArray<SuncParameter>): FunctionParam[
     'optional': p.optional === true,
   }));
 
-/**
- * Converts a Sunc function definition to a Luau FunctionType.
- *
- * This function converts all parameters and the return type, and preserves
- * any description or example documentation from the original definition.
- *
- * @param func - The Sunc function definition to convert
- * @returns A FunctionType representing the function in the Luau type system
- */
 const convertSuncFunction = (func: SuncFunction): FunctionType => {
   const options: { description?: string; example?: string } = {};
   if (func.description !== undefined) options.description = func.description;
@@ -204,27 +106,9 @@ const convertSuncFunction = (func: SuncFunction): FunctionType => {
   return createFunctionType(convertSuncParams(func.params), suncTypeToLuau(func.returnType), options);
 };
 
-/**
- * Returns the default Sunc API definition with all standard executor functions.
- *
- * This function provides a comprehensive set of executor API definitions including:
- * - Closure manipulation (hookfunction, clonefunction, newcclosure, etc.)
- * - Drawing utilities (cleardrawcache, isrenderobj, etc.)
- * - Encoding functions (base64encode, base64decode, lz4compress, lz4decompress)
- * - Environment access (getgenv, getrenv, getgc, filtergc)
- * - Filesystem operations (readfile, writefile, isfile, isfolder, etc.)
- * - Instance utilities (cloneref, gethui, getinstances, etc.)
- * - Metatable manipulation (getrawmetatable, setreadonly, hookmetamethod)
- * - Reflection (gethiddenproperty, setthreadidentity, isscriptable)
- * - Script utilities (getscripts, getsenv, loadstring)
- * - Signal manipulation (firesignal, getconnections)
- * - Miscellaneous (identifyexecutor, request, setclipboard)
- *
- * @returns A complete SuncApiDefinition with all standard functions and namespaces
- */
+/** Returns the default Sunc API definition with all standard executor functions and namespaces. */
 export const getDefaultSuncApi = (): SuncApiDefinition => ({
   'functions': [
-    // Closures
     {
       'name': 'checkcaller',
       'params': [],
@@ -303,7 +187,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'hookfunction(print, function() end)\nrestorefunction(print)\nprint("works again")',
     },
 
-    // Drawing
     {
       'name': 'cleardrawcache',
       'params': [],
@@ -340,7 +223,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'local line = Drawing.new("Line")\nsetrenderproperty(line, "Thickness", 2)',
     },
 
-    // Encoding
     {
       'name': 'base64decode',
       'params': [{ 'name': 'data', 'type': 'string' }],
@@ -370,7 +252,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'local original = lz4decompress(compressed)',
     },
 
-    // Environment
     {
       'name': 'getgc',
       'params': [{ 'name': 'includeTables', 'type': 'boolean', 'optional': true }],
@@ -412,7 +293,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'local funcs = filtergc("function", {\n    Name = "MyFunction"\n})',
     },
 
-    // Filesystem
     {
       'name': 'appendfile',
       'params': [
@@ -498,7 +378,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'local fn = loadfile("script.lua")\nif fn then fn() end',
     },
 
-    // Instances
     {
       'name': 'cloneref',
       'params': [{ 'name': 'instance', 'type': 'Instance' }],
@@ -579,7 +458,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
         'local nilInstances = getnilinstances()\nfor _, inst in ipairs(nilInstances) do\n    print(inst.Name)\nend',
     },
 
-    // Metatable
     {
       'name': 'getnamecallmethod',
       'params': [],
@@ -624,7 +502,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
         'local mt = getrawmetatable(game)\nsetreadonly(mt, false)\n-- now you can modify mt\nsetreadonly(mt, true)',
     },
 
-    // Reflection
     {
       'name': 'gethiddenproperty',
       'params': [
@@ -682,7 +559,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'setthreadidentity(8) -- Set to highest identity',
     },
 
-    // Scripts
     {
       'name': 'getcallingscript',
       'params': [],
@@ -752,7 +628,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
         'local fn, err = loadstring("return 1 + 1")\nif fn then\n    print(fn()) -- 2\nelse\n    warn(err)\nend',
     },
 
-    // Signals
     {
       'name': 'firesignal',
       'params': [
@@ -783,7 +658,6 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
       'example': 'replicatesignal(remoteEvent.OnClientEvent, "data")',
     },
 
-    // Misc
     {
       'name': 'identifyexecutor',
       'params': [],
@@ -936,17 +810,7 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
   ],
 });
 
-/**
- * Converts a Sunc API definition to Luau type definitions.
- *
- * This function processes all global functions and namespaces from the Sunc API,
- * converting them to Luau types. It also adds additional common executor globals
- * not in the standard Sunc API (found in various executors like Synapse, KRNL, etc.)
- * and the 'syn' namespace for Synapse X specific functions.
- *
- * @param api - The Sunc API definition to convert
- * @returns An object containing maps of global functions and namespaces
- */
+/** Converts a Sunc API definition to Luau type definitions for globals and namespaces. */
 export const convertSuncApiToTypes = (
   api: SuncApiDefinition,
 ): {
@@ -972,10 +836,7 @@ export const convertSuncApiToTypes = (
     namespaces.set(ns.name, createTableType(nsFuncs));
   }
 
-  // Add additional common executor globals not in standard Sunc API
-  // These are found in various exploits like Synapse, KRNL, etc.
   const additionalGlobals: Array<{ name: string; type: LuauType }> = [
-    // Simulation/Physics
     {
       'name': 'setsimulationradius',
       'type': createFunctionType([{ 'name': 'radius', 'type': NumberType, 'optional': false }], NilType),
@@ -985,7 +846,6 @@ export const convertSuncApiToTypes = (
       'type': createFunctionType([{ 'name': 'radius', 'type': NumberType, 'optional': false }], NilType),
     },
 
-    // Hidden properties
     {
       'name': 'set_hidden_prop',
       'type': createFunctionType(
@@ -1029,7 +889,6 @@ export const convertSuncApiToTypes = (
       ),
     },
 
-    // Signal connections
     {
       'name': 'get_signal_cons',
       'type': createFunctionType(
@@ -1038,7 +897,6 @@ export const convertSuncApiToTypes = (
       ),
     },
 
-    // Clipboard
     {
       'name': 'setclipboard',
       'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
@@ -1049,7 +907,6 @@ export const convertSuncApiToTypes = (
       'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
     },
 
-    // Loadstring variants
     {
       'name': 'loadstring',
       'type': createFunctionType(
@@ -1061,7 +918,6 @@ export const convertSuncApiToTypes = (
       ),
     },
 
-    // Hash functions
     {
       'name': 'Hash',
       'type': createFunctionType([{ 'name': 'data', 'type': StringType, 'optional': false }], StringType),
@@ -1071,13 +927,11 @@ export const convertSuncApiToTypes = (
       'type': createTableType(new Map(), { 'indexer': { 'keyType': StringType, 'valueType': AnyType } }),
     },
 
-    // Executor detection flags (common across exploits)
     { 'name': 'PROTOSMASHER_LOADED', 'type': BooleanType },
     { 'name': 'KRNL_LOADED', 'type': BooleanType },
     { 'name': 'SENTINEL_LOADED', 'type': BooleanType },
     { 'name': 'SIRHURT_LOADED', 'type': BooleanType },
 
-    // HTTP
     {
       'name': 'http_request',
       'type': createFunctionType(
@@ -1093,7 +947,6 @@ export const convertSuncApiToTypes = (
       ),
     },
 
-    // Misc common functions
     {
       'name': 'rconsoleprint',
       'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
@@ -1117,7 +970,6 @@ export const convertSuncApiToTypes = (
       'type': createFunctionType([{ 'name': 'script', 'type': StringType, 'optional': false }], NilType),
     },
 
-    // Mouse functions
     { 'name': 'mouse1click', 'type': createFunctionType([], NilType) },
     { 'name': 'mouse1press', 'type': createFunctionType([], NilType) },
     { 'name': 'mouse1release', 'type': createFunctionType([], NilType) },
@@ -1149,7 +1001,6 @@ export const convertSuncApiToTypes = (
       'type': createFunctionType([{ 'name': 'pixels', 'type': NumberType, 'optional': false }], NilType),
     },
 
-    // Keyboard functions
     {
       'name': 'keypress',
       'type': createFunctionType([{ 'name': 'keycode', 'type': NumberType, 'optional': false }], NilType),
@@ -1166,7 +1017,6 @@ export const convertSuncApiToTypes = (
     globals.set(g.name, g.type);
   }
 
-  // Add syn namespace (Synapse X specific)
   const synNamespace = createTableType(
     new Map([
       [

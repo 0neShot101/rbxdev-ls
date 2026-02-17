@@ -1,523 +1,65 @@
-/**
- * Executor Bridge WebSocket Server
- * Manages connections with Roblox exploit executors
- */
-
 import { WebSocketServer, type WebSocket } from 'ws';
 
-import { createLiveGameModel, type LiveGameModel } from './gameTree';
-import {
-  isChildrenResultMessage,
-  isCloneInstanceResultMessage,
-  isCreateInstanceResultMessage,
-  isDeleteInstanceResultMessage,
-  isLogMessage,
-  isModuleInterfaceMessage,
-  isPropertiesResultMessage,
-  isRemoteSpyMessage,
-  isReparentInstanceResultMessage,
-  isScriptSourceResultMessage,
-  isSetPropertyResultMessage,
-  isSetRemoteSpyEnabledResultMessage,
-  isSetRemoteSpyFilterResultMessage,
-  isTeleportToResultMessage,
-  parseClientMessage,
-  type GameTreeNode,
-  type ModuleInterface,
-  type ModuleReference,
-  type PropertyEntry,
-  type RemoteSpyCall,
-  type RuntimeError,
-  type ServerMessage,
-} from './protocol';
+import type {
+  BridgeStatus,
+  ChildrenResult,
+  CloneInstanceResult,
+  CreateInstanceResult,
+  DeleteResult,
+  ExecuteResult,
+  ExecutorBridge,
+  LogEntry,
+  ModuleInterfaceResult,
+  PropertiesResult,
+  ReparentResult,
+  ScriptSourceResult,
+  SetPropertyResult,
+  SetRemoteSpyEnabledResult,
+  SetRemoteSpyFilterResult,
+  TeleportResult,
+} from '@typings/bridge';
+import type { GameTreeNode, ModuleReference, RemoteSpyCall, RuntimeError, ServerMessage } from '@typings/protocol';
+import { createLiveGameModel } from './gameTree';
+import { parseClientMessage } from './protocol';
 
-/**
- * Represents the result of executing Luau code on a connected executor.
- * Contains success status and either the result value or error details.
- */
-export interface ExecuteResult {
-  /** Whether the code execution completed successfully */
-  readonly success: boolean;
-  /** The return value or output from successful execution */
-  readonly result?: string;
-  /** Error details if the execution failed */
-  readonly error?: RuntimeError;
-}
-
-/**
- * Represents a log entry received from the executor
- */
-export interface LogEntry {
-  /** The log level (info, warn, or error) */
-  readonly level: 'info' | 'warn' | 'error';
-  /** The log message content */
-  readonly message: string;
-  /** Optional stack trace for errors */
-  readonly stack?: string | undefined;
-  /** Unix timestamp when the log was generated */
-  readonly timestamp: number;
-}
-
-/**
- * Represents the result of a property request
- */
-export interface PropertiesResult {
-  /** Whether the properties were successfully retrieved */
-  readonly success: boolean;
-  /** The property values if successful */
-  readonly properties?: ReadonlyArray<PropertyEntry> | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a module interface request
- */
-export interface ModuleInterfaceResult {
-  /** Whether the module interface was successfully retrieved */
-  readonly success: boolean;
-  /** The module interface if successful */
-  readonly interface?: ModuleInterface | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of setting a property
- */
-export interface SetPropertyResult {
-  /** Whether the property was successfully set */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a teleport operation
- */
-export interface TeleportResult {
-  /** Whether the teleport was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a delete operation
- */
-export interface DeleteResult {
-  /** Whether the deletion was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a reparent operation
- */
-export interface ReparentResult {
-  /** Whether the reparent was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a children request (lazy loading)
- */
-export interface ChildrenResult {
-  /** Whether the children were successfully retrieved */
-  readonly success: boolean;
-  /** The child nodes if successful */
-  readonly children?: ReadonlyArray<GameTreeNode> | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of a script source request (decompilation)
- */
-export interface ScriptSourceResult {
-  /** Whether the script source was successfully retrieved */
-  readonly success: boolean;
-  /** The decompiled script source if successful */
-  readonly source?: string | undefined;
-  /** The script class name (LocalScript, ModuleScript, Script) */
-  readonly scriptType?: string | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of creating a new instance
- */
-export interface CreateInstanceResult {
-  /** Whether the instance was successfully created */
-  readonly success: boolean;
-  /** The name of the created instance */
-  readonly instanceName?: string | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of cloning an instance
- */
-export interface CloneInstanceResult {
-  /** Whether the instance was successfully cloned */
-  readonly success: boolean;
-  /** The name of the cloned instance */
-  readonly cloneName?: string | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of setting remote spy enabled state
- */
-export interface SetRemoteSpyEnabledResult {
-  /** Whether the operation was successful */
-  readonly success: boolean;
-  /** The current enabled state */
-  readonly enabled?: boolean | undefined;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/**
- * Represents the result of setting remote spy filter
- */
-export interface SetRemoteSpyFilterResult {
-  /** Whether the operation was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string | undefined;
-}
-
-/** Re-export RemoteSpyCall for convenience */
-export type { RemoteSpyCall } from './protocol';
-
-/**
- * The main interface for interacting with the executor bridge.
- * Provides methods to start/stop the server, execute code, and subscribe to events.
- */
-export interface ExecutorBridge {
-  /** Whether the WebSocket server is currently running */
-  readonly isRunning: boolean;
-  /** Whether an executor client is currently connected and ready */
-  readonly isConnected: boolean;
-  /** The name of the connected executor, or undefined if not connected */
-  readonly executorName: string | undefined;
-  /** The live game model containing the current game tree structure */
-  readonly liveGameModel: LiveGameModel;
-  /**
-   * Starts the WebSocket server on the specified port.
-   * @param port - The port number to listen on
-   */
-  start: (port: number) => void;
-  /**
-   * Stops the WebSocket server and disconnects any connected clients.
-   */
-  stop: () => void;
-  /**
-   * Executes Luau code on the connected executor.
-   * @param code - The Luau code to execute
-   * @returns A promise that resolves with the execution result
-   */
-  execute: (code: string) => Promise<ExecuteResult>;
-  /**
-   * Requests an updated game tree from the connected executor.
-   */
-  requestGameTree: () => void;
-  /**
-   * Requests property values from an instance in the game.
-   * @param path - Path segments to the instance
-   * @param properties - Optional list of specific properties to fetch
-   * @returns A promise that resolves with the property values
-   */
-  requestProperties: (path: ReadonlyArray<string>, properties?: ReadonlyArray<string>) => Promise<PropertiesResult>;
-  /**
-   * Requests the public interface of a module.
-   * @param moduleRef - Reference to the module (path or asset ID)
-   * @returns A promise that resolves with the module interface
-   */
-  requestModuleInterface: (moduleRef: ModuleReference) => Promise<ModuleInterfaceResult>;
-  /**
-   * Sets a property value on an instance.
-   * @param path - Path segments to the instance
-   * @param property - Name of the property to set
-   * @param value - The new value as a string
-   * @param valueType - The type of the value
-   * @returns A promise that resolves with the result
-   */
-  setProperty: (
-    path: ReadonlyArray<string>,
-    property: string,
-    value: string,
-    valueType: string,
-  ) => Promise<SetPropertyResult>;
-  /**
-   * Teleports the local player to an instance's position.
-   * @param path - Path segments to the target instance
-   * @returns A promise that resolves with the result
-   */
-  teleportTo: (path: ReadonlyArray<string>) => Promise<TeleportResult>;
-  /**
-   * Deletes an instance from the game.
-   * @param path - Path segments to the instance to delete
-   * @returns A promise that resolves with the result
-   */
-  deleteInstance: (path: ReadonlyArray<string>) => Promise<DeleteResult>;
-  /**
-   * Reparents an instance to a new parent.
-   * @param sourcePath - Path segments to the instance to move
-   * @param targetPath - Path segments to the new parent
-   * @returns A promise that resolves with the result
-   */
-  reparentInstance: (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>) => Promise<ReparentResult>;
-  /**
-   * Requests children of an instance for lazy loading.
-   * @param path - Path segments to the parent instance
-   * @returns A promise that resolves with the children
-   */
-  requestChildren: (path: ReadonlyArray<string>) => Promise<ChildrenResult>;
-  /**
-   * Requests decompiled script source.
-   * @param path - Path segments to the script instance
-   * @returns A promise that resolves with the script source
-   */
-  requestScriptSource: (path: ReadonlyArray<string>) => Promise<ScriptSourceResult>;
-  /**
-   * Creates a new instance in the game.
-   * @param className - The class name of the instance to create
-   * @param parentPath - Path segments to the parent instance
-   * @param name - Optional name for the new instance
-   * @returns A promise that resolves with the result
-   */
-  createInstance: (
-    className: string,
-    parentPath: ReadonlyArray<string>,
-    name?: string,
-  ) => Promise<CreateInstanceResult>;
-  /**
-   * Clones an existing instance.
-   * @param path - Path segments to the instance to clone
-   * @returns A promise that resolves with the result
-   */
-  cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
-  /**
-   * Enables or disables the remote spy feature.
-   * @param enabled - Whether to enable or disable remote spy
-   * @returns A promise that resolves with the result
-   */
-  setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
-  /**
-   * Sets a filter for remote spy (only show remotes matching the filter).
-   * @param filter - Filter pattern (empty string = no filter)
-   * @returns A promise that resolves with the result
-   */
-  setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
-  /** Whether remote spy is currently enabled */
-  readonly isRemoteSpyEnabled: boolean;
-  /** Recent remote spy calls buffer */
-  readonly remoteSpyCalls: ReadonlyArray<RemoteSpyCall>;
-  /**
-   * Registers a callback to be invoked when the bridge status changes.
-   * @param callback - Function to call with the new status
-   */
-  onStatusChange: (callback: (status: BridgeStatus) => void) => void;
-  /**
-   * Registers a callback to be invoked when a runtime error occurs.
-   * @param callback - Function to call with the error details
-   */
-  onRuntimeError: (callback: (error: RuntimeError) => void) => void;
-  /**
-   * Registers a callback to be invoked when the game tree is updated.
-   * @param callback - Function to call with the new game tree nodes
-   */
-  onGameTreeUpdate: (callback: (nodes: GameTreeNode[]) => void) => void;
-  /**
-   * Registers a callback to be invoked when a log message is received.
-   * @param callback - Function to call with the log entry
-   */
-  onLog: (callback: (log: LogEntry) => void) => void;
-  /**
-   * Registers a callback to be invoked when a remote spy call is captured.
-   * @param callback - Function to call with the remote spy call data
-   */
-  onRemoteSpy: (callback: (call: RemoteSpyCall) => void) => void;
-}
-
-/**
- * Represents the current status of the executor bridge.
- * - 'stopped': Server is not running
- * - 'waiting': Server is running but no client is connected
- * - 'connected': An executor client is connected and ready
- * - 'error': An error occurred with the server or connection
- */
-export type BridgeStatus = 'stopped' | 'waiting' | 'connected' | 'error';
-
-/**
- * Internal interface for tracking pending code execution requests.
- * Stores the promise callbacks and timeout handle for cleanup.
- */
-interface PendingExecution {
-  /** Callback to resolve the execution promise with the result */
-  readonly resolve: (result: ExecuteResult) => void;
-  /** Callback to reject the execution promise with an error */
-  readonly reject: (error: Error) => void;
-  /** Handle for the timeout that will reject the promise if execution takes too long */
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending properties requests.
- */
-interface PendingPropertiesRequest {
-  readonly resolve: (result: PropertiesResult) => void;
+interface PendingRequest<T> {
+  readonly resolve: (result: T) => void;
   readonly reject: (error: Error) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
 }
 
-/**
- * Internal interface for tracking pending module interface requests.
- */
-interface PendingModuleInterfaceRequest {
-  readonly resolve: (result: ModuleInterfaceResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending set property requests.
- */
-interface PendingSetPropertyRequest {
-  readonly resolve: (result: SetPropertyResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending teleport requests.
- */
-interface PendingTeleportRequest {
-  readonly resolve: (result: TeleportResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending delete requests.
- */
-interface PendingDeleteRequest {
-  readonly resolve: (result: DeleteResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending reparent requests.
- */
-interface PendingReparentRequest {
-  readonly resolve: (result: ReparentResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending children requests (lazy loading).
- */
-interface PendingChildrenRequest {
-  readonly resolve: (result: ChildrenResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Internal interface for tracking pending script source requests (decompilation).
- */
-interface PendingScriptSourceRequest {
-  readonly resolve: (result: ScriptSourceResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending create instance requests.
- */
-interface PendingCreateInstanceRequest {
-  readonly resolve: (result: CreateInstanceResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending clone instance requests.
- */
-interface PendingCloneInstanceRequest {
-  readonly resolve: (result: CloneInstanceResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending remote spy enabled requests.
- */
-interface PendingSetRemoteSpyEnabledRequest {
-  readonly resolve: (result: SetRemoteSpyEnabledResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/**
- * Internal interface for tracking pending remote spy filter requests.
- */
-interface PendingSetRemoteSpyFilterRequest {
-  readonly resolve: (result: SetRemoteSpyFilterResult) => void;
-  readonly reject: (error: Error) => void;
-  readonly timeout: ReturnType<typeof setTimeout>;
-}
-
-/** Maximum number of remote spy calls to buffer */
 const MAX_REMOTE_SPY_BUFFER = 500;
 
-/**
- * Creates a new executor bridge instance for managing WebSocket connections with Roblox executors.
- * The bridge handles connection lifecycle, code execution, and game tree synchronization.
- * @param log - Logging function to output status and debug messages
- * @returns A fully configured ExecutorBridge instance
- */
+/** Creates a new executor bridge instance for managing WebSocket connections with Roblox executors. */
 export const createExecutorBridge = (log: (message: string) => void): ExecutorBridge => {
   let server: WebSocketServer | undefined;
   let client: WebSocket | undefined;
   let executorName: string | undefined;
   let handshakeTimeout: ReturnType<typeof setTimeout> | undefined;
   let status: BridgeStatus = 'stopped';
+  let remoteSpyEnabled = false;
 
   const HANDSHAKE_TIMEOUT_MS = 5000;
 
-  const pendingExecutions = new Map<string, PendingExecution>();
-  const pendingProperties = new Map<string, PendingPropertiesRequest>();
-  const pendingModuleInterfaces = new Map<string, PendingModuleInterfaceRequest>();
-  const pendingSetProperties = new Map<string, PendingSetPropertyRequest>();
-  const pendingTeleports = new Map<string, PendingTeleportRequest>();
-  const pendingDeletes = new Map<string, PendingDeleteRequest>();
-  const pendingReparents = new Map<string, PendingReparentRequest>();
-  const pendingChildren = new Map<string, PendingChildrenRequest>();
-  const pendingScriptSources = new Map<string, PendingScriptSourceRequest>();
-  const pendingCreateInstances = new Map<string, PendingCreateInstanceRequest>();
-  const pendingCloneInstances = new Map<string, PendingCloneInstanceRequest>();
-  const pendingSetRemoteSpyEnabled = new Map<string, PendingSetRemoteSpyEnabledRequest>();
-  const pendingSetRemoteSpyFilter = new Map<string, PendingSetRemoteSpyFilterRequest>();
+  const pendingExecutions = new Map<string, PendingRequest<ExecuteResult>>();
+  const pendingProperties = new Map<string, PendingRequest<PropertiesResult>>();
+  const pendingModuleInterfaces = new Map<string, PendingRequest<ModuleInterfaceResult>>();
+  const pendingSetProperties = new Map<string, PendingRequest<SetPropertyResult>>();
+  const pendingTeleports = new Map<string, PendingRequest<TeleportResult>>();
+  const pendingDeletes = new Map<string, PendingRequest<DeleteResult>>();
+  const pendingReparents = new Map<string, PendingRequest<ReparentResult>>();
+  const pendingChildren = new Map<string, PendingRequest<ChildrenResult> & { readonly path: ReadonlyArray<string> }>();
+  const pendingScriptSources = new Map<string, PendingRequest<ScriptSourceResult>>();
+  const pendingCreateInstances = new Map<string, PendingRequest<CreateInstanceResult>>();
+  const pendingCloneInstances = new Map<string, PendingRequest<CloneInstanceResult>>();
+  const pendingSetRemoteSpyEnabled = new Map<string, PendingRequest<SetRemoteSpyEnabledResult>>();
+  const pendingSetRemoteSpyFilter = new Map<string, PendingRequest<SetRemoteSpyFilterResult>>();
+
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
   const gameTreeCallbacks: Array<(nodes: GameTreeNode[]) => void> = [];
   const logCallbacks: Array<(log: LogEntry) => void> = [];
   const remoteSpyCallbacks: Array<(call: RemoteSpyCall) => void> = [];
-
-  /** Remote spy state */
-  let remoteSpyEnabled = false;
   const remoteSpyCallsBuffer: RemoteSpyCall[] = [];
 
   const {
@@ -527,40 +69,55 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     setConnected,
   } = createLiveGameModel();
 
-  /**
-   * Generates a unique identifier for tracking execution requests.
-   * @returns A random alphanumeric string suitable for use as a request ID
-   */
   const generateId = (): string => Math.random().toString(36).slice(2, 10);
 
-  /**
-   * Updates the bridge status and notifies all registered callbacks.
-   * Only triggers callbacks if the status has actually changed.
-   * @param newStatus - The new status to set
-   */
   const setStatus = (newStatus: BridgeStatus): void => {
     if (status === newStatus) return;
     status = newStatus;
-    for (const callback of statusCallbacks) {
-      callback(newStatus);
-    }
+    for (const callback of statusCallbacks) callback(newStatus);
   };
 
-  /**
-   * Sends a message to the connected executor client.
-   * Silently does nothing if no client is connected or the connection is not open.
-   * @param message - The server message to send
-   */
   const send = (message: ServerMessage): void => {
     if (client === undefined || client.readyState !== client.OPEN) return;
     client.send(JSON.stringify(message));
   };
 
-  /**
-   * Processes an incoming message from the executor client.
-   * Handles connection confirmations, execution results, game tree updates, and runtime errors.
-   * @param data - The raw JSON string received from the client
-   */
+  const resolvePending = <T>(pendingMap: Map<string, PendingRequest<T>>, id: string, result: T): void => {
+    const pending = pendingMap.get(id);
+    if (pending === undefined) return;
+    clearTimeout(pending.timeout);
+    pendingMap.delete(id);
+    pending.resolve(result);
+  };
+
+  const notify = <T>(callbacks: ReadonlyArray<(value: T) => void>, value: T): void => {
+    for (const callback of callbacks) callback(value);
+  };
+
+  const createRequest = <T>(
+    pendingMap: Map<string, PendingRequest<T>>,
+    timeoutMs: number,
+    buildMessage: (id: string) => ServerMessage,
+    extra?: Record<string, unknown>,
+  ): Promise<T> =>
+    new Promise((resolve, reject) => {
+      if (client === undefined || client.readyState !== client.OPEN) {
+        reject(new Error('No executor connected'));
+        return;
+      }
+      if (executorName === undefined) {
+        reject(new Error('Executor connected but handshake not completed'));
+        return;
+      }
+      const id = generateId();
+      const timeout = setTimeout(() => {
+        pendingMap.delete(id);
+        resolve({ 'success': false, 'error': 'Request timed out' } as T);
+      }, timeoutMs);
+      pendingMap.set(id, { resolve, reject, timeout, ...extra } as PendingRequest<T>);
+      send(buildMessage(id));
+    });
+
   const handleMessage = (data: string): void => {
     const message = parseClientMessage(data);
     if (message === undefined) {
@@ -569,7 +126,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     }
 
     switch (message.type) {
-      case 'connected': {
+      case 'connected':
         if (handshakeTimeout !== undefined) {
           clearTimeout(handshakeTimeout);
           handshakeTimeout = undefined;
@@ -578,236 +135,150 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         setConnected(true);
         setStatus('connected');
         log(`[bridge] Executor connected: ${message.executorName} v${message.version}`);
-        // Client sends deep tree proactively, no need to request
         break;
-      }
 
-      case 'executeResult': {
-        const pending = pendingExecutions.get(message.id);
-        if (pending !== undefined) {
-          clearTimeout(pending.timeout);
-          pendingExecutions.delete(message.id);
-          const result: ExecuteResult = {
-            'success': message.success,
-            ...(message.result !== undefined ? { 'result': message.result } : {}),
-            ...(message.error !== undefined ? { 'error': message.error } : {}),
-          };
-          pending.resolve(result);
-        }
+      case 'executeResult':
+        resolvePending(pendingExecutions, message.id, {
+          'success': message.success,
+          ...(message.result !== undefined ? { 'result': message.result } : {}),
+          ...(message.error !== undefined ? { 'error': message.error } : {}),
+        });
         break;
-      }
 
-      case 'gameTree': {
+      case 'gameTree':
         updateGameModel(message.data);
         log(`[bridge] Game tree updated: ${message.data.length} services`);
-        for (const callback of gameTreeCallbacks) {
-          callback(message.data);
-        }
+        notify(gameTreeCallbacks, message.data);
         break;
-      }
 
-      case 'runtimeError': {
+      case 'runtimeError':
         log(`[bridge] Runtime error: ${message.error.message}`);
-        for (const callback of errorCallbacks) {
-          callback(message.error);
-        }
+        notify(errorCallbacks, message.error);
         break;
-      }
-    }
 
-    // Handle new message types separately using type guards
-    if (isLogMessage(message)) {
-      const entry: LogEntry = {
-        'level': message.level,
-        'message': message.message,
-        'stack': message.stack ?? undefined,
-        'timestamp': message.timestamp,
-      };
-      for (const callback of logCallbacks) {
-        callback(entry);
-      }
-    }
+      case 'log':
+        notify(logCallbacks, {
+          'level': message.level,
+          'message': message.message,
+          'stack': message.stack ?? undefined,
+          'timestamp': message.timestamp,
+        });
+        break;
 
-    if (isPropertiesResultMessage(message)) {
-      const pending = pendingProperties.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingProperties.delete(message.id);
-        pending.resolve({
+      case 'propertiesResult':
+        resolvePending(pendingProperties, message.id, {
           'success': message.success,
           'properties': message.properties ?? undefined,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isModuleInterfaceMessage(message)) {
-      const pending = pendingModuleInterfaces.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingModuleInterfaces.delete(message.id);
-        pending.resolve({
+      case 'moduleInterface':
+        resolvePending(pendingModuleInterfaces, message.id, {
           'success': message.success,
           'interface': message.interface ?? undefined,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isSetPropertyResultMessage(message)) {
-      const pending = pendingSetProperties.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingSetProperties.delete(message.id);
-        pending.resolve({
+      case 'setPropertyResult':
+        resolvePending(pendingSetProperties, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isTeleportToResultMessage(message)) {
-      const pending = pendingTeleports.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingTeleports.delete(message.id);
-        pending.resolve({
+      case 'teleportToResult':
+        resolvePending(pendingTeleports, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isDeleteInstanceResultMessage(message)) {
-      const pending = pendingDeletes.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingDeletes.delete(message.id);
-        pending.resolve({
+      case 'deleteInstanceResult':
+        resolvePending(pendingDeletes, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isReparentInstanceResultMessage(message)) {
-      const pending = pendingReparents.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingReparents.delete(message.id);
-        pending.resolve({
+      case 'reparentInstanceResult':
+        resolvePending(pendingReparents, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isChildrenResultMessage(message)) {
-      const pending = pendingChildren.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingChildren.delete(message.id);
-
-        // Merge children into the live game model for completions
-        if (message.success && message.children !== undefined) {
-          mergeChildrenIntoModel(pending.path, message.children);
+      case 'childrenResult': {
+        const pending = pendingChildren.get(message.id);
+        if (pending !== undefined) {
+          clearTimeout(pending.timeout);
+          pendingChildren.delete(message.id);
+          if (message.success && message.children !== undefined) mergeChildrenIntoModel(pending.path, message.children);
+          pending.resolve({
+            'success': message.success,
+            'children': message.children ?? undefined,
+            'error': message.error ?? undefined,
+          });
         }
-
-        pending.resolve({
-          'success': message.success,
-          'children': message.children ?? undefined,
-          'error': message.error ?? undefined,
-        });
+        break;
       }
-    }
 
-    if (isScriptSourceResultMessage(message)) {
-      const pending = pendingScriptSources.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingScriptSources.delete(message.id);
-        pending.resolve({
+      case 'scriptSourceResult':
+        resolvePending(pendingScriptSources, message.id, {
           'success': message.success,
           'source': message.source ?? undefined,
           'scriptType': message.scriptType ?? undefined,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isCreateInstanceResultMessage(message)) {
-      const pending = pendingCreateInstances.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingCreateInstances.delete(message.id);
-        pending.resolve({
+      case 'createInstanceResult':
+        resolvePending(pendingCreateInstances, message.id, {
           'success': message.success,
           'instanceName': message.instanceName ?? undefined,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isCloneInstanceResultMessage(message)) {
-      const pending = pendingCloneInstances.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingCloneInstances.delete(message.id);
-        pending.resolve({
+      case 'cloneInstanceResult':
+        resolvePending(pendingCloneInstances, message.id, {
           'success': message.success,
           'cloneName': message.cloneName ?? undefined,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isSetRemoteSpyEnabledResultMessage(message)) {
-      const pending = pendingSetRemoteSpyEnabled.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingSetRemoteSpyEnabled.delete(message.id);
-        if (message.success && message.enabled !== undefined) {
-          remoteSpyEnabled = message.enabled;
+      case 'setRemoteSpyEnabledResult': {
+        const pending = pendingSetRemoteSpyEnabled.get(message.id);
+        if (pending !== undefined) {
+          clearTimeout(pending.timeout);
+          pendingSetRemoteSpyEnabled.delete(message.id);
+          if (message.success && message.enabled !== undefined) remoteSpyEnabled = message.enabled;
+          pending.resolve({
+            'success': message.success,
+            'enabled': message.enabled ?? undefined,
+            'error': message.error ?? undefined,
+          });
         }
-        pending.resolve({
-          'success': message.success,
-          'enabled': message.enabled ?? undefined,
-          'error': message.error ?? undefined,
-        });
+        break;
       }
-    }
 
-    if (isSetRemoteSpyFilterResultMessage(message)) {
-      const pending = pendingSetRemoteSpyFilter.get(message.id);
-      if (pending !== undefined) {
-        clearTimeout(pending.timeout);
-        pendingSetRemoteSpyFilter.delete(message.id);
-        pending.resolve({
+      case 'setRemoteSpyFilterResult':
+        resolvePending(pendingSetRemoteSpyFilter, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
-      }
-    }
+        break;
 
-    if (isRemoteSpyMessage(message)) {
-      // Add to buffer
-      remoteSpyCallsBuffer.push(message.call);
-      if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) {
-        remoteSpyCallsBuffer.shift();
-      }
-
-      // Notify callbacks
-      for (const callback of remoteSpyCallbacks) {
-        callback(message.call);
-      }
+      case 'remoteSpy':
+        remoteSpyCallsBuffer.push(message.call);
+        if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) remoteSpyCallsBuffer.shift();
+        notify(remoteSpyCallbacks, message.call);
+        break;
     }
   };
 
-  /**
-   * Starts the WebSocket server and begins listening for executor connections.
-   * If the server is already running, this method does nothing.
-   * @param port - The port number to listen on (binds to localhost only)
-   */
   const start = (port: number): void => {
     if (server !== undefined) return;
 
@@ -817,15 +288,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       log(`[bridge] WebSocket server started on port ${port}`);
 
       server.on('connection', (ws: WebSocket) => {
-        // If an old client is still connected, close it and accept the new one.
-        // This handles re-execution of the bridge script where the old close
-        // hasn't been processed yet.
         if (client !== undefined) {
           log('[bridge] Replacing existing client connection');
           try {
             client.close(1000, 'Replaced by new connection');
           } catch {
-            // Old connection may already be dead
+            /* noop */
           }
           client = undefined;
           executorName = undefined;
@@ -846,8 +314,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         }, HANDSHAKE_TIMEOUT_MS);
 
         ws.on('message', (data: Buffer | string) => {
-          const str = typeof data === 'string' ? data : data.toString('utf-8');
-          handleMessage(str);
+          handleMessage(typeof data === 'string' ? data : data.toString('utf-8'));
         });
 
         ws.on('close', () => {
@@ -861,7 +328,6 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
           setConnected(false);
           setStatus('waiting');
 
-          // Reject all pending executions
           for (const [id, pending] of pendingExecutions) {
             clearTimeout(pending.timeout);
             pending.reject(new Error('Client disconnected'));
@@ -884,25 +350,16 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     }
   };
 
-  /**
-   * Stops the WebSocket server and closes all active connections.
-   * Cleans up resources and resets the bridge to its initial state.
-   */
   const stop = (): void => {
     if (server === undefined) return;
-
     if (handshakeTimeout !== undefined) {
       clearTimeout(handshakeTimeout);
       handshakeTimeout = undefined;
     }
-
-    // Close client connection
     if (client !== undefined) {
       client.close(1000, 'Server shutting down');
       client = undefined;
     }
-
-    // Close server
     server.close();
     server = undefined;
     executorName = undefined;
@@ -911,12 +368,6 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     log('[bridge] Server stopped');
   };
 
-  /**
-   * Sends Luau code to the connected executor for execution.
-   * Returns a promise that resolves with the result or rejects on timeout/disconnect.
-   * @param code - The Luau source code to execute
-   * @returns A promise that resolves with the execution result, including success status and any output or errors
-   */
   const execute = (code: string): Promise<ExecuteResult> =>
     new Promise((resolve, reject) => {
       if (client === undefined || client.readyState !== client.OPEN) {
@@ -927,390 +378,142 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         reject(new Error('Executor connected but handshake not completed'));
         return;
       }
-
       const id = generateId();
       const timeout = setTimeout(() => {
         pendingExecutions.delete(id);
         reject(new Error('Execution timed out'));
-      }, 30000); // 30 second timeout
-
+      }, 30000);
       pendingExecutions.set(id, { resolve, reject, timeout });
       send({ 'type': 'execute', id, code });
     });
 
-  /**
-   * Requests a fresh game tree snapshot from the connected executor.
-   * The result will be delivered asynchronously via the onGameTreeUpdate callback.
-   */
   const requestGameTree = (): void => {
     send({ 'type': 'requestGameTree' });
   };
 
-  /**
-   * Registers a callback function to be notified when the bridge status changes.
-   * @param callback - Function to invoke with the new BridgeStatus value
-   */
-  const onStatusChange = (callback: (status: BridgeStatus) => void): void => {
-    statusCallbacks.push(callback);
-  };
-
-  /**
-   * Registers a callback function to be notified when runtime errors occur.
-   * @param callback - Function to invoke with the RuntimeError details
-   */
-  const onRuntimeError = (callback: (error: RuntimeError) => void): void => {
-    errorCallbacks.push(callback);
-  };
-
-  /**
-   * Registers a callback function to be notified when the game tree is updated.
-   * @param callback - Function to invoke with the array of root GameTreeNode objects
-   */
-  const onGameTreeUpdate = (callback: (nodes: GameTreeNode[]) => void): void => {
-    gameTreeCallbacks.push(callback);
-  };
-
-  /**
-   * Registers a callback function to be notified when a log message is received.
-   * @param callback - Function to invoke with the LogEntry
-   */
-  const onLog = (callback: (log: LogEntry) => void): void => {
-    logCallbacks.push(callback);
-  };
-
-  /**
-   * Requests property values from an instance in the game.
-   * @param path - Path segments to the instance
-   * @param properties - Optional list of specific properties to fetch
-   * @returns A promise that resolves with the property values
-   */
   const requestProperties = (
     path: ReadonlyArray<string>,
     properties?: ReadonlyArray<string>,
   ): Promise<PropertiesResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingProperties, 5000, id => ({
+      'type': 'requestProperties' as const,
+      id,
+      'path': [...path],
+      ...(properties !== undefined ? { 'properties': properties as ReadonlyArray<string> } : {}),
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingProperties.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 5000);
-
-      pendingProperties.set(id, { resolve, reject, timeout });
-      send({
-        'type': 'requestProperties',
-        id,
-        'path': [...path],
-        ...(properties !== undefined ? { 'properties': properties as ReadonlyArray<string> } : {}),
-      });
-    });
-
-  /**
-   * Requests the public interface of a module.
-   * @param moduleRef - Reference to the module (path or asset ID)
-   * @returns A promise that resolves with the module interface
-   */
   const requestModuleInterface = (moduleRef: ModuleReference): Promise<ModuleInterfaceResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingModuleInterfaces, 2000, id => ({
+      'type': 'requestModuleInterface' as const,
+      id,
+      moduleRef,
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingModuleInterfaces.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000); // Longer timeout for module loading
-
-      pendingModuleInterfaces.set(id, { resolve, reject, timeout });
-      send({ 'type': 'requestModuleInterface', id, moduleRef });
-    });
-
-  /**
-   * Sets a property value on an instance in the game.
-   * @param path - Path segments to the instance
-   * @param property - Name of the property to set
-   * @param value - The new value as a string
-   * @param valueType - The type of the value
-   * @returns A promise that resolves with the result
-   */
   const setProperty = (
     path: ReadonlyArray<string>,
     property: string,
     value: string,
     valueType: string,
   ): Promise<SetPropertyResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingSetProperties, 2000, id => ({
+      'type': 'setProperty' as const,
+      id,
+      'path': [...path],
+      property,
+      value,
+      valueType,
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingSetProperties.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingSetProperties.set(id, { resolve, reject, timeout });
-      send({ 'type': 'setProperty', id, 'path': [...path], property, value, valueType });
-    });
-
-  /**
-   * Teleports the local player to an instance's position.
-   * @param path - Path segments to the target instance
-   * @returns A promise that resolves with the result
-   */
   const teleportTo = (path: ReadonlyArray<string>): Promise<TeleportResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingTeleports, 2000, id => ({
+      'type': 'teleportTo' as const,
+      id,
+      'path': [...path],
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingTeleports.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingTeleports.set(id, { resolve, reject, timeout });
-      send({ 'type': 'teleportTo', id, 'path': [...path] });
-    });
-
-  /**
-   * Deletes an instance from the game.
-   * @param path - Path segments to the instance to delete
-   * @returns A promise that resolves with the result
-   */
   const deleteInstance = (path: ReadonlyArray<string>): Promise<DeleteResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingDeletes, 2000, id => ({
+      'type': 'deleteInstance' as const,
+      id,
+      'path': [...path],
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingDeletes.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingDeletes.set(id, { resolve, reject, timeout });
-      send({ 'type': 'deleteInstance', id, 'path': [...path] });
-    });
-
-  /**
-   * Reparents an instance to a new parent.
-   * @param sourcePath - Path segments to the instance to move
-   * @param targetPath - Path segments to the new parent
-   * @returns A promise that resolves with the result
-   */
   const reparentInstance = (
     sourcePath: ReadonlyArray<string>,
     targetPath: ReadonlyArray<string>,
   ): Promise<ReparentResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingReparents, 2000, id => ({
+      'type': 'reparentInstance' as const,
+      id,
+      'sourcePath': [...sourcePath],
+      'targetPath': [...targetPath],
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingReparents.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingReparents.set(id, { resolve, reject, timeout });
-      send({ 'type': 'reparentInstance', id, 'sourcePath': [...sourcePath], 'targetPath': [...targetPath] });
-    });
-
-  /**
-   * Requests children of an instance for lazy loading.
-   * @param path - Path segments to the parent instance
-   * @returns A promise that resolves with the children
-   */
   const requestChildren = (path: ReadonlyArray<string>): Promise<ChildrenResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(
+      pendingChildren,
+      2000,
+      id => ({
+        'type': 'requestChildren' as const,
+        id,
+        'path': [...path],
+      }),
+      { path },
+    );
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingChildren.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingChildren.set(id, { resolve, reject, timeout, path });
-      send({ 'type': 'requestChildren', id, 'path': [...path] });
-    });
-
-  /**
-   * Requests decompiled script source from the executor.
-   * @param path - Path segments to the script instance
-   * @returns A promise that resolves with the script source
-   */
   const requestScriptSource = (path: ReadonlyArray<string>): Promise<ScriptSourceResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+    createRequest(pendingScriptSources, 10000, id => ({
+      'type': 'requestScriptSource' as const,
+      id,
+      'path': [...path],
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingScriptSources.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 10000); // Longer timeout for decompilation
-
-      pendingScriptSources.set(id, { resolve, reject, timeout });
-      send({ 'type': 'requestScriptSource', id, 'path': [...path] });
-    });
-
-  /**
-   * Creates a new instance in the game.
-   * @param className - The class name of the instance to create
-   * @param parentPath - Path segments to the parent instance
-   * @param name - Optional name for the new instance
-   * @returns A promise that resolves with the result
-   */
-  const createInstance = (
+  const createInstanceFn = (
     className: string,
     parentPath: ReadonlyArray<string>,
     name?: string,
   ): Promise<CreateInstanceResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
+    createRequest(pendingCreateInstances, 2000, id => ({
+      'type': 'createInstance' as const,
+      id,
+      className,
+      'parentPath': [...parentPath],
+      ...(name !== undefined ? { name } : {}),
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingCreateInstances.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingCreateInstances.set(id, { resolve, reject, timeout });
-      send({
-        'type': 'createInstance',
-        id,
-        className,
-        'parentPath': [...parentPath],
-        ...(name !== undefined ? { name } : {}),
-      });
-    });
-
-  /**
-   * Clones an existing instance.
-   * @param path - Path segments to the instance to clone
-   * @returns A promise that resolves with the result
-   */
   const cloneInstance = (path: ReadonlyArray<string>): Promise<CloneInstanceResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
+    createRequest(pendingCloneInstances, 2000, id => ({
+      'type': 'cloneInstance' as const,
+      id,
+      'path': [...path],
+    }));
 
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingCloneInstances.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
+  const setRemoteSpyEnabledFn = (enabled: boolean): Promise<SetRemoteSpyEnabledResult> =>
+    createRequest(pendingSetRemoteSpyEnabled, 2000, id => ({
+      'type': 'setRemoteSpyEnabled' as const,
+      id,
+      enabled,
+    }));
 
-      pendingCloneInstances.set(id, { resolve, reject, timeout });
-      send({ 'type': 'cloneInstance', id, 'path': [...path] });
-    });
+  const setRemoteSpyFilterFn = (filter: string): Promise<SetRemoteSpyFilterResult> =>
+    createRequest(pendingSetRemoteSpyFilter, 2000, id => ({
+      'type': 'setRemoteSpyFilter' as const,
+      id,
+      filter,
+    }));
 
-  /**
-   * Enables or disables remote spy.
-   * @param enabled - Whether to enable or disable remote spy
-   * @returns A promise that resolves with the result
-   */
-  const setRemoteSpyEnabled = (enabled: boolean): Promise<SetRemoteSpyEnabledResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingSetRemoteSpyEnabled.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingSetRemoteSpyEnabled.set(id, { resolve, reject, timeout });
-      send({ 'type': 'setRemoteSpyEnabled', id, enabled });
-    });
-
-  /**
-   * Sets a filter for remote spy.
-   * @param filter - Filter pattern (empty string = no filter)
-   * @returns A promise that resolves with the result
-   */
-  const setRemoteSpyFilter = (filter: string): Promise<SetRemoteSpyFilterResult> =>
-    new Promise((resolve, reject) => {
-      if (client === undefined || client.readyState !== client.OPEN) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-
-      const id = generateId();
-      const timeout = setTimeout(() => {
-        pendingSetRemoteSpyFilter.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' });
-      }, 2000);
-
-      pendingSetRemoteSpyFilter.set(id, { resolve, reject, timeout });
-      send({ 'type': 'setRemoteSpyFilter', id, filter });
-    });
-
-  /**
-   * Registers a callback for remote spy call notifications.
-   * @param callback - Function to invoke with the RemoteSpyCall data
-   */
+  const onStatusChange = (callback: (status: BridgeStatus) => void): void => {
+    statusCallbacks.push(callback);
+  };
+  const onRuntimeError = (callback: (error: RuntimeError) => void): void => {
+    errorCallbacks.push(callback);
+  };
+  const onGameTreeUpdate = (callback: (nodes: GameTreeNode[]) => void): void => {
+    gameTreeCallbacks.push(callback);
+  };
+  const onLog = (callback: (log: LogEntry) => void): void => {
+    logCallbacks.push(callback);
+  };
   const onRemoteSpy = (callback: (call: RemoteSpyCall) => void): void => {
     remoteSpyCallbacks.push(callback);
   };
@@ -1338,10 +541,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     reparentInstance,
     requestChildren,
     requestScriptSource,
-    createInstance,
+    'createInstance': createInstanceFn,
     cloneInstance,
-    setRemoteSpyEnabled,
-    setRemoteSpyFilter,
+    'setRemoteSpyEnabled': setRemoteSpyEnabledFn,
+    'setRemoteSpyFilter': setRemoteSpyFilterFn,
     get 'isRemoteSpyEnabled'() {
       return remoteSpyEnabled;
     },

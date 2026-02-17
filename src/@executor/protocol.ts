@@ -1,827 +1,104 @@
-/**
- * Executor Bridge Protocol Types
- * Defines the WebSocket message format between VS Code and Roblox executors
- */
+import type {
+  ChildrenResultMessage,
+  ClientMessage,
+  CloneInstanceResultMessage,
+  ConnectedMessage,
+  CreateInstanceResultMessage,
+  DeleteInstanceResultMessage,
+  ExecuteResultMessage,
+  GameTreeMessage,
+  LogMessage,
+  ModuleInterfaceMessage,
+  PropertiesResultMessage,
+  RemoteSpyMessage,
+  ReparentInstanceResultMessage,
+  RuntimeErrorMessage,
+  ScriptSourceResultMessage,
+  SetPropertyResultMessage,
+  SetRemoteSpyEnabledResultMessage,
+  SetRemoteSpyFilterResultMessage,
+  TeleportToResultMessage,
+} from '@typings/protocol';
 
-/**
- * Represents a node in the Roblox game tree hierarchy
- */
-export interface GameTreeNode {
-  /** The name of the instance in the game tree */
-  readonly name: string;
-  /** The Roblox class name of the instance */
-  readonly className: string;
-  /** Child nodes in the hierarchy */
-  readonly children?: GameTreeNode[];
-  /** Indicates unexpanded children exist (for lazy loading) */
-  readonly hasChildren?: boolean;
-}
+type MessageRecord = Record<string, unknown>;
 
-/**
- * Represents an error that occurred during script execution in the Roblox environment
- */
-export interface RuntimeError {
-  /** The error message describing what went wrong */
-  readonly message: string;
-  /** The file path where the error occurred */
-  readonly file?: string;
-  /** The line number where the error occurred */
-  readonly line?: number;
-  /** The full stack trace of the error */
-  readonly stack?: string;
-}
+const isRecord = (value: unknown): value is MessageRecord => typeof value === 'object' && value !== null;
 
-/**
- * Message sent from the server to request code execution on the executor
- */
-export interface ExecuteMessage {
-  /** Message type identifier */
-  readonly type: 'execute';
-  /** Unique identifier for tracking the execution request and its response */
-  readonly id: string;
-  /** The Luau code to execute in the Roblox environment */
-  readonly code: string;
-}
+const hasStringField = (obj: MessageRecord, field: string): boolean => typeof obj[field] === 'string';
 
-/**
- * Message sent from the server to request the current game tree structure
- */
-export interface RequestGameTreeMessage {
-  /** Message type identifier */
-  readonly type: 'requestGameTree';
-  /** Optional list of specific Roblox services to include in the response */
-  readonly services?: string[];
-}
+const createResultGuard =
+  <T extends ClientMessage>(typeName: string) =>
+  (msg: unknown): msg is T =>
+    isRecord(msg) && msg['type'] === typeName && hasStringField(msg, 'id') && typeof msg['success'] === 'boolean';
 
-/**
- * Message sent from the server to request property values of an instance
- */
-export interface RequestPropertiesMessage {
-  /** Message type identifier */
-  readonly type: 'requestProperties';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the instance (e.g., ["Workspace", "Part"]) */
-  readonly path: ReadonlyArray<string>;
-  /** Optional list of specific properties to fetch */
-  readonly properties?: ReadonlyArray<string>;
-}
-
-/**
- * Reference to a module that can be required
- */
-export type ModuleReference =
-  | { readonly kind: 'path'; readonly path: ReadonlyArray<string> }
-  | { readonly kind: 'assetId'; readonly id: number };
-
-/**
- * Message sent from the server to request module interface information
- */
-export interface RequestModuleInterfaceMessage {
-  /** Message type identifier */
-  readonly type: 'requestModuleInterface';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Reference to the module to inspect */
-  readonly moduleRef: ModuleReference;
-}
-
-/**
- * Message sent from the server to set a property value on an instance
- */
-export interface SetPropertyMessage {
-  /** Message type identifier */
-  readonly type: 'setProperty';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the instance */
-  readonly path: ReadonlyArray<string>;
-  /** Name of the property to set */
-  readonly property: string;
-  /** The new value (as a string to be parsed) */
-  readonly value: string;
-  /** The type of the value for proper parsing */
-  readonly valueType: string;
-}
-
-/**
- * Message sent from the server to teleport the player to an instance
- */
-export interface TeleportToMessage {
-  /** Message type identifier */
-  readonly type: 'teleportTo';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the target instance */
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to delete an instance
- */
-export interface DeleteInstanceMessage {
-  /** Message type identifier */
-  readonly type: 'deleteInstance';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the instance to delete */
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to reparent an instance
- */
-export interface ReparentInstanceMessage {
-  /** Message type identifier */
-  readonly type: 'reparentInstance';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the instance to move */
-  readonly sourcePath: ReadonlyArray<string>;
-  /** Path segments to the new parent */
-  readonly targetPath: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to request children of an instance (lazy loading)
- */
-export interface RequestChildrenMessage {
-  /** Message type identifier */
-  readonly type: 'requestChildren';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the parent instance */
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to request decompiled script source
- */
-export interface RequestScriptSourceMessage {
-  /** Message type identifier */
-  readonly type: 'requestScriptSource';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the script instance */
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to create a new instance
- */
-export interface CreateInstanceMessage {
-  /** Message type identifier */
-  readonly type: 'createInstance';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** The class name of the instance to create */
-  readonly className: string;
-  /** Path segments to the parent instance */
-  readonly parentPath: ReadonlyArray<string>;
-  /** Optional name for the new instance */
-  readonly name?: string;
-}
-
-/**
- * Message sent from the server to clone an existing instance
- */
-export interface CloneInstanceMessage {
-  /** Message type identifier */
-  readonly type: 'cloneInstance';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Path segments to the instance to clone */
-  readonly path: ReadonlyArray<string>;
-}
-
-/**
- * Message sent from the server to enable/disable remote spy
- */
-export interface SetRemoteSpyEnabledMessage {
-  /** Message type identifier */
-  readonly type: 'setRemoteSpyEnabled';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Whether to enable or disable remote spy */
-  readonly enabled: boolean;
-}
-
-/**
- * Message sent from the server to set remote spy filter
- */
-export interface SetRemoteSpyFilterMessage {
-  /** Message type identifier */
-  readonly type: 'setRemoteSpyFilter';
-  /** Unique identifier for tracking the request and its response */
-  readonly id: string;
-  /** Filter pattern (empty string = no filter) */
-  readonly filter: string;
-}
-
-/**
- * Union type representing all possible messages sent from the server to the executor client
- */
-export type ServerMessage =
-  | ExecuteMessage
-  | RequestGameTreeMessage
-  | RequestPropertiesMessage
-  | RequestModuleInterfaceMessage
-  | SetPropertyMessage
-  | TeleportToMessage
-  | DeleteInstanceMessage
-  | ReparentInstanceMessage
-  | RequestChildrenMessage
-  | RequestScriptSourceMessage
-  | CreateInstanceMessage
-  | CloneInstanceMessage
-  | SetRemoteSpyEnabledMessage
-  | SetRemoteSpyFilterMessage;
-
-/**
- * Message sent from the executor client upon successful WebSocket connection
- */
-export interface ConnectedMessage {
-  /** Message type identifier */
-  readonly type: 'connected';
-  /** The name of the connected Roblox executor */
-  readonly executorName: string;
-  /** The version string of the connected executor */
-  readonly version: string;
-}
-
-/**
- * Message sent from the executor client containing the result of a code execution request
- */
-export interface ExecuteResultMessage {
-  /** Message type identifier */
-  readonly type: 'executeResult';
-  /** The unique identifier matching the original execute request */
-  readonly id: string;
-  /** Whether the code execution completed successfully */
-  readonly success: boolean;
-  /** The return value or output from successful execution */
-  readonly result?: string;
-  /** Error details if the execution failed */
-  readonly error?: RuntimeError;
-}
-
-/**
- * Message sent from the executor client containing the requested game tree structure
- */
-export interface GameTreeMessage {
-  /** Message type identifier */
-  readonly type: 'gameTree';
-  /** Array of root-level game tree nodes representing the Roblox hierarchy */
-  readonly data: GameTreeNode[];
-}
-
-/**
- * Message sent from the executor client when an unhandled runtime error occurs
- */
-export interface RuntimeErrorMessage {
-  /** Message type identifier */
-  readonly type: 'runtimeError';
-  /** The runtime error details */
-  readonly error: RuntimeError;
-}
-
-/**
- * Message sent from the executor client containing a log entry (print/warn/error)
- */
-export interface LogMessage {
-  /** Message type identifier */
-  readonly type: 'log';
-  /** The log level */
-  readonly level: 'info' | 'warn' | 'error';
-  /** The log message content */
-  readonly message: string;
-  /** Optional stack trace for errors */
-  readonly stack?: string;
-  /** Unix timestamp when the log was generated */
-  readonly timestamp: number;
-}
-
-/**
- * Represents a serialized property value from an instance
- */
-export interface PropertyEntry {
-  /** The name of the property */
-  readonly name: string;
-  /** The type of the value */
-  readonly valueType:
-    | 'string'
-    | 'number'
-    | 'boolean'
-    | 'nil'
-    | 'Instance'
-    | 'Vector3'
-    | 'CFrame'
-    | 'Color3'
-    | 'UDim2'
-    | 'other';
-  /** String representation of the value */
-  readonly value: string;
-  /** For Instance types, the class name */
-  readonly className?: string;
-}
-
-/**
- * Message sent from the executor client containing requested property values
- */
-export interface PropertiesResultMessage {
-  /** Message type identifier */
-  readonly type: 'propertiesResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the properties were successfully retrieved */
-  readonly success: boolean;
-  /** The property values if successful */
-  readonly properties?: ReadonlyArray<PropertyEntry>;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Represents a property of a module's exported table
- */
-export interface ModuleProperty {
-  /** The name of the property */
-  readonly name: string;
-  /** The type of the value */
-  readonly valueKind: 'function' | 'table' | 'string' | 'number' | 'boolean' | 'other';
-  /** For functions, the number of parameters */
-  readonly functionArity?: number;
-}
-
-/**
- * Represents the public interface of a module
- */
-export interface ModuleInterface {
-  /** The kind of value returned by the module */
-  readonly kind: 'table' | 'function' | 'other';
-  /** For tables, the list of properties */
-  readonly properties?: ReadonlyArray<ModuleProperty>;
-}
-
-/**
- * Message sent from the executor client containing module interface information
- */
-export interface ModuleInterfaceMessage {
-  /** Message type identifier */
-  readonly type: 'moduleInterface';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the module interface was successfully retrieved */
-  readonly success: boolean;
-  /** The module interface if successful */
-  readonly interface?: ModuleInterface;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming a property was set
- */
-export interface SetPropertyResultMessage {
-  /** Message type identifier */
-  readonly type: 'setPropertyResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the property was successfully set */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming teleport completed
- */
-export interface TeleportToResultMessage {
-  /** Message type identifier */
-  readonly type: 'teleportToResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the teleport was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming instance deletion
- */
-export interface DeleteInstanceResultMessage {
-  /** Message type identifier */
-  readonly type: 'deleteInstanceResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the deletion was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming instance reparenting
- */
-export interface ReparentInstanceResultMessage {
-  /** Message type identifier */
-  readonly type: 'reparentInstanceResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the reparent was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client containing children of an instance (lazy loading)
- */
-export interface ChildrenResultMessage {
-  /** Message type identifier */
-  readonly type: 'childrenResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the children were successfully retrieved */
-  readonly success: boolean;
-  /** The child nodes if successful */
-  readonly children?: GameTreeNode[];
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client containing decompiled script source
- */
-export interface ScriptSourceResultMessage {
-  /** Message type identifier */
-  readonly type: 'scriptSourceResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the script source was successfully retrieved */
-  readonly success: boolean;
-  /** The decompiled script source if successful */
-  readonly source?: string;
-  /** The script class name (LocalScript, ModuleScript, Script) */
-  readonly scriptType?: string;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming instance creation
- */
-export interface CreateInstanceResultMessage {
-  /** Message type identifier */
-  readonly type: 'createInstanceResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the instance was successfully created */
-  readonly success: boolean;
-  /** The name of the created instance */
-  readonly instanceName?: string;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming instance cloning
- */
-export interface CloneInstanceResultMessage {
-  /** Message type identifier */
-  readonly type: 'cloneInstanceResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the instance was successfully cloned */
-  readonly success: boolean;
-  /** The name of the cloned instance */
-  readonly cloneName?: string;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming remote spy enabled state
- */
-export interface SetRemoteSpyEnabledResultMessage {
-  /** Message type identifier */
-  readonly type: 'setRemoteSpyEnabledResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the operation was successful */
-  readonly success: boolean;
-  /** The current enabled state */
-  readonly enabled?: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Message sent from the executor client confirming remote spy filter update
- */
-export interface SetRemoteSpyFilterResultMessage {
-  /** Message type identifier */
-  readonly type: 'setRemoteSpyFilterResult';
-  /** The unique identifier matching the original request */
-  readonly id: string;
-  /** Whether the operation was successful */
-  readonly success: boolean;
-  /** Error message if unsuccessful */
-  readonly error?: string;
-}
-
-/**
- * Represents a captured remote call from remote spy
- */
-export interface RemoteSpyCall {
-  /** The name of the remote event/function */
-  readonly remoteName: string;
-  /** The path to the remote in the game tree */
-  readonly remotePath: ReadonlyArray<string>;
-  /** The class name (RemoteEvent, RemoteFunction, etc.) */
-  readonly remoteType: string;
-  /** The method called (FireServer, InvokeServer) */
-  readonly method: string;
-  /** String representation of the arguments */
-  readonly arguments: string;
-  /** Pre-built copyable Lua code that reproduces this remote call */
-  readonly code: string;
-  /** Unix timestamp when the call occurred */
-  readonly timestamp: number;
-}
-
-/**
- * Message sent from the executor client when a remote is called (notification)
- */
-export interface RemoteSpyMessage {
-  /** Message type identifier */
-  readonly type: 'remoteSpy';
-  /** The captured remote call data */
-  readonly call: RemoteSpyCall;
-}
-
-/**
- * Union type representing all possible messages sent from the executor client to the server
- */
-export type ClientMessage =
-  | ConnectedMessage
-  | ExecuteResultMessage
-  | GameTreeMessage
-  | RuntimeErrorMessage
-  | LogMessage
-  | PropertiesResultMessage
-  | ModuleInterfaceMessage
-  | SetPropertyResultMessage
-  | TeleportToResultMessage
-  | DeleteInstanceResultMessage
-  | ReparentInstanceResultMessage
-  | ChildrenResultMessage
-  | ScriptSourceResultMessage
-  | CreateInstanceResultMessage
-  | CloneInstanceResultMessage
-  | SetRemoteSpyEnabledResultMessage
-  | SetRemoteSpyFilterResultMessage
-  | RemoteSpyMessage;
-
-/**
- * Type guard to check if an unknown value is a ConnectedMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ConnectedMessage
- */
 export const isConnectedMessage = (msg: unknown): msg is ConnectedMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ConnectedMessage).type === 'connected' &&
-  typeof (msg as ConnectedMessage).executorName === 'string';
+  isRecord(msg) && msg['type'] === 'connected' && hasStringField(msg, 'executorName');
 
-/**
- * Type guard to check if an unknown value is an ExecuteResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ExecuteResultMessage
- */
 export const isExecuteResultMessage = (msg: unknown): msg is ExecuteResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ExecuteResultMessage).type === 'executeResult' &&
-  typeof (msg as ExecuteResultMessage).id === 'string';
+  isRecord(msg) && msg['type'] === 'executeResult' && hasStringField(msg, 'id');
 
-/**
- * Type guard to check if an unknown value is a GameTreeMessage
- * @param msg - The value to check
- * @returns True if the value is a valid GameTreeMessage
- */
 export const isGameTreeMessage = (msg: unknown): msg is GameTreeMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as GameTreeMessage).type === 'gameTree' &&
-  Array.isArray((msg as GameTreeMessage).data);
+  isRecord(msg) && msg['type'] === 'gameTree' && Array.isArray(msg['data']);
 
-/**
- * Type guard to check if an unknown value is a RuntimeErrorMessage
- * @param msg - The value to check
- * @returns True if the value is a valid RuntimeErrorMessage
- */
 export const isRuntimeErrorMessage = (msg: unknown): msg is RuntimeErrorMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as RuntimeErrorMessage).type === 'runtimeError' &&
-  typeof (msg as RuntimeErrorMessage).error === 'object';
+  isRecord(msg) && msg['type'] === 'runtimeError' && typeof msg['error'] === 'object';
 
-/**
- * Type guard to check if an unknown value is a LogMessage
- * @param msg - The value to check
- * @returns True if the value is a valid LogMessage
- */
 export const isLogMessage = (msg: unknown): msg is LogMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as LogMessage).type === 'log' &&
-  typeof (msg as LogMessage).level === 'string' &&
-  typeof (msg as LogMessage).message === 'string';
+  isRecord(msg) && msg['type'] === 'log' && hasStringField(msg, 'level') && hasStringField(msg, 'message');
 
-/**
- * Type guard to check if an unknown value is a PropertiesResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid PropertiesResultMessage
- */
-export const isPropertiesResultMessage = (msg: unknown): msg is PropertiesResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as PropertiesResultMessage).type === 'propertiesResult' &&
-  typeof (msg as PropertiesResultMessage).id === 'string' &&
-  typeof (msg as PropertiesResultMessage).success === 'boolean';
+export const isPropertiesResultMessage = createResultGuard<PropertiesResultMessage>('propertiesResult');
+export const isModuleInterfaceMessage = createResultGuard<ModuleInterfaceMessage>('moduleInterface');
+export const isSetPropertyResultMessage = createResultGuard<SetPropertyResultMessage>('setPropertyResult');
+export const isTeleportToResultMessage = createResultGuard<TeleportToResultMessage>('teleportToResult');
+export const isDeleteInstanceResultMessage = createResultGuard<DeleteInstanceResultMessage>('deleteInstanceResult');
+export const isReparentInstanceResultMessage =
+  createResultGuard<ReparentInstanceResultMessage>('reparentInstanceResult');
+export const isChildrenResultMessage = createResultGuard<ChildrenResultMessage>('childrenResult');
+export const isScriptSourceResultMessage = createResultGuard<ScriptSourceResultMessage>('scriptSourceResult');
+export const isCreateInstanceResultMessage = createResultGuard<CreateInstanceResultMessage>('createInstanceResult');
+export const isCloneInstanceResultMessage = createResultGuard<CloneInstanceResultMessage>('cloneInstanceResult');
+export const isSetRemoteSpyEnabledResultMessage =
+  createResultGuard<SetRemoteSpyEnabledResultMessage>('setRemoteSpyEnabledResult');
+export const isSetRemoteSpyFilterResultMessage =
+  createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
 
-/**
- * Type guard to check if an unknown value is a ModuleInterfaceMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ModuleInterfaceMessage
- */
-export const isModuleInterfaceMessage = (msg: unknown): msg is ModuleInterfaceMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ModuleInterfaceMessage).type === 'moduleInterface' &&
-  typeof (msg as ModuleInterfaceMessage).id === 'string' &&
-  typeof (msg as ModuleInterfaceMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a SetPropertyResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid SetPropertyResultMessage
- */
-export const isSetPropertyResultMessage = (msg: unknown): msg is SetPropertyResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as SetPropertyResultMessage).type === 'setPropertyResult' &&
-  typeof (msg as SetPropertyResultMessage).id === 'string' &&
-  typeof (msg as SetPropertyResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a TeleportToResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid TeleportToResultMessage
- */
-export const isTeleportToResultMessage = (msg: unknown): msg is TeleportToResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as TeleportToResultMessage).type === 'teleportToResult' &&
-  typeof (msg as TeleportToResultMessage).id === 'string' &&
-  typeof (msg as TeleportToResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a DeleteInstanceResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid DeleteInstanceResultMessage
- */
-export const isDeleteInstanceResultMessage = (msg: unknown): msg is DeleteInstanceResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as DeleteInstanceResultMessage).type === 'deleteInstanceResult' &&
-  typeof (msg as DeleteInstanceResultMessage).id === 'string' &&
-  typeof (msg as DeleteInstanceResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a ReparentInstanceResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ReparentInstanceResultMessage
- */
-export const isReparentInstanceResultMessage = (msg: unknown): msg is ReparentInstanceResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ReparentInstanceResultMessage).type === 'reparentInstanceResult' &&
-  typeof (msg as ReparentInstanceResultMessage).id === 'string' &&
-  typeof (msg as ReparentInstanceResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a ChildrenResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ChildrenResultMessage
- */
-export const isChildrenResultMessage = (msg: unknown): msg is ChildrenResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ChildrenResultMessage).type === 'childrenResult' &&
-  typeof (msg as ChildrenResultMessage).id === 'string' &&
-  typeof (msg as ChildrenResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a ScriptSourceResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid ScriptSourceResultMessage
- */
-export const isScriptSourceResultMessage = (msg: unknown): msg is ScriptSourceResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as ScriptSourceResultMessage).type === 'scriptSourceResult' &&
-  typeof (msg as ScriptSourceResultMessage).id === 'string' &&
-  typeof (msg as ScriptSourceResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a CreateInstanceResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid CreateInstanceResultMessage
- */
-export const isCreateInstanceResultMessage = (msg: unknown): msg is CreateInstanceResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as CreateInstanceResultMessage).type === 'createInstanceResult' &&
-  typeof (msg as CreateInstanceResultMessage).id === 'string' &&
-  typeof (msg as CreateInstanceResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a CloneInstanceResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid CloneInstanceResultMessage
- */
-export const isCloneInstanceResultMessage = (msg: unknown): msg is CloneInstanceResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as CloneInstanceResultMessage).type === 'cloneInstanceResult' &&
-  typeof (msg as CloneInstanceResultMessage).id === 'string' &&
-  typeof (msg as CloneInstanceResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a SetRemoteSpyEnabledResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid SetRemoteSpyEnabledResultMessage
- */
-export const isSetRemoteSpyEnabledResultMessage = (msg: unknown): msg is SetRemoteSpyEnabledResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as SetRemoteSpyEnabledResultMessage).type === 'setRemoteSpyEnabledResult' &&
-  typeof (msg as SetRemoteSpyEnabledResultMessage).id === 'string' &&
-  typeof (msg as SetRemoteSpyEnabledResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a SetRemoteSpyFilterResultMessage
- * @param msg - The value to check
- * @returns True if the value is a valid SetRemoteSpyFilterResultMessage
- */
-export const isSetRemoteSpyFilterResultMessage = (msg: unknown): msg is SetRemoteSpyFilterResultMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as SetRemoteSpyFilterResultMessage).type === 'setRemoteSpyFilterResult' &&
-  typeof (msg as SetRemoteSpyFilterResultMessage).id === 'string' &&
-  typeof (msg as SetRemoteSpyFilterResultMessage).success === 'boolean';
-
-/**
- * Type guard to check if an unknown value is a RemoteSpyMessage
- * @param msg - The value to check
- * @returns True if the value is a valid RemoteSpyMessage
- */
 export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
-  typeof msg === 'object' &&
-  msg !== null &&
-  (msg as RemoteSpyMessage).type === 'remoteSpy' &&
-  typeof (msg as RemoteSpyMessage).call === 'object';
+  isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object';
 
-/**
- * Parses a JSON string and validates it as a ClientMessage
- * @param data - The raw JSON string to parse
- * @returns The parsed ClientMessage if valid, or undefined if parsing fails or the message type is unrecognized
- */
+const clientMessageValidators: Record<string, (msg: unknown) => msg is ClientMessage> = {
+  'connected': isConnectedMessage,
+  'executeResult': isExecuteResultMessage,
+  'gameTree': isGameTreeMessage,
+  'runtimeError': isRuntimeErrorMessage,
+  'log': isLogMessage,
+  'propertiesResult': isPropertiesResultMessage,
+  'moduleInterface': isModuleInterfaceMessage,
+  'setPropertyResult': isSetPropertyResultMessage,
+  'teleportToResult': isTeleportToResultMessage,
+  'deleteInstanceResult': isDeleteInstanceResultMessage,
+  'reparentInstanceResult': isReparentInstanceResultMessage,
+  'childrenResult': isChildrenResultMessage,
+  'scriptSourceResult': isScriptSourceResultMessage,
+  'createInstanceResult': isCreateInstanceResultMessage,
+  'cloneInstanceResult': isCloneInstanceResultMessage,
+  'setRemoteSpyEnabledResult': isSetRemoteSpyEnabledResultMessage,
+  'setRemoteSpyFilterResult': isSetRemoteSpyFilterResultMessage,
+  'remoteSpy': isRemoteSpyMessage,
+};
+
+/** Parses a JSON string and validates it as a ClientMessage */
 export const parseClientMessage = (data: string): ClientMessage | undefined => {
   try {
-    const parsed = JSON.parse(data);
-    if (isConnectedMessage(parsed)) return parsed;
-    if (isExecuteResultMessage(parsed)) return parsed;
-    if (isGameTreeMessage(parsed)) return parsed;
-    if (isRuntimeErrorMessage(parsed)) return parsed;
-    if (isLogMessage(parsed)) return parsed;
-    if (isPropertiesResultMessage(parsed)) return parsed;
-    if (isModuleInterfaceMessage(parsed)) return parsed;
-    if (isSetPropertyResultMessage(parsed)) return parsed;
-    if (isTeleportToResultMessage(parsed)) return parsed;
-    if (isDeleteInstanceResultMessage(parsed)) return parsed;
-    if (isReparentInstanceResultMessage(parsed)) return parsed;
-    if (isChildrenResultMessage(parsed)) return parsed;
-    if (isScriptSourceResultMessage(parsed)) return parsed;
-    if (isCreateInstanceResultMessage(parsed)) return parsed;
-    if (isCloneInstanceResultMessage(parsed)) return parsed;
-    if (isSetRemoteSpyEnabledResultMessage(parsed)) return parsed;
-    if (isSetRemoteSpyFilterResultMessage(parsed)) return parsed;
-    if (isRemoteSpyMessage(parsed)) return parsed;
-    return undefined;
+    const parsed: unknown = JSON.parse(data);
+    if (isRecord(parsed) === false) return undefined;
+
+    const typeName = parsed['type'];
+    if (typeof typeName !== 'string') return undefined;
+
+    const validator = clientMessageValidators[typeName];
+    if (validator === undefined) return undefined;
+
+    return validator(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

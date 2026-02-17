@@ -1,10 +1,3 @@
-/**
- * AST Visitor Pattern Implementation
- *
- * Provides a visitor pattern for traversing and processing Luau AST nodes.
- * Supports visiting statements, expressions, and type annotations.
- */
-
 import type {
   Assignment,
   BaseNode,
@@ -60,125 +53,10 @@ import type {
   VarargExpression,
   VariadicType,
   WhileStatement,
-} from './ast';
+} from '@typings/ast';
+import type { Visitor } from '@typings/parser';
 
-/**
- * Interface defining visitor methods for all AST node types.
- * Implement specific visit methods to process corresponding node types during traversal.
- * @template T The return type of visitor methods, defaults to void
- */
-export interface Visitor<T = void> {
-  /** Visits a Chunk node representing the root of a parsed Luau file */
-  visitChunk?(node: Chunk): T;
-  /** Visits a Comment node */
-  visitComment?(node: Comment): T;
-
-  /** Visits a LocalDeclaration statement (local variable declaration) */
-  visitLocalDeclaration?(node: LocalDeclaration): T;
-  /** Visits a LocalFunction statement (local function declaration) */
-  visitLocalFunction?(node: LocalFunction): T;
-  /** Visits a FunctionDeclaration statement (global/module function) */
-  visitFunctionDeclaration?(node: FunctionDeclaration): T;
-  /** Visits an Assignment statement */
-  visitAssignment?(node: Assignment): T;
-  /** Visits a CompoundAssignment statement (e.g., +=, -=) */
-  visitCompoundAssignment?(node: CompoundAssignment): T;
-  /** Visits an IfStatement */
-  visitIfStatement?(node: IfStatement): T;
-  /** Visits a WhileStatement */
-  visitWhileStatement?(node: WhileStatement): T;
-  /** Visits a RepeatStatement */
-  visitRepeatStatement?(node: RepeatStatement): T;
-  /** Visits a ForNumeric statement (numeric for loop) */
-  visitForNumeric?(node: ForNumeric): T;
-  /** Visits a ForGeneric statement (generic for loop with iterators) */
-  visitForGeneric?(node: ForGeneric): T;
-  /** Visits a DoStatement (do...end block) */
-  visitDoStatement?(node: DoStatement): T;
-  /** Visits a ReturnStatement */
-  visitReturnStatement?(node: ReturnStatement): T;
-  /** Visits a BreakStatement */
-  visitBreakStatement?(node: BreakStatement): T;
-  /** Visits a ContinueStatement */
-  visitContinueStatement?(node: ContinueStatement): T;
-  /** Visits a TypeAlias statement */
-  visitTypeAlias?(node: TypeAlias): T;
-  /** Visits an ExportStatement */
-  visitExportStatement?(node: ExportStatement): T;
-  /** Visits a CallStatement (function call as statement) */
-  visitCallStatement?(node: CallStatement): T;
-  /** Visits an ErrorStatement (represents a parse error) */
-  visitErrorStatement?(node: ErrorStatement): T;
-
-  /** Visits an Identifier expression */
-  visitIdentifier?(node: Identifier): T;
-  /** Visits a NilLiteral expression */
-  visitNilLiteral?(node: NilLiteral): T;
-  /** Visits a BooleanLiteral expression */
-  visitBooleanLiteral?(node: BooleanLiteral): T;
-  /** Visits a NumberLiteral expression */
-  visitNumberLiteral?(node: NumberLiteral): T;
-  /** Visits a StringLiteral expression */
-  visitStringLiteral?(node: StringLiteral): T;
-  /** Visits a VarargExpression (...) */
-  visitVarargExpression?(node: VarargExpression): T;
-  /** Visits a FunctionExpression (anonymous function) */
-  visitFunctionExpression?(node: FunctionExpression): T;
-  /** Visits a TableExpression (table constructor) */
-  visitTableExpression?(node: TableExpression): T;
-  /** Visits a BinaryExpression */
-  visitBinaryExpression?(node: BinaryExpression): T;
-  /** Visits a UnaryExpression */
-  visitUnaryExpression?(node: UnaryExpression): T;
-  /** Visits a CallExpression (function call) */
-  visitCallExpression?(node: CallExpression): T;
-  /** Visits a MethodCallExpression (object:method() call) */
-  visitMethodCallExpression?(node: MethodCallExpression): T;
-  /** Visits an IndexExpression (bracket access) */
-  visitIndexExpression?(node: IndexExpression): T;
-  /** Visits a MemberExpression (dot access) */
-  visitMemberExpression?(node: MemberExpression): T;
-  /** Visits an IfExpression (if-then-else expression) */
-  visitIfExpression?(node: IfExpression): T;
-  /** Visits a TypeCastExpression (:: type cast) */
-  visitTypeCastExpression?(node: TypeCastExpression): T;
-  /** Visits an InterpolatedString (backtick string with expressions) */
-  visitInterpolatedString?(node: InterpolatedString): T;
-  /** Visits a ParenthesizedExpression */
-  visitParenthesizedExpression?(node: ParenthesizedExpression): T;
-  /** Visits an ErrorExpression (represents a parse error) */
-  visitErrorExpression?(node: ErrorExpression): T;
-
-  /** Visits a TypeReference annotation */
-  visitTypeReference?(node: TypeReference): T;
-  /** Visits a TypeLiteral annotation (literal type like "hello" or true) */
-  visitTypeLiteral?(node: TypeLiteral): T;
-  /** Visits a FunctionType annotation */
-  visitFunctionType?(node: FunctionType): T;
-  /** Visits a TableType annotation */
-  visitTableType?(node: TableType): T;
-  /** Visits a UnionType annotation (A | B) */
-  visitUnionType?(node: UnionType): T;
-  /** Visits an IntersectionType annotation (A & B) */
-  visitIntersectionType?(node: IntersectionType): T;
-  /** Visits an OptionalType annotation (T?) */
-  visitOptionalType?(node: OptionalType): T;
-  /** Visits a TypeofType annotation (typeof expression) */
-  visitTypeofType?(node: TypeofType): T;
-  /** Visits a VariadicType annotation (...T) */
-  visitVariadicType?(node: VariadicType): T;
-  /** Visits a ParenthesizedType annotation */
-  visitParenthesizedType?(node: ParenthesizedType): T;
-  /** Visits an ErrorType annotation (represents a parse error) */
-  visitErrorType?(node: ErrorType): T;
-}
-
-/**
- * Visits a single AST node by dispatching to the appropriate visitor method based on node kind.
- * @param node The AST node to visit
- * @param visitor The visitor object containing visit methods for different node types
- * @returns The result of the visitor method, or undefined if no matching visitor method exists
- */
+/** Visits a single AST node by dispatching to the appropriate visitor method based on node kind. */
 export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => {
   const nodeWithKind = node as unknown as { kind: string };
 
@@ -188,7 +66,6 @@ export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => 
     case 'Comment':
       return visitor.visitComment?.(node as Comment);
 
-    // Statements
     case 'LocalDeclaration':
       return visitor.visitLocalDeclaration?.(node as LocalDeclaration);
     case 'LocalFunction':
@@ -226,7 +103,6 @@ export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => 
     case 'ErrorStatement':
       return visitor.visitErrorStatement?.(node as ErrorStatement);
 
-    // Expressions
     case 'Identifier':
       return visitor.visitIdentifier?.(node as Identifier);
     case 'NilLiteral':
@@ -266,7 +142,6 @@ export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => 
     case 'ErrorExpression':
       return visitor.visitErrorExpression?.(node as ErrorExpression);
 
-    // Type Annotations
     case 'TypeReference':
       return visitor.visitTypeReference?.(node as TypeReference);
     case 'TypeLiteral':
@@ -295,13 +170,7 @@ export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => 
   }
 };
 
-/**
- * Recursively walks a statement and all its child nodes, invoking visitor methods along the way.
- * Visits the statement first, then descends into nested expressions, types, and child statements.
- * @param stmt The statement node to walk
- * @param visitor The visitor object containing visit methods
- * @returns void
- */
+/** Recursively walks a statement and all its child nodes, invoking visitor methods along the way. */
 export const walkStatement = (stmt: Statement, visitor: Visitor): void => {
   visit(stmt, visitor);
 
@@ -393,13 +262,7 @@ export const walkStatement = (stmt: Statement, visitor: Visitor): void => {
   }
 };
 
-/**
- * Recursively walks an expression and all its child nodes, invoking visitor methods along the way.
- * Visits the expression first, then descends into nested expressions, types, and statements.
- * @param expr The expression node to walk
- * @param visitor The visitor object containing visit methods
- * @returns void
- */
+/** Recursively walks an expression and all its child nodes, invoking visitor methods along the way. */
 export const walkExpression = (expr: Expression, visitor: Visitor): void => {
   visit(expr, visitor);
 
@@ -490,13 +353,7 @@ export const walkExpression = (expr: Expression, visitor: Visitor): void => {
   }
 };
 
-/**
- * Recursively walks a type annotation and all its child types, invoking visitor methods along the way.
- * Visits the type first, then descends into nested types and expressions (for typeof).
- * @param type The type annotation node to walk
- * @param visitor The visitor object containing visit methods
- * @returns void
- */
+/** Recursively walks a type annotation and all its child types, invoking visitor methods along the way. */
 export const walkType = (type: TypeAnnotation, visitor: Visitor): void => {
   visit(type, visitor);
 
@@ -538,13 +395,7 @@ export const walkType = (type: TypeAnnotation, visitor: Visitor): void => {
   }
 };
 
-/**
- * Walks the entire AST starting from the chunk root, visiting all nodes including comments.
- * This is the main entry point for traversing a complete parsed Luau file.
- * @param chunk The root Chunk node of the AST
- * @param visitor The visitor object containing visit methods
- * @returns void
- */
+/** Walks the entire AST starting from the chunk root, visiting all nodes including comments. */
 export const walk = (chunk: Chunk, visitor: Visitor): void => {
   visit(chunk, visitor);
 

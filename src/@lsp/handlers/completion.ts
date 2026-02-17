@@ -1,12 +1,7 @@
-/**
- * Completion Handler
- * Provides autocompletion suggestions
- */
-
 import * as path from 'path';
 
 import { COMMON_CHILDREN, getCommonChildType } from '@definitions/commonChildren';
-import { type ExecutorBridge } from '@executor';
+import type { ExecutorBridge, LiveGameModel } from '@typings/bridge';
 import { formatDocCommentForDisplay } from '@parser/docComment';
 import {
   AnyType,
@@ -19,13 +14,7 @@ import {
   typeToString,
   type PropertyType,
 } from '@typings/types';
-import {
-  generateRequirePath,
-  listModuleFiles,
-  resolveLocalModule,
-  type ModuleFileEntry,
-  type ModuleInfo,
-} from '@workspace/moduleIndex';
+import { generateRequirePath, listModuleFiles, resolveLocalModule } from '@workspace/moduleIndex';
 import { getDataModelPath } from '@workspace/rojo';
 import {
   CompletionItemKind,
@@ -36,10 +25,11 @@ import {
   TextEdit,
 } from 'vscode-languageserver';
 
-import type { LiveGameModel } from '@executor/gameTree';
-import type { ModuleReference } from '@executor/protocol';
-import type { DocumentManager, ParsedDocument } from '@lsp/documents';
-import type { DocComment } from '@parser/docComment';
+import type { ModuleReference } from '@typings/protocol';
+import type { TableContextInfo } from '@typings/handlers';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
+import type { ModuleFileEntry, ModuleInfo } from '@typings/workspace';
+import type { DocComment } from '@typings/parser';
 import type {
   CompletionItem,
   CompletionList,
@@ -49,24 +39,19 @@ import type {
 } from 'vscode-languageserver';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
-// Map of common variable names to their likely class types
 const VARIABLE_NAME_HINTS: ReadonlyMap<string, string> = new Map([
-  // Player variations
   ['player', 'Player'],
   ['plr', 'Player'],
   ['localPlayer', 'Player'],
   ['lp', 'Player'],
   ['localplayer', 'Player'],
-  // Character/Model variations
   ['character', 'Model'],
   ['char', 'Model'],
   ['model', 'Model'],
   ['mdl', 'Model'],
-  // Humanoid variations
   ['humanoid', 'Humanoid'],
   ['hum', 'Humanoid'],
   ['h', 'Humanoid'],
-  // Parts
   ['part', 'BasePart'],
   ['basePart', 'BasePart'],
   ['meshPart', 'MeshPart'],
@@ -76,11 +61,9 @@ const VARIABLE_NAME_HINTS: ReadonlyMap<string, string> = new Map([
   ['hrp', 'BasePart'],
   ['humanoidRootPart', 'BasePart'],
   ['rootPart', 'BasePart'],
-  // Camera
   ['camera', 'Camera'],
   ['cam', 'Camera'],
   ['currentCamera', 'Camera'],
-  // GUI
   ['gui', 'ScreenGui'],
   ['screenGui', 'ScreenGui'],
   ['surfaceGui', 'SurfaceGui'],
@@ -95,49 +78,39 @@ const VARIABLE_NAME_HINTS: ReadonlyMap<string, string> = new Map([
   ['textBox', 'TextBox'],
   ['scrollingFrame', 'ScrollingFrame'],
   ['viewportFrame', 'ViewportFrame'],
-  // Audio
   ['sound', 'Sound'],
   ['music', 'Sound'],
   ['sfx', 'Sound'],
-  // Animation
   ['animation', 'Animation'],
   ['anim', 'Animation'],
   ['animator', 'Animator'],
   ['animationTrack', 'AnimationTrack'],
   ['track', 'AnimationTrack'],
-  // Tools and accessories
   ['tool', 'Tool'],
   ['accessory', 'Accessory'],
-  // Organization
   ['folder', 'Folder'],
   ['configuration', 'Configuration'],
-  // Remotes
   ['remote', 'RemoteEvent'],
   ['remoteEvent', 'RemoteEvent'],
   ['remoteFunction', 'RemoteFunction'],
   ['bindable', 'BindableEvent'],
   ['bindableEvent', 'BindableEvent'],
   ['bindableFunction', 'BindableFunction'],
-  // Signals
   ['connection', 'RBXScriptConnection'],
   ['conn', 'RBXScriptConnection'],
   ['signal', 'RBXScriptSignal'],
-  // Tweens
   ['tween', 'Tween'],
   ['tweenInfo', 'TweenInfo'],
-  // Values
   ['value', 'ValueBase'],
   ['boolValue', 'BoolValue'],
   ['intValue', 'IntValue'],
   ['numberValue', 'NumberValue'],
   ['stringValue', 'StringValue'],
   ['objectValue', 'ObjectValue'],
-  // Physics
   ['attachment', 'Attachment'],
   ['constraint', 'Constraint'],
   ['weld', 'WeldConstraint'],
   ['motor', 'Motor6D'],
-  // Effects
   ['light', 'Light'],
   ['pointLight', 'PointLight'],
   ['spotLight', 'SpotLight'],
@@ -147,7 +120,6 @@ const VARIABLE_NAME_HINTS: ReadonlyMap<string, string> = new Map([
   ['particle', 'ParticleEmitter'],
   ['particles', 'ParticleEmitter'],
   ['highlight', 'Highlight'],
-  // Misc
   ['instance', 'Instance'],
   ['child', 'Instance'],
   ['parent', 'Instance'],
@@ -156,7 +128,6 @@ const VARIABLE_NAME_HINTS: ReadonlyMap<string, string> = new Map([
   ['clone', 'Instance'],
 ]);
 
-// Roblox services that can be obtained via GetService
 const ROBLOX_SERVICES = [
   'Players',
   'Workspace',
@@ -217,9 +188,7 @@ const ROBLOX_SERVICES = [
   'NetworkServer',
 ];
 
-/** Classes that can be created with Instance.new (auto-generated from roblox-api.json) */
 const CREATABLE_CLASSES = [
-  // Parts and BaseParts
   'Part',
   'WedgePart',
   'CornerWedgePart',
@@ -229,18 +198,15 @@ const CREATABLE_CLASSES = [
   'Seat',
   'VehicleSeat',
   'SkateboardPlatform',
-  // CSG Operations
   'UnionOperation',
   'NegateOperation',
   'IntersectOperation',
   'PartOperation',
   'PartOperationAsset',
   'OperationGraph',
-  // Models and Actors
   'Model',
   'Actor',
   'WorldModel',
-  // Values
   'BoolValue',
   'IntValue',
   'NumberValue',
@@ -254,7 +220,6 @@ const CREATABLE_CLASSES = [
   'BinaryStringValue',
   'DoubleConstrainedValue',
   'IntConstrainedValue',
-  // Constraints
   'WeldConstraint',
   'RigidConstraint',
   'HingeConstraint',
@@ -277,7 +242,6 @@ const CREATABLE_CLASSES = [
   'PlaneConstraint',
   'NoCollisionConstraint',
   'AnimationConstraint',
-  // Joints and Welds
   'Weld',
   'Snap',
   'Glue',
@@ -289,14 +253,12 @@ const CREATABLE_CLASSES = [
   'VelocityMotor',
   'ManualGlue',
   'ManualWeld',
-  // UI - Containers
   'ScreenGui',
   'SurfaceGui',
   'BillboardGui',
   'AdGui',
   'GuiMain',
   'RelativeGui',
-  // UI - Elements
   'Frame',
   'TextLabel',
   'TextButton',
@@ -308,12 +270,10 @@ const CREATABLE_CLASSES = [
   'CanvasGroup',
   'VideoFrame',
   'Path2D',
-  // UI - Layouts
   'UIListLayout',
   'UIGridLayout',
   'UITableLayout',
   'UIPageLayout',
-  // UI - Modifiers
   'UIPadding',
   'UIScale',
   'UIAspectRatioConstraint',
@@ -324,31 +284,26 @@ const CREATABLE_CLASSES = [
   'UIGradient',
   'UIFlexItem',
   'UIDragDetector',
-  // Effects - Particles
   'ParticleEmitter',
   'Fire',
   'Smoke',
   'Sparkles',
   'Explosion',
-  // Effects - Lighting
   'PointLight',
   'SpotLight',
   'SurfaceLight',
   'Beam',
   'Trail',
   'Highlight',
-  // Effects - Post-processing
   'BloomEffect',
   'BlurEffect',
   'ColorCorrectionEffect',
   'ColorGradingEffect',
   'DepthOfFieldEffect',
   'SunRaysEffect',
-  // Effects - Atmosphere
   'Atmosphere',
   'Clouds',
   'Sky',
-  // Selection and Handles
   'SelectionBox',
   'SelectionSphere',
   'SelectionPartLasso',
@@ -365,7 +320,6 @@ const CREATABLE_CLASSES = [
   'ParabolaAdornment',
   'Handles',
   'ArcHandles',
-  // Sounds
   'Sound',
   'SoundGroup',
   'ChorusSoundEffect',
@@ -377,7 +331,6 @@ const CREATABLE_CLASSES = [
   'PitchShiftSoundEffect',
   'ReverbSoundEffect',
   'TremoloSoundEffect',
-  // Audio (new API)
   'AudioAnalyzer',
   'AudioChannelMixer',
   'AudioChannelSplitter',
@@ -403,22 +356,18 @@ const CREATABLE_CLASSES = [
   'AudioSpeechToText',
   'AudioTextToSpeech',
   'AudioTremolo',
-  // Video
   'VideoDeviceInput',
   'VideoDisplay',
   'VideoPlayer',
-  // Scripts
   'Script',
   'LocalScript',
   'ModuleScript',
   'AuroraScript',
-  // Remote and Bindable
   'RemoteEvent',
   'RemoteFunction',
   'BindableEvent',
   'BindableFunction',
   'UnreliableRemoteEvent',
-  // Animation
   'Animation',
   'AnimationController',
   'Animator',
@@ -440,7 +389,6 @@ const CREATABLE_CLASSES = [
   'AnimationNodeDefinition',
   'TrackerStreamAnimation',
   'RTAnimationTracker',
-  // Character
   'Humanoid',
   'HumanoidDescription',
   'HumanoidRigDescription',
@@ -458,14 +406,12 @@ const CREATABLE_CLASSES = [
   'Hat',
   'Skin',
   'FaceControls',
-  // Avatar Rules
   'AvatarRules',
   'AvatarAccessoryRules',
   'AvatarAnimationRules',
   'AvatarBodyRules',
   'AvatarClothingRules',
   'AvatarCollisionRules',
-  // Body movers (legacy)
   'BodyForce',
   'BodyVelocity',
   'BodyPosition',
@@ -473,7 +419,6 @@ const CREATABLE_CLASSES = [
   'BodyAngularVelocity',
   'BodyThrust',
   'RocketPropulsion',
-  // Controllers
   'ControllerManager',
   'ControllerPartSensor',
   'AirController',
@@ -483,56 +428,45 @@ const CREATABLE_CLASSES = [
   'HumanoidController',
   'VehicleController',
   'SkateboardController',
-  // IK and Rigging
   'IKControl',
   'WrapDeformer',
   'WrapLayer',
   'WrapTarget',
   'WrapTextureTransfer',
-  // Tools
   'Tool',
   'HopperBin',
   'Flag',
   'FlagStand',
   'Backpack',
   'StarterGear',
-  // Camera
   'Camera',
-  // Folders and Organization
   'Folder',
   'Configuration',
-  // Physics and Attachments
   'Attachment',
   'Bone',
   'ForceField',
-  // Sensors
   'AtmosphereSensor',
   'BuoyancySensor',
   'FluidForceSensor',
-  // Interaction
   'ClickDetector',
   'DragDetector',
   'ProximityPrompt',
   'Dialog',
   'DialogChoice',
-  // Appearance
   'Decal',
   'Texture',
   'SurfaceAppearance',
   'MaterialVariant',
   'TerrainDetail',
   'TerrainRegion',
-  // Meshes
   'SpecialMesh',
   'BlockMesh',
   'CylinderMesh',
   'FileMesh',
-  // DataStore
   'DataStoreOptions',
   'DataStoreSetOptions',
   'DataStoreIncrementOptions',
   'DataStoreGetOptions',
-  // Text and Chat
   'TextChannel',
   'TextChatCommand',
   'TextChatMessageProperties',
@@ -540,39 +474,29 @@ const CREATABLE_CLASSES = [
   'TextGenerator',
   'GetTextBoundsParams',
   'LocalizationTable',
-  // Localization/Message (legacy)
   'Message',
   'Hint',
   'FloorWire',
-  // Teams and Players
   'Team',
   'Player',
-  // Teleport
   'TeleportOptions',
   'ExperienceInviteOptions',
-  // Pathfinding
   'PathfindingLink',
   'PathfindingModifier',
-  // Tween
   'Tween',
-  // Input
   'InputAction',
   'InputBinding',
   'InputContext',
   'HapticEffect',
-  // Styling (new)
   'StyleSheet',
   'StyleRule',
   'StyleLink',
   'StyleDerive',
   'StyleQuery',
-  // Annotation
   'Annotation',
   'WorkspaceAnnotation',
-  // Wire
   'Wire',
   'Noise',
-  // Services (some are creatable)
   'TestService',
   'ProximityPromptService',
   'MemoryStoreService',
@@ -580,7 +504,6 @@ const CREATABLE_CLASSES = [
   'CSGDictionaryService',
   'NonReplicatedCSGDictionaryService',
   'HeightmapImporterService',
-  // Plugin/Studio (limited use)
   'PluginAction',
   'PluginCapabilities',
   'Dragger',
@@ -592,10 +515,8 @@ const CREATABLE_CLASSES = [
   'VisualizationMode',
   'VisualizationModeCategory',
   'VirtualInputManager',
-  // Debug
   'Breakpoint',
   'DebuggerWatch',
-  // Reflection Metadata (internal)
   'ReflectionMetadata',
   'ReflectionMetadataCallbacks',
   'ReflectionMetadataClass',
@@ -608,25 +529,18 @@ const CREATABLE_CLASSES = [
   'ReflectionMetadataMember',
   'ReflectionMetadataProperties',
   'ReflectionMetadataYieldFunctions',
-  // Testing
   'FunctionalTest',
   'RenderingTest',
   'CustomEvent',
   'CustomEventReceiver',
   'CustomLog',
   'InternalSyncItem',
-  // Other/Misc
   'AdPortal',
   'HiddenSurfaceRemovalAsset',
   'MotorFeature',
   'Hole',
 ];
 
-/**
- * Converts a Luau type to the corresponding LSP CompletionItemKind.
- * @param type - The Luau type to convert
- * @returns The appropriate CompletionItemKind for the type
- */
 const typeToCompletionKind = (type: LuauType): CompletionItemKind => {
   switch (type.kind) {
     case 'Function':
@@ -642,11 +556,6 @@ const typeToCompletionKind = (type: LuauType): CompletionItemKind => {
   }
 };
 
-/**
- * Formats a function's parameter list as a detail string for completion items.
- * @param func - The FunctionType to format
- * @returns A string in the format "(param1, param2?, ...)"
- */
 const formatFunctionDetail = (func: FunctionType): string => {
   const params = func.params.map(p => {
     const name = p.name ?? 'arg';
@@ -656,11 +565,6 @@ const formatFunctionDetail = (func: FunctionType): string => {
   return `(${params.join(', ')})`;
 };
 
-/**
- * Formats a DocComment as markdown documentation for completion items.
- * @param docComment - The DocComment to format, or undefined
- * @returns A markdown documentation object, or undefined if no documentation
- */
 const formatDocumentation = (docComment: DocComment | undefined): { kind: 'markdown'; value: string } | undefined => {
   if (docComment === undefined) return undefined;
 
@@ -673,12 +577,6 @@ const formatDocumentation = (docComment: DocComment | undefined): { kind: 'markd
   };
 };
 
-/**
- * Gets completion items for properties of a TableType.
- * @param table - The TableType to get completions from
- * @param prefix - The prefix to filter completions by (case-insensitive)
- * @returns Array of CompletionItem objects for matching properties
- */
 const getTableCompletions = (table: TableType, prefix: string): CompletionItem[] => {
   const items: CompletionItem[] = [];
 
@@ -692,7 +590,6 @@ const getTableCompletions = (table: TableType, prefix: string): CompletionItem[]
 
     if (prop.type.kind === 'Function') {
       item.detail = formatFunctionDetail(prop.type);
-      // Just insert the function name, signature help will show params
       item.insertText = name;
     }
 
@@ -711,14 +608,6 @@ const getTableCompletions = (table: TableType, prefix: string): CompletionItem[]
   return items;
 };
 
-/**
- * Returns completion items for table field names that match the expected TableType.
- * Excludes fields that have already been defined in the current table literal.
- * @param expectedType - The expected TableType for the table literal
- * @param existingFields - Set of field names already defined in the table
- * @param prefix - The prefix to filter completions by (case-insensitive)
- * @returns Array of CompletionItem objects for missing table fields
- */
 const getTableFieldCompletions = (
   expectedType: TableType,
   existingFields: Set<string>,
@@ -747,27 +636,7 @@ const getTableFieldCompletions = (
   return items;
 };
 
-/**
- * Context information for table field completions inside a function call.
- */
-interface TableContextInfo {
-  /** The name of the function being called */
-  readonly functionName: string;
-  /** The index of the parameter being filled (0-based) */
-  readonly paramIndex: number;
-  /** Set of field names already defined in the table literal */
-  readonly existingFields: Set<string>;
-  /** The prefix the user has started typing */
-  readonly prefix: string;
-}
-
-/**
- * Detects if the cursor is inside a table constructor being passed to a function call.
- * @param beforeCursor - The text content before the cursor position
- * @returns TableContextInfo with function name, parameter index, existing fields, and prefix, or undefined if not in a table context
- */
 const detectTableFieldContext = (beforeCursor: string): TableContextInfo | undefined => {
-  // Check if we're inside a table literal by looking for unmatched `{`
   let braceDepth = 0;
   let tableStartPos = -1;
 
@@ -786,40 +655,29 @@ const detectTableFieldContext = (beforeCursor: string): TableContextInfo | undef
 
   if (tableStartPos === -1) return undefined;
 
-  // Get the part before the opening brace to find the function call
   const beforeTable = beforeCursor.slice(0, tableStartPos).trimEnd();
 
-  // Match function call pattern: functionName( or functionName({
-  // Also match method call: obj:methodName( or obj.methodName(
   const funcCallMatch = beforeTable.match(/([a-zA-Z_]\w*(?:\s*[.:]\s*[a-zA-Z_]\w*)*)\s*\(\s*$/);
   if (funcCallMatch === null) return undefined;
 
   const functionExpression = funcCallMatch[1];
   if (functionExpression === undefined) return undefined;
 
-  // Extract just the function name (last identifier in the chain)
   const funcNameMatch = functionExpression.match(/([a-zA-Z_]\w*)$/);
   const functionName = funcNameMatch?.[1] ?? functionExpression;
 
-  // Determine which parameter position we're at (currently simplified to always be 0)
-  // A more complete implementation would count commas before this table
   const paramIndex = 0;
 
-  // Parse existing fields in the table
   const insideTable = beforeCursor.slice(tableStartPos + 1);
   const existingFields = parseExistingTableFields(insideTable);
 
-  // Get the prefix (what the user has started typing)
   const prefixMatch = insideTable.match(/(?:,|\{)\s*([a-zA-Z_]\w*)$/);
   let prefix = prefixMatch?.[1] ?? '';
 
-  // Also check for a field name at the start of the table or after newline
   if (prefix === '') {
     const trimmed = insideTable.trimStart();
     const startMatch = trimmed.match(/^([a-zA-Z_]\w*)$/);
-    if (startMatch !== null) {
-      prefix = startMatch[1] ?? '';
-    }
+    if (startMatch !== null) prefix = startMatch[1] ?? '';
   }
 
   return {
@@ -830,41 +688,24 @@ const detectTableFieldContext = (beforeCursor: string): TableContextInfo | undef
   };
 };
 
-/**
- * Parses the content inside a table literal to find existing field names.
- * @param tableContent - The string content inside the table braces
- * @returns A Set of field names that have been assigned in the table
- */
 const parseExistingTableFields = (tableContent: string): Set<string> => {
   const fields = new Set<string>();
 
-  // Match field assignments: FieldName = value or [key] = value
-  // This regex looks for identifier followed by optional whitespace and =
   const fieldPattern = /([a-zA-Z_]\w*)\s*=/g;
   let match;
 
   while ((match = fieldPattern.exec(tableContent)) !== null) {
-    if (match[1] !== undefined) {
-      fields.add(match[1]);
-    }
+    if (match[1] !== undefined) fields.add(match[1]);
   }
 
   return fields;
 };
 
-/**
- * Resolves a function name to its expected parameter type at a given position.
- * @param functionName - The name of the function to look up
- * @param paramIndex - The 0-based index of the parameter
- * @param documentManager - The document manager for accessing global symbols
- * @returns The TableType expected at that parameter position, or undefined if not a table parameter
- */
 const getExpectedParameterType = (
   functionName: string,
   paramIndex: number,
   documentManager: DocumentManager,
 ): TableType | undefined => {
-  // Look up the function in global symbols
   const symbol = documentManager.globalEnv.env.globalScope.symbols.get(functionName);
   if (symbol === undefined) return undefined;
   if (symbol.type.kind !== 'Function') return undefined;
@@ -875,18 +716,11 @@ const getExpectedParameterType = (
   const param = funcType.params[paramIndex];
   if (param === undefined) return undefined;
 
-  // Check if the expected parameter type is a TableType
   if (param.type.kind === 'Table') return param.type;
 
   return undefined;
 };
 
-/**
- * Collects common children names for a class and its superclasses.
- * @param className - The name of the class to get children for
- * @param getSuperclass - Function to get the superclass name for a given class
- * @returns Map of child names to their class types
- */
 const getCommonChildrenForClass = (
   className: string,
   getSuperclass: (name: string) => string | undefined,
@@ -907,14 +741,6 @@ const getCommonChildrenForClass = (
   return result;
 };
 
-/**
- * Gets completion items for members of a ClassType, including properties, methods, and common children.
- * @param cls - The ClassType to get completions for
- * @param prefix - The prefix to filter completions by (case-insensitive)
- * @param useColon - Whether this is method access (colon notation)
- * @param documentManager - Optional document manager for resolving common children
- * @returns Array of CompletionItem objects for matching class members
- */
 const getClassCompletions = (
   cls: ClassType,
   prefix: string,
@@ -924,7 +750,6 @@ const getClassCompletions = (
   const items: CompletionItem[] = [];
   const addedNames = new Set<string>();
 
-  // Properties
   for (const [name, prop] of cls.properties) {
     if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) continue;
 
@@ -946,7 +771,6 @@ const getClassCompletions = (
     addedNames.add(name);
   }
 
-  // Methods
   for (const [name, method] of cls.methods) {
     if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) continue;
 
@@ -970,7 +794,6 @@ const getClassCompletions = (
     addedNames.add(name);
   }
 
-  // Include inherited members
   if (cls.superclass !== undefined) {
     const inherited = getClassCompletions(cls.superclass, prefix, useColon, documentManager);
     for (const item of inherited) {
@@ -981,7 +804,6 @@ const getClassCompletions = (
     }
   }
 
-  // Add common children as completions (only for property access, not method access)
   if (useColon === false && documentManager !== undefined) {
     const getSuperclass = (className: string): string | undefined => {
       const classType = documentManager.globalEnv.robloxClasses.get(className);
@@ -1013,12 +835,6 @@ const getClassCompletions = (
   return items;
 };
 
-/**
- * Gets completion items for global symbols and functions.
- * @param documentManager - The document manager containing the global environment
- * @param prefix - The prefix to filter completions by (case-insensitive)
- * @returns Array of CompletionItem objects for matching global symbols
- */
 const getGlobalCompletions = (documentManager: DocumentManager, prefix: string): CompletionItem[] => {
   const items: CompletionItem[] = [];
   const env = documentManager.globalEnv.env;
@@ -1031,14 +847,9 @@ const getGlobalCompletions = (documentManager: DocumentManager, prefix: string):
       'kind': typeToCompletionKind(symbol.type),
     };
 
-    if (symbol.type.kind === 'Function') {
-      item.detail = formatFunctionDetail(symbol.type);
-    }
+    if (symbol.type.kind === 'Function') item.detail = formatFunctionDetail(symbol.type);
 
-    const documentation = formatDocumentation(symbol.docComment);
-    if (documentation !== undefined) {
-      item.documentation = documentation;
-    }
+    item.data = { 'resolve': 'global', 'name': name };
 
     items.push(item);
   }
@@ -1046,7 +857,6 @@ const getGlobalCompletions = (documentManager: DocumentManager, prefix: string):
   return items;
 };
 
-/** Luau code snippets for common patterns */
 const LUAU_SNIPPETS: ReadonlyArray<{
   label: string;
   insertText: string;
@@ -1143,7 +953,6 @@ const LUAU_SNIPPETS: ReadonlyArray<{
     'detail': 'Then block',
     'documentation': 'Completes an if statement.',
   },
-  // Roblox-specific snippets
   {
     'label': 'connect',
     'insertText': ':Connect(function(${1:args})\n\t$0\nend)',
@@ -1189,11 +998,6 @@ const LUAU_SNIPPETS: ReadonlyArray<{
   },
 ];
 
-/**
- * Gets snippet completion items for common Luau code patterns.
- * @param prefix - The prefix to filter snippets by (case-insensitive)
- * @returns Array of CompletionItem objects for matching snippets
- */
 const getSnippetCompletions = (prefix: string): CompletionItem[] => {
   const items: CompletionItem[] = [];
 
@@ -1210,24 +1014,17 @@ const getSnippetCompletions = (prefix: string): CompletionItem[] => {
       },
       'insertText': snippet.insertText,
       'insertTextFormat': InsertTextFormat.Snippet,
-      'sortText': `1_${snippet.label}`, // Sort after regular completions
+      'sortText': `1_${snippet.label}`,
     });
   }
 
   return items;
 };
 
-/**
- * Gets completions for GetService("...") showing only services with children from live game.
- * @param beforeCursor - The text content before the cursor position
- * @param liveGameModel - The live game model containing connected game tree data
- * @returns Array of CompletionItem objects for services, or undefined if not in GetService context
- */
 const getLiveServiceCompletions = (
   beforeCursor: string,
   liveGameModel: LiveGameModel,
 ): CompletionItem[] | undefined => {
-  // Match game:GetService(" or game:GetService(' or game:GetService" (shorthand) - case insensitive
   if (/game\s*:\s*[Gg]et[Ss]ervice\s*(?:\(\s*)?["'][^"']*$/.test(beforeCursor) === false) return undefined;
 
   if (liveGameModel.isConnected === false) return undefined;
@@ -1235,7 +1032,6 @@ const getLiveServiceCompletions = (
   const match = beforeCursor.match(/["']([^"']*)$/);
   const prefix = match?.[1]?.toLowerCase() ?? '';
 
-  // Get services from live game tree (only services with children)
   const services = liveGameModel.services;
   if (services.size === 0) return undefined;
 
@@ -1244,7 +1040,6 @@ const getLiveServiceCompletions = (
   for (const [name, node] of services) {
     if (prefix !== '' && name.toLowerCase().startsWith(prefix) === false) continue;
 
-    // Count children
     const childCount = node.children?.length ?? 0;
 
     items.push({
@@ -1263,17 +1058,7 @@ const getLiveServiceCompletions = (
   return items.length > 0 ? items : undefined;
 };
 
-/**
- * Gets completions for bracket notation like game.Workspace['...'].
- * Returns live game tree children for the path before the bracket.
- * @param beforeCursor - The text content before the cursor position
- * @param liveGameModel - The live game model containing connected game tree data
- * @param documentManager - The document manager for type resolution
- * @returns Array of CompletionItem objects for children, or undefined if not in bracket context
- */
 const getBracketCompletions = (beforeCursor: string, liveGameModel: LiveGameModel): CompletionItem[] | undefined => {
-  // Match expressions like: game.Workspace[' or game.Workspace[" or game:GetService("Players")['
-  // Pattern: expression followed by [' or ["
   const bracketMatch = beforeCursor.match(
     /([a-zA-Z_]\w*(?:\s*[.:]\s*[a-zA-Z_]\w*|\s*\([^)]*\)|\s*\[[^\]]*\])*)\s*\[\s*["']([^"']*)$/,
   );
@@ -1283,11 +1068,9 @@ const getBracketCompletions = (beforeCursor: string, liveGameModel: LiveGameMode
   const [, expr, prefix] = bracketMatch;
   if (expr === undefined) return undefined;
 
-  // Parse the expression to get the game tree path
   const path = parseGameTreePath(expr.replace(/\s+/g, ''));
   if (path === undefined) return undefined;
 
-  // Get children from live game tree
   if (liveGameModel.isConnected === false) return undefined;
 
   const children = liveGameModel.getChildren(path);
@@ -1315,15 +1098,7 @@ const getBracketCompletions = (beforeCursor: string, liveGameModel: LiveGameMode
   return items.length > 0 ? items : undefined;
 };
 
-/**
- * Gets completion items for string arguments to common Roblox functions.
- * Handles GetService, Instance.new, BrickColor.new, FindFirstChild, IsA, GetPropertyChangedSignal, etc.
- * @param beforeCursor - The text content before the cursor position
- * @param documentManager - The document manager for accessing Roblox classes
- * @returns Array of CompletionItem objects, or undefined if not in a string argument context
- */
 const getStringCompletions = (beforeCursor: string, documentManager: DocumentManager): CompletionItem[] | undefined => {
-  // GetService("...") or GetService'...' (Lua allows func'string' shorthand)
   if (/[Gg]etService\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
@@ -1336,7 +1111,6 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     }));
   }
 
-  // Instance.new("...") or Instance.new'...'
   if (/Instance\s*\.\s*new\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
@@ -1349,7 +1123,6 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     }));
   }
 
-  // BrickColor.new("...") or BrickColor.new'...'
   if (/[Bb]rick[Cc]olor\s*\.\s*new\s*(?:\(\s*)?["'][^"']*$/.test(beforeCursor)) {
     const match = beforeCursor.match(/["']([^"']*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
@@ -1569,12 +1342,11 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
         'label': color,
         'kind': CompletionItemKind.Color,
         'insertText': color,
-        'sortText': `0${idx.toString().padStart(3, '0')}`, // Sort before other completions
+        'sortText': `0${idx.toString().padStart(3, '0')}`,
         'preselect': idx === 0,
       }));
   }
 
-  // FindFirstChild/WaitForChild/FindFirstAncestor - with or without parens
   if (/(?:FindFirstChild|WaitForChild|FindFirstAncestor)\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
@@ -1590,7 +1362,6 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     return items.slice(0, 50);
   }
 
-  // FindFirstChildOfClass/FindFirstChildWhichIsA - class names
   if (
     /(?:FindFirstChildOfClass|FindFirstChildWhichIsA|FindFirstAncestorOfClass|FindFirstAncestorWhichIsA)\s*(?:\(\s*)?["'][\w]*$/.test(
       beforeCursor,
@@ -1610,7 +1381,6 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     return items.slice(0, 50);
   }
 
-  // IsA("...") or IsA'...'
   if (/IsA\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
@@ -1626,7 +1396,6 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     return items.slice(0, 50);
   }
 
-  // GetPropertyChangedSignal("...") or GetPropertyChangedSignal'...'
   if (/GetPropertyChangedSignal\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
     const commonProps = [
       'Name',
@@ -1667,27 +1436,14 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
       }));
   }
 
-  // SetAttribute/GetAttribute("...")
-  if (/(?:SetAttribute|GetAttribute)\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
-    return undefined;
-  }
+  if (/(?:SetAttribute|GetAttribute)\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) return undefined;
 
-  // CollectionService:GetTagged/HasTag/AddTag/RemoveTag
-  if (/(?:GetTagged|HasTag|AddTag|RemoveTag)\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) {
-    return undefined;
-  }
+  if (/(?:GetTagged|HasTag|AddTag|RemoveTag)\s*(?:\(\s*)?["'][\w]*$/.test(beforeCursor)) return undefined;
 
   return undefined;
 };
 
-/**
- * Gets completion items for Roblox enums (Enum.EnumType or Enum.EnumType.EnumValue).
- * @param beforeCursor - The text content before the cursor position
- * @param documentManager - The document manager containing Roblox enum definitions
- * @returns Array of CompletionItem objects for enum types or values, or undefined if not in enum context
- */
 const getEnumCompletions = (beforeCursor: string, documentManager: DocumentManager): CompletionItem[] | undefined => {
-  // Match Enum.EnumType.
   const enumMatch = beforeCursor.match(/Enum\.(\w+)\.(\w*)$/);
   if (enumMatch !== null) {
     const [, enumName, prefix] = enumMatch;
@@ -1709,7 +1465,6 @@ const getEnumCompletions = (beforeCursor: string, documentManager: DocumentManag
     }
   }
 
-  // Match Enum. (list all enum types)
   const enumBaseMatch = beforeCursor.match(/Enum\.(\w*)$/);
   if (enumBaseMatch !== null) {
     const [, prefix] = enumBaseMatch;
@@ -1729,7 +1484,6 @@ const getEnumCompletions = (beforeCursor: string, documentManager: DocumentManag
   return undefined;
 };
 
-// Map of common service name to their class type
 const SERVICE_CLASS_MAP: ReadonlyMap<string, string> = new Map([
   ['Players', 'Players'],
   ['Workspace', 'Workspace'],
@@ -1773,49 +1527,25 @@ const SERVICE_CLASS_MAP: ReadonlyMap<string, string> = new Map([
   ['GroupService', 'GroupService'],
 ]);
 
-/**
- * Resolves a TypeReference to its actual type by looking up Roblox classes and datatypes.
- * @param type - The type to resolve (may be a TypeReference or already resolved)
- * @param documentManager - The document manager containing type definitions
- * @returns The resolved type, or the original type if not a TypeReference
- */
 const resolveTypeReference = (type: LuauType, documentManager: DocumentManager): LuauType => {
   if (type.kind === 'TypeReference') {
     const typeName = type.name;
 
-    // Check Roblox classes first
     const classType = documentManager.globalEnv.robloxClasses.get(typeName);
     if (classType !== undefined) return classType;
 
-    // Check DataTypes (Vector3, CFrame, Color3, UDim2, etc.)
     const dataType = documentManager.globalEnv.robloxDataTypes.get(typeName);
     if (dataType !== undefined) return dataType;
   }
   return type;
 };
 
-/** Enable debug logging for expression resolution */
 const DEBUG_COMPLETION = false;
 
-/**
- * Logs debug messages when DEBUG_COMPLETION is enabled.
- * @param args - Arguments to log
- * @returns void
- */
 const debugLog = (...args: unknown[]): void => {
   if (DEBUG_COMPLETION) console.error('[completion]', ...args);
 };
 
-/**
- * Resolves a require() argument to a module type using the workspace module index.
- * Converts module exports into a Table type for completion purposes.
- * @param requireArg - The require argument string (e.g., "game.ReplicatedStorage.Utils")
- * @param documentManager - The document manager for module index access
- * @returns A Table type representing the module's exports, or undefined
- */
-/**
- * Converts module exports into a Table type.
- */
 const moduleExportsToTableType = (moduleInfo: ModuleInfo): LuauType => {
   const properties = new Map<string, PropertyType>();
   for (const exp of moduleInfo.exports) {
@@ -1836,17 +1566,11 @@ const moduleExportsToTableType = (moduleInfo: ModuleInfo): LuauType => {
   return createTableType(properties);
 };
 
-/** Regex fragment: optionally matches a type annotation between variable name and `=` (e.g., `: Workspace`) */
 const TYPE_ANNOT_RE = `(?:\\s*:[^=]+)?`;
 
-/**
- * Traces a variable back through assignments to build the full expression.
- * Follows chains like: local b = a.new() → local a = require(game.X) → "require(game.X).new()"
- */
 const traceVarExpression = (varName: string, content: string, depth = 0): string | undefined => {
   if (depth > 5) return undefined;
 
-  // Recognize global roots that don't have local assignments
   if (varName === 'game' || varName === 'workspace') return varName;
 
   const assignPattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(.+)`);
@@ -1855,10 +1579,8 @@ const traceVarExpression = (varName: string, content: string, depth = 0): string
 
   const rhs = assignMatch[1].trim().replace(/;.*$/, '');
 
-  // Direct require: require(game.X) or require(game.X).new()
   if (/^require\s*\(/.test(rhs)) return rhs;
 
-  // Indirect: otherVar.method() or otherVar:method() or otherVar.prop
   const indirectMatch = rhs.match(/^(\w+)([.:].+)/);
   if (indirectMatch !== null && indirectMatch[1] !== undefined && indirectMatch[2] !== undefined) {
     const sourceVar = indirectMatch[1];
@@ -1870,20 +1592,11 @@ const traceVarExpression = (varName: string, content: string, depth = 0): string
   return undefined;
 };
 
-/**
- * Resolves a require() argument to a module type using the workspace module index
- * or local file resolution for relative paths.
- * @param requireArg - The require argument (e.g., "game.ReplicatedStorage.Utils" or "\"./utils\"")
- * @param documentManager - The document manager for module index access
- * @param documentUri - Optional URI of the current document (needed for relative path resolution)
- * @returns A Table type representing the module's exports, or undefined
- */
 const resolveRequireModuleType = (
   requireArg: string,
   documentManager: DocumentManager,
   documentUri?: string,
 ): LuauType | undefined => {
-  // Handle relative path requires: require("./utils") or require("../lib/utils")
   const stringMatch = requireArg.match(/^["'](\.\.?\/[^"']+)["']$/);
   if (stringMatch !== null && documentUri !== undefined) {
     const relativePath = stringMatch[1]!;
@@ -1896,13 +1609,10 @@ const resolveRequireModuleType = (
     }
 
     const moduleInfo = resolveLocalModule(relativePath, filePath);
-    if (moduleInfo !== undefined && moduleInfo.exports.length > 0) {
-      return moduleExportsToTableType(moduleInfo);
-    }
+    if (moduleInfo !== undefined && moduleInfo.exports.length > 0) return moduleExportsToTableType(moduleInfo);
     return undefined;
   }
 
-  // Handle game.Path requires
   const gamePrefix = requireArg.match(/^game\s*\.\s*/);
   if (gamePrefix === null) return undefined;
 
@@ -1914,7 +1624,6 @@ const resolveRequireModuleType = (
 
   if (pathParts.length === 0) return undefined;
 
-  // Search the module index for a matching module
   const moduleIndex = documentManager.getModuleIndex();
 
   for (const [, moduleInfo] of moduleIndex) {
@@ -1929,23 +1638,12 @@ const resolveRequireModuleType = (
         break;
       }
     }
-    if (matches && moduleInfo.exports.length > 0) {
-      return moduleExportsToTableType(moduleInfo);
-    }
+    if (matches && moduleInfo.exports.length > 0) return moduleExportsToTableType(moduleInfo);
   }
 
   return undefined;
 };
 
-/**
- * Quick scans document content to find variable types from Instance.new and GetService patterns.
- * This is used as a fallback when the full type check result is not available.
- * @param varName - The variable name to find the type for
- * @param content - The document content to scan
- * @param documentManager - The document manager for looking up class types
- * @param logFn - Optional logging function for debug output
- * @returns The inferred LuauType for the variable, or undefined if not found
- */
 const quickScanForVariableType = (
   varName: string,
   content: string,
@@ -1956,7 +1654,6 @@ const quickScanForVariableType = (
   const log = logFn ?? debugLog;
   log(`quickScan for: ${varName}`);
 
-  // Pattern: local varName = Instance.new("ClassName")
   const instanceNewPattern = new RegExp(
     `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*Instance\\s*\\.\\s*new\\s*\\(\\s*["']([\\w]+)["']`,
   );
@@ -1971,8 +1668,6 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = game:GetService("ServiceName") or game:GetService'ServiceName'
-  // Handles both parenthesized and Lua string shorthand (no parens) forms
   const getServicePattern = new RegExp(
     `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*:\\s*[Gg]et[Ss]ervice\\s*\\(?\\s*["']([\\w]+)["']`,
   );
@@ -1985,7 +1680,6 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = game.ServiceName
   const gameServicePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*\\.\\s*([\\w]+)`);
   const gameServiceMatch = content.match(gameServicePattern);
   if (gameServiceMatch !== null) {
@@ -1999,14 +1693,12 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = workspace (or other globals)
   const workspacePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*workspace\\b`);
   if (workspacePattern.test(content)) {
     const workspaceClass = documentManager.globalEnv.robloxClasses.get('Workspace');
     if (workspaceClass !== undefined) return workspaceClass;
   }
 
-  // Pattern: local varName = something:FindFirstChildOfClass("ClassName")
   const findChildOfClassPattern = new RegExp(
     `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildOfClass\\s*\\(\\s*["']([\\w]+)["']`,
   );
@@ -2019,7 +1711,6 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = something:FindFirstChildWhichIsA("ClassName")
   const findChildWhichIsAPattern = new RegExp(
     `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildWhichIsA\\s*\\(\\s*["']([\\w]+)["']`,
   );
@@ -2032,7 +1723,6 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = require(game.Path.Module) or require(script.Parent.Module)
   const requirePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*require\\s*\\(\\s*([^)]+)\\s*\\)`);
   const requireMatch = content.match(requirePattern);
   if (requireMatch !== null) {
@@ -2043,27 +1733,21 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = otherVar.property or otherVar:Method()
-  // Trace through variable indirection to resolve the source type
   const indirectPattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(\\w+)([.:][^\\n]+)`);
   const indirectMatch = content.match(indirectPattern);
   if (indirectMatch !== null && indirectMatch[1] !== undefined && indirectMatch[2] !== undefined) {
     const sourceVar = indirectMatch[1];
     const suffix = indirectMatch[2].trim();
 
-    // Don't recurse into patterns already handled above
     if (sourceVar !== 'Instance' && sourceVar !== 'game' && sourceVar !== 'workspace' && sourceVar !== 'require') {
       const sourceType = quickScanForVariableType(sourceVar, content, documentManager, logFn, documentUri);
       if (sourceType !== undefined && sourceType.kind === 'Class') {
-        // Resolve the property/method chain on the class type
         const memberName = suffix.match(/^[.:]\s*(\w+)/)?.[1];
         if (memberName !== undefined) {
-          // Walk the class hierarchy for the member
           let cls: ClassType | undefined = sourceType;
           while (cls !== undefined) {
             const prop = cls.properties.get(memberName);
             if (prop !== undefined) {
-              // If accessing a property that returns a class, resolve it
               if (prop.type.kind === 'Class') return prop.type;
               return prop.type;
             }
@@ -2076,11 +1760,8 @@ const quickScanForVariableType = (
     }
   }
 
-  // Pattern: local varName = player.Character or player:FindFirstChild("Humanoid") etc.
-  // Try to use variable name hints for the variable name
   const hintedClass = VARIABLE_NAME_HINTS.get(varName);
   if (hintedClass !== undefined) {
-    // Verify this variable is actually defined
     const isDefinedPattern = new RegExp(`local\\s+${varName}\\b`);
     if (isDefinedPattern.test(content)) {
       const classType = documentManager.globalEnv.robloxClasses.get(hintedClass);
@@ -2091,16 +1772,6 @@ const quickScanForVariableType = (
   return undefined;
 };
 
-/**
- * Resolves a type from a chained expression like "game.Players.PlayerAdded" or "game:GetService('Players').LocalPlayer".
- * Handles property access, method calls, GetService, FindFirstChild, Clone, and other common patterns.
- * @param expression - The expression string to resolve
- * @param documentManager - The document manager for type lookups
- * @param document - Optional parsed document for local symbol lookups
- * @param liveContent - Optional live document content for quick scanning
- * @param logFn - Optional logging function for debug output
- * @returns The resolved LuauType, or undefined if resolution fails
- */
 const resolveExpressionType = (
   expression: string,
   documentManager: DocumentManager,
@@ -2112,7 +1783,6 @@ const resolveExpressionType = (
   const log = logFn ?? debugLog;
   log(`Resolving expression: ${expression}`);
 
-  // Parse the expression into parts, handling method calls and GetService specially
   type ExprPart =
     | { kind: 'property'; name: string }
     | { kind: 'method'; name: string; args: string }
@@ -2135,15 +1805,12 @@ const resolveExpressionType = (
         current = '';
       }
       i++;
-      // Read method name
       let methodName = '';
       while (i < expression.length && /\w/.test(expression[i] ?? '')) {
         methodName += expression[i];
         i++;
       }
-      // Skip whitespace
       while (i < expression.length && /\s/.test(expression[i] ?? '')) i++;
-      // Read arguments
       let args = '';
       if (expression[i] === '(' || expression[i] === '"' || expression[i] === "'") {
         const startArgs = i;
@@ -2156,7 +1823,6 @@ const resolveExpressionType = (
             i++;
           }
         } else {
-          // String literal shorthand
           const quote = expression[i];
           i++;
           while (i < expression.length && expression[i] !== quote) i++;
@@ -2164,15 +1830,12 @@ const resolveExpressionType = (
         }
         args = expression.slice(startArgs, i);
       }
-      if (methodName !== '') {
-        parts.push({ 'kind': 'method', 'name': methodName, args });
-      }
+      if (methodName !== '') parts.push({ 'kind': 'method', 'name': methodName, args });
     } else if (char === '(' || char === '[') {
       if (current !== '') {
         parts.push({ 'kind': 'property', 'name': current });
         current = '';
       }
-      // Skip to matching bracket
       const open = char;
       const close = char === '(' ? ')' : ']';
       const startArgs = i;
@@ -2192,26 +1855,21 @@ const resolveExpressionType = (
     }
   }
 
-  if (current !== '') {
-    parts.push({ 'kind': 'property', 'name': current });
-  }
+  if (current !== '') parts.push({ 'kind': 'property', 'name': current });
 
   if (parts.length === 0) return undefined;
 
-  // Start with the first part - look it up in globals
   const firstPart = parts[0];
   if (firstPart === undefined || firstPart.kind !== 'property') return undefined;
   const firstName = firstPart.name;
 
   let currentType: LuauType | undefined;
 
-  // Check global symbols first
   const globalSymbol = documentManager.globalEnv.env.globalScope.symbols.get(firstName);
   if (globalSymbol !== undefined) {
     currentType = globalSymbol.type;
     log(`First part '${firstName}' resolved from globals: ${currentType.kind}`);
   } else {
-    // Check Roblox classes
     const classType = documentManager.globalEnv.robloxClasses.get(firstName);
     if (classType !== undefined) {
       currentType = classType;
@@ -2219,7 +1877,6 @@ const resolveExpressionType = (
     }
   }
 
-  // Check local symbols from type check result using allSymbols map
   if (currentType === undefined && document?.typeCheckResult !== undefined) {
     log(`Checking allSymbols for '${firstName}'...`);
     const symbolType = document.typeCheckResult.allSymbols.get(firstName);
@@ -2231,7 +1888,6 @@ const resolveExpressionType = (
       if (resolved.kind === 'Class' || resolved.kind === 'Table') {
         currentType = resolved;
       } else if (resolved.kind === 'Union') {
-        // Strip nil from union and use the non-nil member for completions
         const nonNilTypes = (resolved as { types: ReadonlyArray<LuauType> }).types.filter(
           (t: LuauType) => t.kind !== 'Primitive' || (t as { name: string }).name !== 'nil',
         );
@@ -2243,7 +1899,6 @@ const resolveExpressionType = (
           }
         }
       } else if (resolved.kind === 'Function') {
-        // Variable holds a function - use its return type for .dot access (e.g., require() result)
         const funcType = resolved as { returnType: LuauType };
         const returnResolved = resolveTypeReference(funcType.returnType, documentManager);
         if (returnResolved.kind === 'Class' || returnResolved.kind === 'Table') {
@@ -2252,7 +1907,6 @@ const resolveExpressionType = (
       } else if (resolved.kind !== 'Any') {
         log(`allSymbols type for '${firstName}' not directly usable: ${resolved.kind}`);
       }
-      // For 'Any', fall through to quickScan for potentially better info
     } else {
       log(`'${firstName}' not found in allSymbols`);
     }
@@ -2262,8 +1916,6 @@ const resolveExpressionType = (
     );
   }
 
-  // Quick scan fallback: try to find variable type from document content patterns
-  // This works even when the type check result is outdated or has unhelpful types
   if (currentType === undefined && liveContent !== undefined) {
     log(`Running quick scan for '${firstName}'...`);
     const scannedType = quickScanForVariableType(firstName, liveContent, documentManager, log, documentUri);
@@ -2279,26 +1931,21 @@ const resolveExpressionType = (
     log(`Skipping quick scan: liveContent=${liveContent !== undefined}`);
   }
 
-  // Try variable name hints as fallback
   if (currentType === undefined) {
     const hintedClass = VARIABLE_NAME_HINTS.get(firstName);
     if (hintedClass !== undefined) {
       const classType = documentManager.globalEnv.robloxClasses.get(hintedClass);
-      if (classType !== undefined) {
-        currentType = classType;
-      }
+      if (classType !== undefined) currentType = classType;
     }
   }
 
   if (currentType === undefined) return undefined;
 
-  // Resolve each subsequent part
   for (let partIdx = 1; partIdx < parts.length; partIdx++) {
     const part = parts[partIdx];
     if (part === undefined) break;
 
     if (part.kind === 'property') {
-      // Special case: game.ServiceName - treat service names as returning that service's class
       if (partIdx === 1 && firstName === 'game') {
         const serviceClassName = SERVICE_CLASS_MAP.get(part.name);
         if (serviceClassName !== undefined) {
@@ -2310,7 +1957,6 @@ const resolveExpressionType = (
         }
       }
 
-      // Special case: workspace is also accessible via game.Workspace
       if (partIdx === 1 && firstName === 'game' && part.name === 'Workspace') {
         const workspaceClass = documentManager.globalEnv.robloxClasses.get('Workspace');
         if (workspaceClass !== undefined) {
@@ -2322,7 +1968,6 @@ const resolveExpressionType = (
       currentType = resolveMemberType(currentType, part.name, documentManager);
       if (currentType === undefined) return undefined;
     } else if (part.kind === 'method') {
-      // Special case: GetService('ServiceName') returns the service class (case insensitive)
       if (part.name.toLowerCase() === 'getservice') {
         const serviceMatch = part.args.match(/["'](\w+)["']/);
         if (serviceMatch !== null) {
@@ -2337,7 +1982,6 @@ const resolveExpressionType = (
         }
       }
 
-      // Special case: FindFirstChildOfClass/FindFirstChildWhichIsA returns the specified class type
       if (part.name === 'FindFirstChildOfClass' || part.name === 'FindFirstChildWhichIsA') {
         const classMatch = part.args.match(/["'](\w+)["']/);
         if (classMatch !== null) {
@@ -2352,7 +1996,6 @@ const resolveExpressionType = (
         }
       }
 
-      // Special case: FindFirstAncestorOfClass/FindFirstAncestorWhichIsA with class name
       if (part.name === 'FindFirstAncestorOfClass' || part.name === 'FindFirstAncestorWhichIsA') {
         const classMatch = part.args.match(/["'](\w+)["']/);
         if (classMatch !== null) {
@@ -2367,13 +2010,8 @@ const resolveExpressionType = (
         }
       }
 
-      // Special case: Clone() returns the same type as the object being cloned
-      if (part.name === 'Clone' && part.args === '()') {
-        // currentType stays the same since Clone returns the same type
-        continue;
-      }
+      if (part.name === 'Clone' && part.args === '()') continue;
 
-      // Special case: WaitForChild/FindFirstChild with known common child names
       if (part.name === 'WaitForChild' || part.name === 'FindFirstChild') {
         const childMatch = part.args.match(/["'](\w+)["']/);
         if (childMatch !== null && currentType !== undefined) {
@@ -2393,10 +2031,8 @@ const resolveExpressionType = (
             }
           }
         }
-        // If no common child found, fall through to normal method resolution
       }
 
-      // For other methods, try to get return type (checking superclass chain)
       debugLog('Resolving method:', part.name, 'on type:', currentType?.kind);
       if (currentType !== undefined) {
         const resolvedCurrent = resolveTypeReference(currentType, documentManager);
@@ -2406,7 +2042,6 @@ const resolveExpressionType = (
           resolvedCurrent.kind === 'Class' ? resolvedCurrent.name : '',
         );
         if (resolvedCurrent.kind === 'Class') {
-          // Search for method in class and all superclasses
           let searchClass: ClassType | undefined = resolvedCurrent;
           while (searchClass !== undefined) {
             const method = searchClass.methods.get(part.name);
@@ -2430,27 +2065,18 @@ const resolveExpressionType = (
           debugLog('Method not found in class hierarchy');
         }
       }
-      // If we can't resolve the method, return undefined
       debugLog('Failed to resolve method:', part.name);
       return undefined;
     } else if (part.kind === 'call') {
-      // Function call on current type - try to get return type if it's a function
       if (currentType !== undefined && currentType.kind === 'Function') {
         currentType = resolveTypeReference(currentType.returnType, documentManager);
       }
-      // Otherwise keep current type (for things like Instance.new("Part"))
     }
   }
 
   return currentType;
 };
 
-/**
- * Gets the superclass name for a given class.
- * @param className - The name of the class to get the superclass for
- * @param documentManager - The document manager containing class definitions
- * @returns The superclass name, or undefined if no superclass exists
- */
 const getSuperclassName = (className: string, documentManager: DocumentManager): string | undefined => {
   const classType = documentManager.globalEnv.robloxClasses.get(className);
   if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined) {
@@ -2459,38 +2085,25 @@ const getSuperclassName = (className: string, documentManager: DocumentManager):
   return undefined;
 };
 
-/**
- * Resolves the type of accessing a member (property or method) on a type.
- * Handles class properties, methods, superclass inheritance, and common child patterns.
- * @param type - The base type to access the member on
- * @param memberName - The name of the member to access
- * @param documentManager - The document manager for type resolution
- * @returns The type of the member, or undefined if not found
- */
 const resolveMemberType = (
   type: LuauType,
   memberName: string,
   documentManager: DocumentManager,
 ): LuauType | undefined => {
-  // Resolve TypeReference first
   const resolvedType = resolveTypeReference(type, documentManager);
 
   if (resolvedType.kind === 'Class') {
-    // Check properties
     const prop = resolvedType.properties.get(memberName);
     if (prop !== undefined) return resolveTypeReference(prop.type, documentManager);
 
-    // Check methods - return the FunctionType, not the ClassMethod wrapper
     const method = resolvedType.methods.get(memberName);
     if (method !== undefined) return method.func;
 
-    // Check superclass for inherited members
     if (resolvedType.superclass !== undefined) {
       const inheritedMember = resolveMemberType(resolvedType.superclass, memberName, documentManager);
       if (inheritedMember !== undefined) return inheritedMember;
     }
 
-    // Check common children patterns (e.g., character.Humanoid, player.Character)
     const commonChildType = getCommonChildType(resolvedType.name, memberName, className =>
       getSuperclassName(className, documentManager),
     );
@@ -2506,18 +2119,9 @@ const resolveMemberType = (
   return undefined;
 };
 
-/**
- * Extracts the expression chain before the cursor.
- * For "game.Players.PlayerAdded:" returns "game.Players.PlayerAdded".
- * @param beforeCursor - The text content before the cursor position
- * @returns Object with expression, prefix, and whether it's method access, or undefined if no chain found
- */
 const extractExpressionChain = (
   beforeCursor: string,
 ): { expression: string; prefix: string; isMethodAccess: boolean } | undefined => {
-  // Match chained expression ending with . or :
-  // This regex captures: identifier(.identifier)*(.|:)prefix?
-  // Also handles Lua string literal shorthand: func'string' or func"string"
   const chainMatch = beforeCursor.match(
     /([a-zA-Z_]\w*(?:\s*\.\s*[a-zA-Z_]\w*|\s*:\s*[a-zA-Z_]\w*|\s*\([^)]*\)|\s*\[[^\]]*\]|\s*'[^']*'|\s*"[^"]*")*)\s*([.:])(\w*)$/,
   );
@@ -2536,40 +2140,26 @@ const extractExpressionChain = (
   return undefined;
 };
 
-/**
- * Gets auto-import completion items for exports from other modules in the workspace.
- * Generates require statements and inserts them at the appropriate location.
- * @param prefix - The prefix to filter exports by (minimum 2 characters)
- * @param documentManager - The document manager containing the module index
- * @param currentDocUri - The URI of the current document to exclude from results
- * @param content - The document content for determining import insertion location
- * @returns Array of CompletionItem objects with auto-import text edits
- */
 const getAutoImportCompletions = (
   prefix: string,
   documentManager: DocumentManager,
   currentDocUri: string,
   content: string,
 ): CompletionItem[] => {
-  if (prefix.length < 2) return []; // Require at least 2 chars to avoid noise
+  if (prefix.length < 2) return [];
 
   const exports = documentManager.searchModuleExports(prefix);
   if (exports.length === 0) return [];
 
-  // Get the current document's DataModel path for require path generation
   const rojoState = documentManager.getRojoState();
   let currentDataModelPath: string[] = [];
 
   if (rojoState?.dataModel !== undefined) {
-    // Convert file:// URI to file path
     let filePath = currentDocUri;
     try {
       if (currentDocUri.startsWith('file://')) {
         filePath = decodeURIComponent(currentDocUri.replace('file:///', '').replace('file://', ''));
-        // Handle Windows paths
-        if (filePath.match(/^[a-zA-Z]:/)) {
-          // Already correct
-        } else if (filePath.match(/^\/[a-zA-Z]:/)) {
+        if (filePath.match(/^\/[a-zA-Z]:/)) {
           filePath = filePath.slice(1);
         }
       }
@@ -2578,16 +2168,12 @@ const getAutoImportCompletions = (
     }
 
     const dataModelPath = getDataModelPath(rojoState.dataModel, filePath);
-    if (dataModelPath !== undefined) {
-      currentDataModelPath = dataModelPath;
-    }
+    if (dataModelPath !== undefined) currentDataModelPath = dataModelPath;
   }
 
-  // Find the first line to insert the require statement
   const lines = content.split('\n');
   let insertLine = 0;
 
-  // Skip leading comments and empty lines
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]?.trim() ?? '';
     if (line === '' || line.startsWith('--')) {
@@ -2597,7 +2183,6 @@ const getAutoImportCompletions = (
     }
   }
 
-  // Find the end of existing require statements
   for (let i = insertLine; i < lines.length; i++) {
     const line = lines[i]?.trim() ?? '';
     if (line.startsWith('local') && line.includes('require(')) {
@@ -2611,30 +2196,23 @@ const getAutoImportCompletions = (
   const seenNames = new Set<string>();
 
   for (const exp of exports) {
-    // Skip if we've already added an export with this name
     if (seenNames.has(exp.name)) continue;
     seenNames.add(exp.name);
 
-    // Skip if the export is from the current file
     if (exp.filePath === currentDocUri) continue;
 
-    // Generate the require path
     let requirePath: string;
     if (currentDataModelPath.length > 0) {
       requirePath = generateRequirePath(currentDataModelPath, exp.modulePath.split('.'));
     } else {
-      // Fallback: use game path
       requirePath = `game.${exp.modulePath}`;
     }
 
-    // Generate the module variable name (last part of the path)
     const pathParts = exp.modulePath.split('.');
     const moduleName = pathParts[pathParts.length - 1] ?? 'Module';
 
-    // Create the require statement
     const requireStatement = `local ${moduleName} = require(${requirePath})\n`;
 
-    // Create the completion item
     const item: CompletionItem = {
       'label': exp.name,
       'kind':
@@ -2648,7 +2226,7 @@ const getAutoImportCompletions = (
         'kind': MarkupKind.Markdown,
         'value': `Import \`${exp.name}\` from \`${exp.modulePath}\`\n\n\`\`\`lua\n${requireStatement}\`\`\``,
       },
-      'sortText': `2_${exp.name}`, // Sort after local completions
+      'sortText': `2_${exp.name}`,
       'insertText': `${moduleName}.${exp.name}`,
       'additionalTextEdits': [TextEdit.insert(Position.create(insertLine, 0), requireStatement)],
     };
@@ -2659,13 +2237,6 @@ const getAutoImportCompletions = (
   return items;
 };
 
-/**
- * Gets the ClassType for a node at a given path in the live game tree.
- * @param path - Array of path segments to the node (e.g., ["Workspace", "Part"])
- * @param liveGameModel - The live game model containing the game tree
- * @param documentManager - The document manager for looking up class types
- * @returns The ClassType of the node, or undefined if not found or not connected
- */
 const getLiveGameTreeNodeType = (
   path: string[],
   liveGameModel: LiveGameModel,
@@ -2678,22 +2249,11 @@ const getLiveGameTreeNodeType = (
   if (node === undefined) return undefined;
 
   const classType = documentManager.globalEnv.robloxClasses.get(node.className);
-  if (classType !== undefined && classType.kind === 'Class') {
-    return classType;
-  }
+  if (classType !== undefined && classType.kind === 'Class') return classType;
 
   return undefined;
 };
 
-/**
- * Gets completion items from the live game tree for a given path.
- * For example, for "game.Workspace." returns all children of Workspace from the live game.
- * @param path - Array of path segments to the parent node
- * @param prefix - The prefix to filter children by (case-insensitive)
- * @param liveGameModel - The live game model containing the game tree
- * @param documentManager - The document manager (unused but kept for consistency)
- * @returns Array of CompletionItem objects for live game tree children
- */
 const getLiveGameTreeCompletions = (path: string[], prefix: string, liveGameModel: LiveGameModel): CompletionItem[] => {
   if (liveGameModel.isConnected === false) return [];
 
@@ -2709,7 +2269,7 @@ const getLiveGameTreeCompletions = (path: string[], prefix: string, liveGameMode
       'label': name,
       'kind': CompletionItemKind.Field,
       'detail': `(live) ${node.className}`,
-      'sortText': `0_${name}`, // Sort before static completions
+      'sortText': `0_${name}`,
       'documentation': {
         'kind': MarkupKind.Markdown,
         'value': `Live instance from connected game\n\n**Class:** \`${node.className}\`${node.children !== undefined ? `\n**Children:** ${node.children.length}` : ''}`,
@@ -2720,13 +2280,6 @@ const getLiveGameTreeCompletions = (path: string[], prefix: string, liveGameMode
   return items;
 };
 
-/**
- * Splits an expression into path segments, handling both dot notation and bracket notation.
- * For example, "Workspace.Part" returns ["Workspace", "Part"].
- * For example, "Workspace['0neShot102'].Head" returns ["Workspace", "0neShot102", "Head"].
- * @param expr - The expression string to split
- * @returns Array of path segment strings
- */
 const splitPathExpression = (expr: string): string[] => {
   const parts: string[] = [];
   let current = '';
@@ -2746,28 +2299,21 @@ const splitPathExpression = (expr: string): string[] => {
         parts.push(current);
         current = '';
       }
-      // Find the closing bracket and extract the string
-      i++; // Skip '['
-      // Skip whitespace
+      i++;
       while (i < expr.length && /\s/.test(expr[i] ?? '')) i++;
-      // Get the quote character
       const quote = expr[i];
       if (quote === '"' || quote === "'") {
-        i++; // Skip opening quote
+        i++;
         let name = '';
         while (i < expr.length && expr[i] !== quote) {
           name += expr[i];
           i++;
         }
-        if (name !== '') {
-          parts.push(name);
-        }
-        i++; // Skip closing quote
-        // Skip to closing bracket
+        if (name !== '') parts.push(name);
+        i++;
         while (i < expr.length && expr[i] !== ']') i++;
-        i++; // Skip ']'
+        i++;
       } else {
-        // Variable index, skip to ]
         while (i < expr.length && expr[i] !== ']') i++;
         i++;
       }
@@ -2785,34 +2331,18 @@ const splitPathExpression = (expr: string): string[] => {
     }
   }
 
-  if (current !== '') {
-    parts.push(current);
-  }
+  if (current !== '') parts.push(current);
 
   return parts;
 };
 
-/**
- * Parses an expression path into segments for live game tree lookup.
- * Handles game.Service, game:GetService("Service"), and workspace patterns.
- * For example, "game.Workspace.Part" returns ["Workspace", "Part"].
- * For example, "workspace.Part" returns ["Workspace", "Part"].
- * For example, "game.Workspace['0neShot102']" returns ["Workspace", "0neShot102"].
- * @param expression - The expression string to parse
- * @returns Array of path segments starting from the service level, or undefined if not a game tree path
- */
 const parseGameTreePath = (expression: string): string[] | undefined => {
-  // Remove leading/trailing whitespace
   const expr = expression.trim();
 
-  // Handle game.Service or game:GetService("Service") patterns
   if (expr.startsWith('game.') || expr.startsWith('game:') || expr.startsWith('game[')) {
-    let rest = expr.slice(4); // Remove "game"
-    if (rest.startsWith('.') || rest.startsWith(':')) {
-      rest = rest.slice(1);
-    }
+    let rest = expr.slice(4);
+    if (rest.startsWith('.') || rest.startsWith(':')) rest = rest.slice(1);
 
-    // Handle GetService("ServiceName") or GetService'ServiceName' (with or without parens) - case insensitive
     const getServiceMatch = rest.match(/^[Gg]et[Ss]ervice\s*(?:\(\s*["'](\w+)["']\s*\)|["'](\w+)["'])/);
     if (getServiceMatch !== null) {
       const serviceName = getServiceMatch[1] ?? getServiceMatch[2];
@@ -2820,45 +2350,27 @@ const parseGameTreePath = (expression: string): string[] | undefined => {
 
       const remaining = rest.slice(getServiceMatch[0].length);
       const path = [serviceName];
-      if (remaining !== '') {
-        path.push(...splitPathExpression(remaining));
-      }
+      if (remaining !== '') path.push(...splitPathExpression(remaining));
       return path;
     }
 
-    // Handle direct property/bracket access
     const parts = splitPathExpression(rest);
     return parts.length > 0 ? parts : undefined;
   }
 
-  // Handle workspace shorthand
   if (expr.startsWith('workspace.') || expr.startsWith('workspace:') || expr.startsWith('workspace[')) {
-    let rest = expr.slice(9); // Remove "workspace"
-    if (rest.startsWith('.') || rest.startsWith(':')) {
-      rest = rest.slice(1);
-    }
+    let rest = expr.slice(9);
+    if (rest.startsWith('.') || rest.startsWith(':')) rest = rest.slice(1);
     const parts = splitPathExpression(rest);
     return ['Workspace', ...parts];
   }
 
-  // Handle just "workspace" (for workspace.)
-  if (expr === 'workspace') {
-    return ['Workspace'];
-  }
+  if (expr === 'workspace') return ['Workspace'];
 
   return undefined;
 };
 
-/**
- * Extracts a require() expression from a member access chain.
- * Returns the module reference if the expression is a require().member pattern.
- * @param beforeCursor - The text before the cursor
- * @returns The module reference, or undefined if not a require expression
- */
 const extractRequireExpression = (beforeCursor: string): ModuleReference | undefined => {
-  // Match patterns like:
-  // require(game.ReplicatedStorage.Module).
-  // require(game.ReplicatedStorage.Module):
   const requireMatch = beforeCursor.match(/require\s*\(\s*game\.([^)]+)\s*\)[.:]\s*$/);
   if (requireMatch === null) return undefined;
 
@@ -2874,12 +2386,6 @@ const extractRequireExpression = (beforeCursor: string): ModuleReference | undef
   return { 'kind': 'path', 'path': pathParts };
 };
 
-/**
- * Gets file path completions inside a require("./...") string.
- * @param beforeCursor - The text before the cursor
- * @param documentUri - The URI of the current document
- * @returns Completion items for local file paths, or undefined
- */
 const formatModuleDetail = (entry: ModuleFileEntry): string => {
   if (entry.exports.length === 0) return entry.isFolder ? 'module' : 'Luau';
 
@@ -2944,9 +2450,7 @@ const getLocalRequireCompletions = (beforeCursor: string, documentUri: string): 
       'sortText': `0_${entry.name}`,
     };
 
-    if (doc.length > 0) {
-      item.documentation = { 'kind': MarkupKind.Markdown, 'value': doc };
-    }
+    if (doc.length > 0) item.documentation = { 'kind': MarkupKind.Markdown, 'value': doc };
 
     items.push(item);
   }
@@ -2954,17 +2458,9 @@ const getLocalRequireCompletions = (beforeCursor: string, documentUri: string): 
   return items.length > 0 ? items : undefined;
 };
 
-/** Cache for module interface completions with 30s TTL */
 const moduleInterfaceCache = new Map<string, { items: CompletionItem[]; timestamp: number }>();
 const MODULE_CACHE_TTL = 30_000;
 
-/**
- * Gets completions for a require() expression by querying the executor bridge.
- * Results are cached for 30s to avoid repeated bridge queries.
- * @param beforeCursor - The text before the cursor
- * @param executorBridge - The executor bridge for module interface queries
- * @returns Completion items for the module's exports, or undefined
- */
 const getRequireModuleCompletions = async (
   beforeCursor: string,
   executorBridge: ExecutorBridge,
@@ -2976,9 +2472,7 @@ const getRequireModuleCompletions = async (
 
   const cacheKey = moduleRef.kind === 'path' ? moduleRef.path.join('.') : String(moduleRef.id);
   const cached = moduleInterfaceCache.get(cacheKey);
-  if (cached !== undefined && Date.now() - cached.timestamp < MODULE_CACHE_TTL) {
-    return cached.items;
-  }
+  if (cached !== undefined && Date.now() - cached.timestamp < MODULE_CACHE_TTL) return cached.items;
 
   try {
     const result = await executorBridge.requestModuleInterface(moduleRef);
@@ -3015,15 +2509,7 @@ const getRequireModuleCompletions = async (
   }
 };
 
-/**
- * Sets up the completion handler for the LSP connection.
- * Registers a handler that provides intelligent autocompletion for Luau code.
- * @param connection - The LSP connection to register the handler on
- * @param documents - The TextDocuments manager for accessing live document content
- * @param documentManager - The document manager for type information and workspace state
- * @param executorBridge - The executor bridge for live game and module interface completions
- * @returns void
- */
+/** Sets up the completion handler for the LSP connection. */
 export const setupCompletionHandler = (
   connection: Connection,
   documents: TextDocuments<TextDocument>,
@@ -3032,17 +2518,14 @@ export const setupCompletionHandler = (
 ): void => {
   const liveGameModel = executorBridge.liveGameModel;
 
-  // Use connection.console.log for debugging (shows in VS Code Output panel)
   const log = (msg: string): void => {
     if (DEBUG_COMPLETION) connection.console.log(`[completion] ${msg}`);
   };
 
   connection.onCompletion(async (params: CompletionParams): Promise<CompletionList> => {
-    // Get LIVE document content directly from VS Code (not cached/debounced)
     const liveDoc = documents.get(params.textDocument.uri);
     if (liveDoc === undefined) return { 'isIncomplete': false, 'items': [] };
 
-    // Get the line content before cursor from LIVE content
     const content = liveDoc.getText();
     const lines = content.split('\n');
     const line = lines[params.position.line];
@@ -3051,35 +2534,27 @@ export const setupCompletionHandler = (
     const beforeCursor = line.slice(0, params.position.character);
     log(`beforeCursor: "${beforeCursor}"`);
 
-    // Get document with type information (use cached, don't block on parsing)
     const document = documentManager.getDocument(params.textDocument.uri);
     log(`document exists: ${document !== undefined}, has typeCheck: ${document?.typeCheckResult !== undefined}`);
 
-    // Check for live service completions (game:GetService("..."))
     const liveServiceCompletions = getLiveServiceCompletions(beforeCursor, liveGameModel);
     if (liveServiceCompletions !== undefined) return { 'isIncomplete': true, 'items': liveServiceCompletions };
 
-    // Check for bracket completions (game.Workspace['...'])
     const bracketCompletions = getBracketCompletions(beforeCursor, liveGameModel);
     if (bracketCompletions !== undefined) return { 'isIncomplete': true, 'items': bracketCompletions };
 
-    // Check for string completions (GetService, Instance.new, etc.)
     const stringCompletions = getStringCompletions(beforeCursor, documentManager);
     if (stringCompletions !== undefined) return { 'isIncomplete': true, 'items': stringCompletions };
 
-    // Check for Enum completions
     const enumCompletions = getEnumCompletions(beforeCursor, documentManager);
     if (enumCompletions !== undefined) return { 'isIncomplete': true, 'items': enumCompletions };
 
-    // Check for require() module completions (fetches from connected executor)
     const requireModuleCompletions = await getRequireModuleCompletions(beforeCursor, executorBridge);
     if (requireModuleCompletions !== undefined) return { 'isIncomplete': true, 'items': requireModuleCompletions };
 
-    // Check for local file path completions inside require("./...")
     const localRequireCompletions = getLocalRequireCompletions(beforeCursor, params.textDocument.uri);
     if (localRequireCompletions !== undefined) return { 'isIncomplete': true, 'items': localRequireCompletions };
 
-    // Check for table field completions (inside a table literal passed to a function)
     const tableContext = detectTableFieldContext(beforeCursor);
     if (tableContext !== undefined) {
       const expectedType = getExpectedParameterType(
@@ -3097,14 +2572,11 @@ export const setupCompletionHandler = (
       }
     }
 
-    // Check for chained member/method access (handles game.Players.PlayerAdded:)
     const chainInfo = extractExpressionChain(beforeCursor);
     log(`chainInfo: ${JSON.stringify(chainInfo)}`);
     if (chainInfo !== null && chainInfo !== undefined) {
-      // Check for live game tree completions first
       let gameTreePath = parseGameTreePath(chainInfo.expression);
 
-      // If direct parsing failed, trace variable assignments to build a game tree path
       if (gameTreePath === undefined) {
         const traceFirst = chainInfo.expression.split(/[.:]/)[0]?.trim();
         if (traceFirst !== undefined) {
@@ -3131,14 +2603,12 @@ export const setupCompletionHandler = (
         `resolvedType: ${resolvedType?.kind}${resolvedType?.kind === 'Class' ? ` (${(resolvedType as ClassType).name})` : ''}`,
       );
 
-      // Resolve TypeReference if needed
       if (resolvedType !== undefined && resolvedType.kind === 'TypeReference') {
         resolvedType = resolveTypeReference(resolvedType, documentManager);
       }
 
       if (resolvedType !== undefined) {
         if (resolvedType.kind === 'Class') {
-          // Get class completions first
           const classItems = getClassCompletions(
             resolvedType,
             chainInfo.prefix,
@@ -3146,12 +2616,10 @@ export const setupCompletionHandler = (
             documentManager,
           );
 
-          // Add live game tree children if connected and this is a game tree path
           if (gameTreePath !== undefined && chainInfo.isMethodAccess === false) {
             const liveItems = getLiveGameTreeCompletions(gameTreePath, chainInfo.prefix, liveGameModel);
             log(`liveItems count: ${liveItems.length}`);
 
-            // Merge: live items first (they have sortText starting with 0_), then class items
             const seenNames = new Set(liveItems.map(i => i.label));
             const uniqueClassItems = classItems.filter(i => seenNames.has(i.label) === false);
 
@@ -3174,15 +2642,12 @@ export const setupCompletionHandler = (
         }
       }
 
-      // Try executor bridge for require() variables when static resolution failed
       if (resolvedType === undefined && executorBridge.isConnected) {
         const firstName = chainInfo.expression.split(/[.:]/)[0]?.trim();
         if (firstName !== undefined) {
-          // Build the full expression that produced this variable by tracing assignments
           const assignExpr = traceVarExpression(firstName, content);
           log(`Traced '${firstName}' to: ${assignExpr ?? 'undefined'}`);
 
-          // Check if the traced expression involves a require
           const reqExprMatch = assignExpr?.match(/^require\s*\(\s*(game\.[^)]+)\s*\)(.*)/);
           if (reqExprMatch !== null && reqExprMatch !== undefined && reqExprMatch[1] !== undefined) {
             const modulePath = reqExprMatch[1].trim();
@@ -3207,7 +2672,9 @@ export const setupCompletionHandler = (
                 '  current = mt and type(mt) == "table" and mt.__index or nil',
                 'end',
                 'return game:GetService("HttpService"):JSONEncode(result)',
-              ].filter(l => l.length > 0).join('\n');
+              ]
+                .filter(l => l.length > 0)
+                .join('\n');
 
               const execResult = await executorBridge.execute(inspectScript);
               if (execResult.success && execResult.result !== undefined) {
@@ -3221,9 +2688,7 @@ export const setupCompletionHandler = (
                     'sortText': `0_${name}`,
                   });
                 }
-                if (items.length > 0) {
-                  return { 'isIncomplete': true, items };
-                }
+                if (items.length > 0) return { 'isIncomplete': true, items };
               }
             } catch {
               log(`Executor bridge inspect request failed`);
@@ -3232,16 +2697,13 @@ export const setupCompletionHandler = (
         }
       }
 
-      // Even if type resolution failed, try live game tree completions and type lookup
       if (gameTreePath !== undefined) {
-        // Try to get the type from the live game tree node
         const liveNodeType = getLiveGameTreeNodeType(gameTreePath, liveGameModel, documentManager);
         log(
           `liveNodeType: ${liveNodeType?.kind ?? 'undefined'}${liveNodeType?.kind === 'Class' ? ` (${liveNodeType.name})` : ''}`,
         );
 
         if (liveNodeType !== undefined) {
-          // Get class completions based on the live node's className
           const classItems = getClassCompletions(
             liveNodeType,
             chainInfo.prefix,
@@ -3249,12 +2711,10 @@ export const setupCompletionHandler = (
             documentManager,
           );
 
-          // Also add live children if not doing method access
           if (chainInfo.isMethodAccess === false) {
             const liveItems = getLiveGameTreeCompletions(gameTreePath, chainInfo.prefix, liveGameModel);
             log(`liveItems (from type) count: ${liveItems.length}`);
 
-            // Merge: live items first, then class items
             const seenNames = new Set(liveItems.map(i => i.label));
             const uniqueClassItems = classItems.filter(i => seenNames.has(i.label) === false);
 
@@ -3270,12 +2730,10 @@ export const setupCompletionHandler = (
           };
         }
 
-        // No type found from live game, but still try to get static completions from path
         if (chainInfo.isMethodAccess === false) {
           const liveItems = getLiveGameTreeCompletions(gameTreePath, chainInfo.prefix, liveGameModel);
           log(`liveItems (fallback) count: ${liveItems.length}`);
 
-          // Try to infer class from path (e.g., "Players" -> Players class, "Workspace" -> Workspace class)
           const lastPathSegment = gameTreePath[gameTreePath.length - 1];
           let staticClassItems: CompletionItem[] = [];
 
@@ -3288,7 +2746,6 @@ export const setupCompletionHandler = (
           }
 
           if (liveItems.length > 0 || staticClassItems.length > 0) {
-            // Merge: live items first, then unique static items
             const seenNames = new Set(liveItems.map(i => i.label));
             const uniqueStaticItems = staticClassItems.filter(i => seenNames.has(i.label) === false);
 
@@ -3300,18 +2757,11 @@ export const setupCompletionHandler = (
         }
       }
 
-      // Check if this is a chained expression (has . or : in the expression)
       const hasChain =
         chainInfo.expression.includes('.') || chainInfo.expression.includes(':') || chainInfo.expression.includes('[');
 
-      if (hasChain) {
-        // For chained expressions, if resolution failed at any point, return empty completions
-        // This prevents false positives like Humanoid.Torso. giving BasePart completions
-        // when Humanoid doesn't actually have a Torso property
-        return { 'isIncomplete': false, 'items': [] };
-      }
+      if (hasChain) return { 'isIncomplete': false, 'items': [] };
 
-      // Simple single-identifier expression - try class lookup or variable hint
       const classType = documentManager.globalEnv.robloxClasses.get(chainInfo.expression);
       if (classType !== undefined && classType.kind === 'Class') {
         return {
@@ -3332,7 +2782,6 @@ export const setupCompletionHandler = (
       }
     }
 
-    // Fallback: Check for simple member access patterns
     debugLog('Fallback: trying simple member/method patterns');
     const memberMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
     const methodMatch = beforeCursor.match(/(\w+):(\w*)$/);
@@ -3342,7 +2791,6 @@ export const setupCompletionHandler = (
       const [, objectName, prefix] = memberMatch;
       if (objectName === undefined) return { 'isIncomplete': false, 'items': [] };
 
-      // Find the object in scope - check local symbols from document type check result first
       if (document?.typeCheckResult !== undefined) {
         const env = document.typeCheckResult.environment;
         const localSymbol = env.globalScope.symbols.get(objectName);
@@ -3362,7 +2810,6 @@ export const setupCompletionHandler = (
         }
       }
 
-      // Check global built-in symbols
       const symbol = documentManager.globalEnv.env.globalScope.symbols.get(objectName);
       if (symbol !== undefined) {
         if (symbol.type.kind === 'Table') {
@@ -3379,7 +2826,6 @@ export const setupCompletionHandler = (
         }
       }
 
-      // Check Roblox classes directly
       const classType = documentManager.globalEnv.robloxClasses.get(objectName);
       if (classType !== undefined && classType.kind === 'Class') {
         return {
@@ -3388,7 +2834,6 @@ export const setupCompletionHandler = (
         };
       }
 
-      // Try variable name hints as fallback
       const hintedClass = VARIABLE_NAME_HINTS.get(objectName.toLowerCase());
       if (hintedClass !== undefined) {
         const hintedClassType = documentManager.globalEnv.robloxClasses.get(hintedClass);
@@ -3405,7 +2850,6 @@ export const setupCompletionHandler = (
       const [, objectName, prefix] = methodMatch;
       if (objectName === undefined) return { 'isIncomplete': false, 'items': [] };
 
-      // Check local symbols from document type check result first
       if (document?.typeCheckResult !== undefined) {
         const env = document.typeCheckResult.environment;
         const localSymbol = env.globalScope.symbols.get(objectName);
@@ -3439,7 +2883,6 @@ export const setupCompletionHandler = (
         };
       }
 
-      // Try variable name hints as fallback
       const hintedClass = VARIABLE_NAME_HINTS.get(objectName.toLowerCase());
       if (hintedClass !== undefined) {
         const hintedClassType = documentManager.globalEnv.robloxClasses.get(hintedClass);
@@ -3452,7 +2895,6 @@ export const setupCompletionHandler = (
       }
     }
 
-    // Default: global completions + snippets + auto-imports
     const wordMatch = beforeCursor.match(/(\w*)$/);
     const prefix = wordMatch?.[1] ?? '';
 
@@ -3464,5 +2906,34 @@ export const setupCompletionHandler = (
       'isIncomplete': true,
       'items': [...globalItems, ...snippetItems, ...autoImportItems],
     };
+  });
+
+  connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+    const data = item.data as { resolve?: string; name?: string } | undefined;
+    if (data === undefined || data.resolve === undefined) return item;
+
+    if (data.resolve === 'global' && data.name !== undefined) {
+      const symbol = documentManager.globalEnv.env.globalScope.symbols.get(data.name);
+      if (symbol !== undefined) {
+        const documentation = formatDocumentation(symbol.docComment);
+        if (documentation !== undefined) item.documentation = documentation;
+
+        if (symbol.type.kind === 'Function' && symbol.type.description !== undefined) {
+          const parts: string[] = [];
+          parts.push(symbol.type.description);
+          if (symbol.type.example !== undefined) {
+            parts.push('');
+            parts.push('```lua');
+            parts.push(symbol.type.example);
+            parts.push('```');
+          }
+          if (item.documentation === undefined) {
+            item.documentation = { 'kind': MarkupKind.Markdown, 'value': parts.join('\n') };
+          }
+        }
+      }
+    }
+
+    return item;
   });
 };

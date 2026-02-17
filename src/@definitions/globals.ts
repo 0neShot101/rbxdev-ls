@@ -1,12 +1,4 @@
-/**
- * Global Environment Builder
- *
- * This module combines all API definitions (Roblox, Sunc, standard library) into
- * a complete type environment for the language server. It creates the global scope
- * with all available types, functions, classes, and services.
- */
-
-import { TypeEnvironment, addLuauBuiltins, createTypeEnvironment } from '@typings/environment';
+import { addLuauBuiltins, createTypeEnvironment } from '@typings/environment';
 import {
   AnyType,
   BooleanType,
@@ -18,49 +10,12 @@ import {
   type LuauType,
 } from '@typings/types';
 
-import { loadDefinitions, type LoadedDefinitions } from './loader';
+import type { GlobalEnvironment, LoadedDefinitions } from '@typings/definitions';
+import { loadDefinitions } from './loader';
 import { convertRobloxApiToTypes } from './roblox';
 import { createAllStdLibraries } from './stdlib';
 import { convertSuncApiToTypes, getDefaultSuncApi } from './sunc';
 
-/**
- * Represents the complete global environment for the language server.
- *
- * This interface encapsulates all type information needed for Luau/Roblox
- * code analysis, including the type environment, Roblox class definitions,
- * enum definitions, and data type definitions.
- */
-export interface GlobalEnvironment {
-  /** The type environment containing the global scope and class registry */
-  readonly env: TypeEnvironment;
-  /** Map of Roblox class names to their type definitions */
-  readonly robloxClasses: Map<string, LuauType>;
-  /** Map of Roblox enum names to their type definitions */
-  readonly robloxEnums: Map<string, LuauType>;
-  /** Map of Roblox data type names (Vector3, CFrame, etc.) to their definitions */
-  readonly robloxDataTypes: Map<string, LuauType>;
-}
-
-/**
- * Creates the map of global Luau/Roblox functions.
- *
- * This function defines all global functions available in the Luau environment including:
- * - I/O: print, warn, error
- * - Assertions: assert
- * - Type checking: type, typeof
- * - Conversions: tostring, tonumber
- * - Iteration: pairs, ipairs, next, select
- * - Table operations: rawequal, rawget, rawset, rawlen, unpack
- * - Metatables: getmetatable, setmetatable
- * - Error handling: pcall, xpcall
- * - Module loading: require
- * - Memory: collectgarbage, gcinfo, newproxy
- * - Environment: getfenv, setfenv
- * - Timing: tick, time, wait, delay, spawn, elapsedTime
- * - Version: version
- *
- * @returns A Map of function names to their FunctionType definitions
- */
 const createGlobalFunctions = (): Map<string, LuauType> =>
   new Map([
     ['print', createFunctionType([], NilType, { 'isVariadic': true })],
@@ -282,14 +237,7 @@ const createGlobalFunctions = (): Map<string, LuauType> =>
     ['version', createFunctionType([], StringType)],
   ]);
 
-/**
- * List of Roblox services that are accessible as game.ServiceName or via GetService.
- *
- * These services are added as properties on the game (DataModel) type to enable
- * direct access patterns like `game.Players` or `game.Workspace`.
- */
 const GAME_SERVICES: ReadonlyArray<string> = [
-  // Core Services
   'Players',
   'Workspace',
   'Lighting',
@@ -301,23 +249,12 @@ const GAME_SERVICES: ReadonlyArray<string> = [
   'StarterPack',
   'StarterPlayer',
   'Teams',
-
-  // Audio/Visual
   'SoundService',
-  'Lighting',
-
-  // Communication
   'Chat',
   'TextChatService',
   'VoiceChatService',
-
-  // Localization
   'LocalizationService',
-
-  // Testing
   'TestService',
-
-  // Runtime Services
   'RunService',
   'UserInputService',
   'ContextActionService',
@@ -325,135 +262,60 @@ const GAME_SERVICES: ReadonlyArray<string> = [
   'HapticService',
   'VRService',
   'TouchInputService',
-
-  // Animation
   'TweenService',
   'AnimationClipProvider',
   'KeyframeSequenceProvider',
-
-  // Text/Content
   'TextService',
   'ContentProvider',
-
-  // Navigation
   'PathfindingService',
-
-  // Physics
   'PhysicsService',
-
-  // Instance Management
   'CollectionService',
   'Debris',
   'ChangeHistoryService',
   'Selection',
-
-  // Network/HTTP
   'HttpService',
   'NetworkClient',
   'NetworkServer',
-
-  // Monetization
   'MarketplaceService',
   'GamePassService',
   'BadgeService',
-
-  // Data Persistence
   'DataStoreService',
   'MemoryStoreService',
-
-  // Messaging
   'MessagingService',
-
-  // Social
   'SocialService',
   'FriendService',
   'GroupService',
-
-  // Avatar
   'AvatarEditorService',
   'AvatarImportService',
   'HumanoidDescriptionConverter',
-
-  // Assets
   'AssetService',
   'InsertService',
-
-  // Policy/Safety
   'PolicyService',
   'SafetyService',
-
-  // Interaction
   'ProximityPromptService',
-
-  // Materials
   'MaterialService',
-
-  // Logging/Analytics
   'LogService',
   'AnalyticsService',
   'Stats',
   'ScriptContext',
-
-  // Notifications
   'NotificationService',
-
-  // Teleportation
   'TeleportService',
-
-  // Experience Communication
   'ExperienceNotificationService',
-
-  // Chat/Voice
-  'TextChatService',
-  'VoiceChatService',
-
-  // Studio Only (still useful for plugins)
   'CoreGui',
-  'StarterPlayer',
   'Camera',
-
-  // Input
   'GamepadService',
   'KeyboardService',
   'MouseService',
-
-  // Performance
-  'MemoryStoreService',
   'OpenCloudService',
 ];
 
-/**
- * Creates Roblox-specific global variables and namespaces.
- *
- * This function creates all Roblox-specific globals including:
- * - game: The DataModel with all services as properties
- * - workspace: The Workspace service
- * - script: The current script reference
- * - shared: Shared table for cross-script communication
- * - _G: Global table
- * - _VERSION: Lua version string
- * - Instance: Instance constructor namespace
- * - Data type constructors: Vector3, Vector2, CFrame, Color3, UDim2, etc.
- * - Utility types: TweenInfo, NumberRange, RaycastParams, DateTime, Random, etc.
- * - Enum: Namespace containing all Roblox enums
- * - UserSettings: Function to access user game settings
- * - vector: Native Luau vector library
- * - Direct service references for commonly used services
- *
- * @param classes - Map of Roblox class names to their type definitions
- * @param enums - Map of Roblox enum names to their type definitions
- * @returns A Map of global names to their type definitions
- */
 const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, LuauType>): Map<string, LuauType> => {
   const globals = new Map<string, LuauType>();
 
-  // Create a custom game type that extends DataModel with service properties
   const dataModel = classes.get('DataModel');
   if (dataModel !== undefined && dataModel.kind === 'Class') {
-    // Create a new properties map with all DataModel properties plus services
     const gameProperties = new Map(dataModel.properties);
 
-    // Add service properties
     for (const serviceName of GAME_SERVICES) {
       const serviceClass = classes.get(serviceName);
       if (serviceClass !== undefined) {
@@ -465,7 +327,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
       }
     }
 
-    // Create the game type with services
     const gameType: LuauType = {
       'kind': 'Class',
       'name': 'DataModel',
@@ -479,25 +340,17 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     globals.set('game', gameType);
   }
 
-  // workspace (Workspace)
   const workspace = classes.get('Workspace');
   if (workspace !== undefined) globals.set('workspace', workspace);
 
-  // script (LuaSourceContainer) - use BaseScript for better type info
   const baseScript = classes.get('BaseScript');
   const luaSourceContainer = classes.get('LuaSourceContainer');
   globals.set('script', baseScript ?? luaSourceContainer ?? AnyType);
 
-  // shared table - allows dynamic property access
   globals.set('shared', createTableType(new Map(), { 'indexer': { 'keyType': StringType, 'valueType': AnyType } }));
-
-  // _G table - allows dynamic property access
   globals.set('_G', createTableType(new Map(), { 'indexer': { 'keyType': StringType, 'valueType': AnyType } }));
-
-  // _VERSION
   globals.set('_VERSION', StringType);
 
-  // Instance namespace
   const instanceClass = classes.get('Instance');
   if (instanceClass !== undefined) {
     globals.set(
@@ -539,7 +392,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     );
   }
 
-  // Roblox datatype constructors
   const vector3Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const vector2Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
   const cframeType: LuauType = { 'kind': 'TypeReference', 'name': 'CFrame' };
@@ -547,7 +399,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   const udim2Type: LuauType = { 'kind': 'TypeReference', 'name': 'UDim2' };
   const udimType: LuauType = { 'kind': 'TypeReference', 'name': 'UDim' };
 
-  // Vector3
   globals.set(
     'Vector3',
     createTableType(
@@ -597,7 +448,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Vector2
   globals.set(
     'Vector2',
     createTableType(
@@ -625,7 +475,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // CFrame
   globals.set(
     'CFrame',
     createTableType(
@@ -774,7 +623,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Color3
   globals.set(
     'Color3',
     createTableType(
@@ -843,7 +691,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // UDim
   globals.set(
     'UDim',
     createTableType(
@@ -867,7 +714,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // UDim2
   globals.set(
     'UDim2',
     createTableType(
@@ -923,7 +769,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // BrickColor
   const brickColorType: LuauType = { 'kind': 'TypeReference', 'name': 'BrickColor' };
   globals.set(
     'BrickColor',
@@ -1009,7 +854,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // TweenInfo
   const tweenInfoType: LuauType = { 'kind': 'TypeReference', 'name': 'TweenInfo' };
   globals.set(
     'TweenInfo',
@@ -1038,7 +882,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // NumberRange
   const numberRangeType: LuauType = { 'kind': 'TypeReference', 'name': 'NumberRange' };
   globals.set(
     'NumberRange',
@@ -1063,7 +906,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // NumberSequence
   const numberSequenceType: LuauType = { 'kind': 'TypeReference', 'name': 'NumberSequence' };
   globals.set(
     'NumberSequence',
@@ -1084,7 +926,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // ColorSequence
   const colorSequenceType: LuauType = { 'kind': 'TypeReference', 'name': 'ColorSequence' };
   globals.set(
     'ColorSequence',
@@ -1105,7 +946,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Ray
   const rayType: LuauType = { 'kind': 'TypeReference', 'name': 'Ray' };
   globals.set(
     'Ray',
@@ -1130,7 +970,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Region3
   const region3Type: LuauType = { 'kind': 'TypeReference', 'name': 'Region3' };
   globals.set(
     'Region3',
@@ -1155,7 +994,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Rect
   const rectType: LuauType = { 'kind': 'TypeReference', 'name': 'Rect' };
   globals.set(
     'Rect',
@@ -1176,7 +1014,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // RaycastParams
   const raycastParamsType: LuauType = { 'kind': 'TypeReference', 'name': 'RaycastParams' };
   globals.set(
     'RaycastParams',
@@ -1196,7 +1033,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // OverlapParams
   const overlapParamsType: LuauType = { 'kind': 'TypeReference', 'name': 'OverlapParams' };
   globals.set(
     'OverlapParams',
@@ -1216,7 +1052,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // DateTime
   const dateTimeType: LuauType = { 'kind': 'TypeReference', 'name': 'DateTime' };
   globals.set(
     'DateTime',
@@ -1286,7 +1121,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Random
   const randomType: LuauType = { 'kind': 'TypeReference', 'name': 'Random' };
   globals.set(
     'Random',
@@ -1306,7 +1140,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // PhysicalProperties
   const physicalPropertiesType: LuauType = { 'kind': 'TypeReference', 'name': 'PhysicalProperties' };
   globals.set(
     'PhysicalProperties',
@@ -1337,7 +1170,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Vector2int16
   const vector2int16Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2int16' };
   globals.set(
     'Vector2int16',
@@ -1362,7 +1194,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Vector3int16
   const vector3int16Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3int16' };
   globals.set(
     'Vector3int16',
@@ -1388,7 +1219,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Region3int16
   const region3int16Type: LuauType = { 'kind': 'TypeReference', 'name': 'Region3int16' };
   globals.set(
     'Region3int16',
@@ -1413,7 +1243,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // CatalogSearchParams
   const catalogSearchParamsType: LuauType = { 'kind': 'TypeReference', 'name': 'CatalogSearchParams' };
   globals.set(
     'CatalogSearchParams',
@@ -1433,7 +1262,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // SharedTable
   const sharedTableType: LuauType = { 'kind': 'TypeReference', 'name': 'SharedTable' };
   globals.set(
     'SharedTable',
@@ -1512,7 +1340,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // DockWidgetPluginGuiInfo (for plugin development)
   const dockWidgetPluginGuiInfoType: LuauType = { 'kind': 'TypeReference', 'name': 'DockWidgetPluginGuiInfo' };
   globals.set(
     'DockWidgetPluginGuiInfo',
@@ -1544,7 +1371,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Font
   const fontType: LuauType = { 'kind': 'TypeReference', 'name': 'Font' };
   globals.set(
     'Font',
@@ -1615,7 +1441,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Faces
   const facesType: LuauType = { 'kind': 'TypeReference', 'name': 'Faces' };
   globals.set(
     'Faces',
@@ -1636,7 +1461,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Axes
   const axesType: LuauType = { 'kind': 'TypeReference', 'name': 'Axes' };
   globals.set(
     'Axes',
@@ -1657,7 +1481,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // PathWaypoint
   const pathWaypointType: LuauType = { 'kind': 'TypeReference', 'name': 'PathWaypoint' };
   globals.set(
     'PathWaypoint',
@@ -1683,7 +1506,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // NumberSequenceKeypoint
   const numberSequenceKeypointType: LuauType = { 'kind': 'TypeReference', 'name': 'NumberSequenceKeypoint' };
   globals.set(
     'NumberSequenceKeypoint',
@@ -1712,7 +1534,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // ColorSequenceKeypoint
   const colorSequenceKeypointType: LuauType = { 'kind': 'TypeReference', 'name': 'ColorSequenceKeypoint' };
   globals.set(
     'ColorSequenceKeypoint',
@@ -1737,7 +1558,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // UserGameSettings - returned by UserSettings():GetService("UserGameSettings")
   const vector2Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
   const userGameSettingsType: LuauType = createTableType(
     new Map([
@@ -1883,7 +1703,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ]),
   );
 
-  // UserSettings type - returned by UserSettings() global function
   const userSettingsType: LuauType = createTableType(
     new Map([
       [
@@ -1911,7 +1730,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ]),
   );
 
-  // UserSettings() global function
   globals.set(
     'UserSettings',
     createFunctionType([], userSettingsType, {
@@ -1919,7 +1737,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     }),
   );
 
-  // Native vector library (Luau built-in, lowercase)
   const nativeVectorType: LuauType = { 'kind': 'Primitive', 'name': 'vector' };
   globals.set(
     'vector',
@@ -2085,7 +1902,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     ),
   );
 
-  // Add commonly used services as direct globals (for convenience)
   const directGlobalServices = [
     'Players',
     'Workspace',
@@ -2117,7 +1933,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
     }
   }
 
-  // Enum namespace
   const enumNamespace = new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>();
   for (const [name, enumType] of enums) {
     enumNamespace.set(name, { 'type': enumType, 'readonly': true, 'optional': false });
@@ -2127,21 +1942,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   return globals;
 };
 
-/**
- * Builds the complete global environment from loaded definitions.
- *
- * This function orchestrates the creation of the entire type environment by:
- * 1. Loading Roblox API definitions (classes, enums, data types)
- * 2. Populating the class registry with Roblox classes
- * 3. Adding Roblox-specific globals (game, workspace, constructors, etc.)
- * 4. Loading standard library definitions (math, string, table, etc.)
- * 5. Loading global Luau functions (print, require, pcall, etc.)
- * 6. Loading Sunc/executor API definitions
- * 7. Merging namespaces where appropriate (e.g., debug)
- *
- * @param defs - Optional pre-loaded definitions. If not provided, definitions are loaded from files.
- * @returns The complete GlobalEnvironment with all type information
- */
+/** Builds the complete global environment by combining Roblox, standard library, and executor API definitions. */
 export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironment => {
   const loadedDefs = defs ?? loadDefinitions();
   const env = createTypeEnvironment();
@@ -2150,21 +1951,18 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
   let robloxEnums = new Map<string, LuauType>();
   let robloxDataTypes = new Map<string, LuauType>();
 
-  // Load Roblox API if available
   if (loadedDefs.roblox !== undefined) {
     const converted = convertRobloxApiToTypes(loadedDefs.roblox);
     robloxClasses = converted.classes;
     robloxEnums = converted.enums;
     robloxDataTypes = converted.dataTypes;
 
-    // Populate env.classes with Roblox classes for TypeReference resolution
     for (const [name, classType] of robloxClasses) {
       if (classType.kind === 'Class') {
         (env.classes as Map<string, LuauType>).set(name, classType);
       }
     }
 
-    // Add Roblox globals
     const robloxGlobals = createRobloxGlobals(robloxClasses, robloxEnums);
     for (const [name, type] of robloxGlobals) {
       env.globalScope.symbols.set(name, {
@@ -2178,11 +1976,8 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
     }
   }
 
-  // Load global functions (print, warn, error, etc.) and standard libraries (math, string, table, etc.)
-  // Uses addLuauBuiltins which includes documentation descriptions for all functions
   addLuauBuiltins(env);
 
-  // Load Sunc API
   const suncApi = loadedDefs.sunc ?? getDefaultSuncApi();
   const suncTypes = convertSuncApiToTypes(suncApi);
 
@@ -2198,10 +1993,8 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
   }
 
   for (const [name, type] of suncTypes.namespaces) {
-    // Merge with existing namespace if present (like debug)
     const existing = env.globalScope.symbols.get(name);
     if (existing !== undefined && existing.type.kind === 'Table' && type.kind === 'Table') {
-      // Merge properties - cast to mutable Map since we know the underlying structure is mutable
       const existingProps = existing.type.properties as Map<
         string,
         { type: LuauType; readonly: boolean; optional: boolean }
@@ -2224,22 +2017,10 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
   return { env, robloxClasses, robloxEnums, robloxDataTypes };
 };
 
-/**
- * Creates a minimal global environment without Roblox-specific types.
- *
- * This function creates a basic Luau environment containing only:
- * - Standard library definitions (math, string, table, etc.)
- * - Global Luau functions (print, require, pcall, etc.)
- *
- * This is useful for pure Luau analysis without Roblox-specific features
- * or when the Roblox API dump is not available.
- *
- * @returns A minimal GlobalEnvironment with empty Roblox type maps
- */
+/** Creates a minimal global environment with only standard library and global Luau functions. */
 export const createEmptyGlobalEnvironment = (): GlobalEnvironment => {
   const env = createTypeEnvironment();
 
-  // Load standard library
   const stdLibs = createAllStdLibraries();
   for (const [name, type] of stdLibs) {
     env.globalScope.symbols.set(name, {
@@ -2252,7 +2033,6 @@ export const createEmptyGlobalEnvironment = (): GlobalEnvironment => {
     });
   }
 
-  // Load global functions
   const globalFunctions = createGlobalFunctions();
   for (const [name, type] of globalFunctions) {
     env.globalScope.symbols.set(name, {

@@ -1,19 +1,9 @@
-/**
- * Document Symbol Handler
- * Provides outline view of functions, variables, and types in a file
- */
-
 import { SymbolKind } from 'vscode-languageserver';
 
-import type { DocumentManager } from '../documents';
-import type { Chunk, FunctionExpression, Statement } from '@parser/ast';
+import type { DocumentManager } from '@typings/lsp';
+import type { Chunk, FunctionExpression, Statement } from '@typings/ast';
 import type { Connection, DocumentSymbol, DocumentSymbolParams } from 'vscode-languageserver';
 
-/**
- * Converts an AST range (1-indexed) to an LSP range (0-indexed).
- * @param range - The AST range with start and end positions containing line and column
- * @returns An LSP-compatible range object with zero-indexed line and character values
- */
 const convertRange = (range: { start: { line: number; column: number }; end: { line: number; column: number } }) => ({
   'start': { 'line': range.start.line - 1, 'character': range.start.column - 1 },
   'end': { 'line': range.end.line - 1, 'character': range.end.column - 1 },
@@ -33,16 +23,9 @@ const ensureContained = (
   return selection;
 };
 
-/**
- * Extracts document symbols from a function body, including parameters
- * and nested declarations.
- * @param func - The function expression AST node to extract symbols from
- * @returns An array of DocumentSymbol objects representing the function's internal symbols
- */
 const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
-  // Add parameters as symbols
   for (const param of func.params) {
     if (param.name !== undefined) {
       const paramFull = convertRange(param.range);
@@ -55,7 +38,6 @@ const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
     }
   }
 
-  // Collect symbols from function body
   for (const stmt of func.body) {
     const stmtSymbols = collectStatementSymbols(stmt);
     symbols.push(...stmtSymbols);
@@ -64,12 +46,6 @@ const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
   return symbols;
 };
 
-/**
- * Extracts document symbols from a statement, handling various statement types
- * including local declarations, functions, type aliases, and control flow statements.
- * @param stmt - The statement AST node to extract symbols from
- * @returns An array of DocumentSymbol objects representing symbols declared in the statement
- */
 const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
@@ -79,7 +55,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         const name = stmt.names[i];
         if (name === undefined) continue;
 
-        // Check if the value is a function to determine kind
         const value = stmt.values[i];
         const isFunction = value?.kind === 'FunctionExpression';
 
@@ -91,7 +66,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
           'selectionRange': ensureContained(convertRange(name.range), declFull),
         };
 
-        // If it's a function, add nested symbols
         if (isFunction && value !== undefined) {
           symbol.children = collectFunctionSymbols(value as FunctionExpression);
         }
@@ -115,7 +89,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'FunctionDeclaration': {
-      // Build full function name (e.g., "Module.foo" or "Module:method")
       let fullName = stmt.name.base.name;
       for (const part of stmt.name.path) {
         fullName += '.' + part.name;
@@ -149,7 +122,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'ExportStatement': {
-      // Export wraps a TypeAlias
       const innerSymbols = collectStatementSymbols(stmt.declaration);
       for (const innerSymbol of innerSymbols) {
         innerSymbol.name = `export ${innerSymbol.name}`;
@@ -159,7 +131,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'IfStatement': {
-      // Collect symbols from if body and branches
       for (const s of stmt.thenBody) {
         symbols.push(...collectStatementSymbols(s));
       }
@@ -186,7 +157,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'ForNumeric': {
-      // Add loop variable
       symbols.push({
         'name': stmt.variable.name,
         'kind': SymbolKind.Variable,
@@ -200,7 +170,6 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'ForGeneric': {
-      // Add loop variables
       for (const v of stmt.variables) {
         symbols.push({
           'name': v.name,
@@ -219,17 +188,10 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
   return symbols;
 };
 
-/**
- * Collects all top-level document symbols from a chunk for the outline view.
- * Only includes declarations, functions, type aliases, and exports.
- * @param chunk - The root AST node of the parsed document
- * @returns An array of DocumentSymbol objects representing top-level symbols
- */
-const collectDocumentSymbols = (chunk: Chunk): DocumentSymbol[] => {
+export const collectDocumentSymbols = (chunk: Chunk): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
   for (const stmt of chunk.body) {
-    // Only include top-level declarations in the main outline
     switch (stmt.kind) {
       case 'LocalDeclaration':
       case 'LocalFunction':
@@ -244,14 +206,7 @@ const collectDocumentSymbols = (chunk: Chunk): DocumentSymbol[] => {
   return symbols;
 };
 
-/**
- * Registers the document symbol handler with the LSP connection.
- * Provides the outline view showing functions, variables, types, and
- * other declarations in the document.
- * @param connection - The LSP connection to register the handler on
- * @param documentManager - The document manager for accessing parsed documents
- * @returns void
- */
+/** Provides the outline view showing functions, variables, types, and other declarations. */
 export const setupDocumentSymbolHandler = (connection: Connection, documentManager: DocumentManager): void => {
   connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
     const document = documentManager.getDocument(params.textDocument.uri);

@@ -1,11 +1,3 @@
-/**
- * LSP Server Capabilities
- *
- * Defines the capabilities that this language server advertises to clients.
- * These capabilities determine which LSP features are available, such as
- * completion, hover, diagnostics, semantic tokens, and more.
- */
-
 import {
   CodeActionKind,
   SemanticTokenModifiers,
@@ -16,35 +8,16 @@ import {
   type SignatureHelpOptions,
 } from 'vscode-languageserver';
 
-/**
- * Configuration options for the completion provider.
- *
- * Specifies that resolve is not supported and defines trigger characters
- * that will automatically invoke completion suggestions.
- */
 const completionOptions: CompletionOptions = {
   'resolveProvider': false,
   'triggerCharacters': ['.', ':', '"', "'", '[', '('],
 };
 
-/**
- * Configuration options for the signature help provider.
- *
- * Defines characters that trigger signature help display and characters
- * that re-trigger it when navigating between function parameters.
- */
 const signatureHelpOptions: SignatureHelpOptions = {
   'triggerCharacters': ['(', ','],
   'retriggerCharacters': [','],
 };
 
-/**
- * Semantic token types supported by this language server.
- *
- * These types are used to classify different code elements for
- * syntax highlighting purposes, including namespaces, types, classes,
- * enums, functions, variables, and more.
- */
 const tokenTypes = [
   SemanticTokenTypes.namespace,
   SemanticTokenTypes.type,
@@ -63,13 +36,6 @@ const tokenTypes = [
   SemanticTokenTypes.comment,
 ];
 
-/**
- * Semantic token modifiers supported by this language server.
- *
- * These modifiers provide additional context about tokens, such as
- * whether they are declarations, readonly, deprecated, or part of
- * the default library.
- */
 const tokenModifiers = [
   SemanticTokenModifiers.declaration,
   SemanticTokenModifiers.definition,
@@ -80,32 +46,21 @@ const tokenModifiers = [
   SemanticTokenModifiers.defaultLibrary,
 ];
 
-/**
- * The complete set of server capabilities advertised to LSP clients.
- *
- * Includes support for:
- * - Incremental text document synchronization
- * - Code completion with custom trigger characters
- * - Hover information
- * - Signature help for function calls
- * - Color provider for color literals
- * - Quick fix code actions
- * - Document symbols for outline view
- * - Go to definition
- * - Find references
- * - Rename with prepare support
- * - Inlay hints
- * - Document formatting
- * - Semantic tokens for enhanced syntax highlighting
- */
+/** The complete set of server capabilities advertised to LSP clients. */
 export const serverCapabilities: ServerCapabilities = {
   'textDocumentSync': TextDocumentSyncKind.Incremental,
-  'completionProvider': completionOptions,
+  'completionProvider': { ...completionOptions, 'resolveProvider': true },
   'hoverProvider': true,
   'signatureHelpProvider': signatureHelpOptions,
   'colorProvider': true,
   'codeActionProvider': {
-    'codeActionKinds': [CodeActionKind.QuickFix],
+    'codeActionKinds': [
+      CodeActionKind.QuickFix,
+      CodeActionKind.Refactor,
+      CodeActionKind.RefactorExtract,
+      CodeActionKind.RefactorRewrite,
+      CodeActionKind.Source,
+    ],
   },
   'documentSymbolProvider': true,
   'definitionProvider': true,
@@ -115,11 +70,27 @@ export const serverCapabilities: ServerCapabilities = {
   },
   'inlayHintProvider': true,
   'documentFormattingProvider': true,
+  'workspaceSymbolProvider': true,
+  'foldingRangeProvider': true,
+  'callHierarchyProvider': true,
+  'documentHighlightProvider': true,
+  'documentLinkProvider': { 'resolveProvider': false },
+  'selectionRangeProvider': true,
+  'linkedEditingRangeProvider': true,
+  'typeHierarchyProvider': true,
+  'codeLensProvider': { 'resolveProvider': true },
+  'typeDefinitionProvider': true,
+  'implementationProvider': true,
+  'documentRangeFormattingProvider': true,
+  'documentOnTypeFormattingProvider': {
+    'firstTriggerCharacter': '\n',
+  },
   'semanticTokensProvider': {
     'legend': {
       'tokenTypes': tokenTypes,
       'tokenModifiers': tokenModifiers,
     },
     'full': true,
+    'range': true,
   },
 };

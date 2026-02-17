@@ -1,14 +1,12 @@
-/**
- * Luau Parser - Recursive descent parser with error recovery
- *
- * Parses Luau source code into an Abstract Syntax Tree (AST).
- * Features include type annotation parsing, documentation comment extraction,
- * and error recovery to continue parsing after syntax errors.
- */
-
-import { parseDocComment, type DocComment } from './docComment';
-import { createLexer } from './lexer';
-import { isTrivia, TokenKind, type Token, type TokenPosition } from './tokens';
+import {
+  TokenKind,
+  TokenKindName,
+  type DocComment,
+  type ParseError,
+  type ParseResult,
+  type Token,
+  type TokenPosition,
+} from '@typings/parser';
 
 import type {
   AssignmentTarget,
@@ -42,140 +40,68 @@ import type {
   TypeParameter,
   UnaryOperator,
   WhileStatement,
-} from './ast';
+} from '@typings/ast';
+import { parseDocComment } from './docComment';
+import { createLexer } from './lexer';
+import { isTrivia } from './tokens';
 
-/**
- * Represents a parsing error with its message and source location.
- */
-export interface ParseError {
-  /** Human-readable error message describing the issue */
-  readonly message: string;
-  /** The source range where the error occurred */
-  readonly range: NodeRange;
-}
-
-/**
- * The result of parsing source code, containing the AST and any errors encountered.
- */
-export interface ParseResult {
-  /** The root AST node representing the parsed file */
-  readonly ast: Chunk;
-  /** Array of parsing errors encountered (empty if parsing succeeded without errors) */
-  readonly errors: ReadonlyArray<ParseError>;
-}
-
-/**
- * Internal state maintained during parsing.
- */
 interface ParserState {
-  /** Filtered tokens (trivia removed) for parsing */
   readonly tokens: ReadonlyArray<Token>;
-  /** All tokens including trivia (for doc comment extraction) */
   readonly allTokens: ReadonlyArray<Token>;
-  /** Extracted comments from the source */
   readonly comments: Comment[];
-  /** Accumulated parsing errors */
   readonly errors: ParseError[];
-  /** Current position in the token stream */
   current: number;
-  /** Pending documentation comment to attach to next declaration */
   pendingDocComment: DocComment | undefined;
 }
 
-/**
- * Map of binary operators to their precedence levels.
- * Higher numbers indicate higher precedence (bind tighter).
- */
-const BINARY_PRECEDENCE: ReadonlyMap<string, number> = new Map([
-  ['or', 1],
-  ['and', 2],
-  ['<', 3],
-  ['>', 3],
-  ['<=', 3],
-  ['>=', 3],
-  ['~=', 3],
-  ['==', 3],
-  ['..', 4],
-  ['+', 5],
-  ['-', 5],
-  ['*', 6],
-  ['/', 6],
-  ['//', 6],
-  ['%', 6],
-  ['^', 8], // Right associative, handled separately
+interface BinaryOpInfo {
+  readonly operator: BinaryOperator;
+  readonly precedence: number;
+  readonly rightAssociative: boolean;
+}
+
+const BINARY_OP_INFO: ReadonlyMap<TokenKind, BinaryOpInfo> = new Map([
+  [TokenKind.Or, { 'operator': 'or' as BinaryOperator, 'precedence': 1, 'rightAssociative': false }],
+  [TokenKind.And, { 'operator': 'and' as BinaryOperator, 'precedence': 2, 'rightAssociative': false }],
+  [TokenKind.Less, { 'operator': '<' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.Greater, { 'operator': '>' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.LessEqual, { 'operator': '<=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.GreaterEqual, { 'operator': '>=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.NotEqual, { 'operator': '~=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.Equal, { 'operator': '==' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
+  [TokenKind.Concat, { 'operator': '..' as BinaryOperator, 'precedence': 4, 'rightAssociative': true }],
+  [TokenKind.Plus, { 'operator': '+' as BinaryOperator, 'precedence': 5, 'rightAssociative': false }],
+  [TokenKind.Minus, { 'operator': '-' as BinaryOperator, 'precedence': 5, 'rightAssociative': false }],
+  [TokenKind.Star, { 'operator': '*' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
+  [TokenKind.Slash, { 'operator': '/' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
+  [TokenKind.DoubleSlash, { 'operator': '//' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
+  [TokenKind.Percent, { 'operator': '%' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
+  [TokenKind.Caret, { 'operator': '^' as BinaryOperator, 'precedence': 8, 'rightAssociative': true }],
 ]);
 
-/**
- * Determines if a binary operator is right-associative.
- * @param op The operator string to check
- * @returns True if the operator is right-associative, false otherwise
- */
-const isRightAssociative = (op: string): boolean => op === '^' || op === '..';
-
-/**
- * Returns the token at the current position plus an optional offset without consuming it.
- * @param state The parser state
- * @param offset Optional offset from current position (default 0)
- * @returns The token at the specified position
- */
 const peek = (state: ParserState, offset = 0): Token => {
   const index = state.current + offset;
   if (index >= state.tokens.length) return state.tokens[state.tokens.length - 1]!;
   return state.tokens[index]!;
 };
 
-/**
- * Returns the current token without consuming it.
- * @param state The parser state
- * @returns The current token
- */
 const current = (state: ParserState): Token => peek(state, 0);
 
-/**
- * Checks if the parser has reached the end of the token stream.
- * @param state The parser state
- * @returns True if at EOF, false otherwise
- */
 const isAtEnd = (state: ParserState): boolean => current(state).kind === TokenKind.EOF;
 
-/**
- * Checks if the current token is of the specified kind.
- * @param state The parser state
- * @param kind The token kind to check for
- * @returns True if current token matches the kind, false otherwise
- */
 const check = (state: ParserState, kind: TokenKind): boolean => current(state).kind === kind;
 
-/**
- * Checks if the token at a given offset from current position is of the specified kind.
- * @param state The parser state
- * @param offset The offset from current position to look ahead
- * @param kind The token kind to check for
- * @returns True if the token at offset matches the kind, false otherwise
- */
 const checkAhead = (state: ParserState, offset: number, kind: TokenKind): boolean => {
   const index = state.current + offset;
   if (index >= state.tokens.length) return false;
   return state.tokens[index]?.kind === kind;
 };
 
-/**
- * Consumes and returns the current token, advancing to the next token.
- * @param state The parser state (will be mutated)
- * @returns The token that was consumed
- */
 const advance = (state: ParserState): Token => {
   if (isAtEnd(state) === false) state.current++;
   return state.tokens[state.current - 1]!;
 };
 
-/**
- * Consumes a token of the expected kind, or reports an error if it doesn't match.
- * @param state The parser state (will be mutated)
- * @param kind The expected token kind
- * @param message Error message to display if the token doesn't match
- * @returns The consumed token, or the current token if there was an error
- */
 const consume = (state: ParserState, kind: TokenKind, message: string): Token => {
   if (check(state, kind)) return advance(state);
 
@@ -187,12 +113,6 @@ const consume = (state: ParserState, kind: TokenKind, message: string): Token =>
   return token;
 };
 
-/**
- * Attempts to match and consume any of the specified token kinds.
- * @param state The parser state (will be mutated if match succeeds)
- * @param kinds The token kinds to match against
- * @returns True if a match was found and consumed, false otherwise
- */
 const match = (state: ParserState, ...kinds: TokenKind[]): boolean => {
   for (const kind of kinds) {
     if (check(state, kind)) {
@@ -203,51 +123,47 @@ const match = (state: ParserState, ...kinds: TokenKind[]): boolean => {
   return false;
 };
 
-/**
- * Creates a NodeRange from start and end positions.
- * @param start The starting position
- * @param end The ending position
- * @returns A NodeRange spanning from start to end
- */
 const createRange = (start: TokenPosition, end: TokenPosition): NodeRange => ({ start, end });
 
-/**
- * Synchronizes the parser after an error by advancing to the next statement boundary.
- * Used for error recovery to allow continued parsing after syntax errors.
- * @param state The parser state (will be mutated)
- * @returns void
- */
+const SYNC_TOKENS: ReadonlySet<TokenKind> = new Set([
+  TokenKind.End,
+  TokenKind.Local,
+  TokenKind.Function,
+  TokenKind.If,
+  TokenKind.While,
+  TokenKind.For,
+  TokenKind.Repeat,
+  TokenKind.Return,
+  TokenKind.Do,
+  TokenKind.Type,
+  TokenKind.Export,
+]);
+
+const BLOCK_END_TOKENS: ReadonlySet<TokenKind> = new Set([
+  TokenKind.End,
+  TokenKind.Else,
+  TokenKind.Elseif,
+  TokenKind.Until,
+]);
+
+const RETURN_END_TOKENS: ReadonlySet<TokenKind> = new Set([
+  TokenKind.End,
+  TokenKind.Else,
+  TokenKind.Elseif,
+  TokenKind.Until,
+  TokenKind.Semicolon,
+]);
+
 const synchronize = (state: ParserState): void => {
   advance(state);
 
   while (isAtEnd(state) === false) {
-    const kind = current(state).kind;
-
-    if (
-      kind === TokenKind.End ||
-      kind === TokenKind.Local ||
-      kind === TokenKind.Function ||
-      kind === TokenKind.If ||
-      kind === TokenKind.While ||
-      kind === TokenKind.For ||
-      kind === TokenKind.Repeat ||
-      kind === TokenKind.Return ||
-      kind === TokenKind.Do ||
-      kind === TokenKind.Type ||
-      kind === TokenKind.Export
-    ) {
-      return;
-    }
+    if (SYNC_TOKENS.has(current(state).kind)) return;
 
     advance(state);
   }
 };
 
-/**
- * Parses an identifier token into an Identifier AST node.
- * @param state The parser state (will be mutated)
- * @returns An Identifier node
- */
 const parseIdentifier = (state: ParserState): Identifier => {
   const token = consume(state, TokenKind.Identifier, 'Expected identifier');
   return {
@@ -257,11 +173,6 @@ const parseIdentifier = (state: ParserState): Identifier => {
   };
 };
 
-/**
- * Parses a primary expression (literals, identifiers, parenthesized expressions, tables, functions).
- * @param state The parser state (will be mutated)
- * @returns An Expression AST node
- */
 const parsePrimaryExpression = (state: ParserState): Expression => {
   const token = current(state);
 
@@ -306,7 +217,6 @@ const parsePrimaryExpression = (state: ParserState): Expression => {
     case TokenKind.Identifier:
       return parseIdentifier(state);
 
-    // type and typeof can be used as function calls
     case TokenKind.Type:
     case TokenKind.Typeof:
       advance(state);
@@ -330,27 +240,20 @@ const parsePrimaryExpression = (state: ParserState): Expression => {
 
     default:
       state.errors.push({
-        'message': `Unexpected token: ${token.kind}`,
+        'message': `Unexpected token: ${TokenKindName.get(token.kind) ?? 'Unknown'}`,
         'range': createRange(token.start, token.end),
       });
       advance(state);
       return {
         'kind': 'ErrorExpression',
-        'message': `Unexpected token: ${token.kind}`,
+        'message': `Unexpected token: ${TokenKindName.get(token.kind) ?? 'Unknown'}`,
         'range': createRange(token.start, token.end),
       };
   }
 };
 
-/**
- * Parses a raw string token value into its actual string content.
- * Handles escape sequences and long bracket strings.
- * @param raw The raw string value from the token
- * @returns The parsed string content with escapes resolved
- */
 const parseStringValue = (raw: string): string => {
   if (raw.startsWith('[[') || raw.startsWith('[=')) {
-    // Long string - find the content between brackets
     const level = raw.match(/^\[=*\[/)![0].length - 2;
     const endPattern = ']' + '='.repeat(level) + ']';
     const startIndex = level + 2;
@@ -358,7 +261,6 @@ const parseStringValue = (raw: string): string => {
     return raw.slice(startIndex, endIndex);
   }
 
-  // Regular string - remove quotes and handle escapes
   const content = raw.slice(1, -1);
   return content.replace(/\\(.)/g, (_, char) => {
     switch (char) {
@@ -380,17 +282,10 @@ const parseStringValue = (raw: string): string => {
   });
 };
 
-/**
- * Parses an interpolated string expression (backtick strings with embedded expressions).
- * @param state The parser state (will be mutated)
- * @returns An InterpolatedString expression node
- */
 const parseInterpolatedString = (state: ParserState): Expression => {
   const start = current(state);
   advance(state);
 
-  // For now, treat as a simple string literal
-  // Full interpolation parsing would require re-lexing the content
   return {
     'kind': 'InterpolatedString',
     'parts': [
@@ -405,11 +300,6 @@ const parseInterpolatedString = (state: ParserState): Expression => {
   };
 };
 
-/**
- * Parses a parenthesized expression.
- * @param state The parser state (will be mutated)
- * @returns A ParenthesizedExpression node
- */
 const parseParenthesizedExpression = (state: ParserState): Expression => {
   const start = current(state);
   consume(state, TokenKind.LeftParen, 'Expected (');
@@ -422,11 +312,6 @@ const parseParenthesizedExpression = (state: ParserState): Expression => {
   };
 };
 
-/**
- * Parses a table constructor expression.
- * @param state The parser state (will be mutated)
- * @returns A TableExpression node
- */
 const parseTableExpression = (state: ParserState): Expression => {
   const start = current(state);
   consume(state, TokenKind.LeftBrace, 'Expected {');
@@ -451,9 +336,6 @@ const parseTableExpression = (state: ParserState): Expression => {
   };
 };
 
-/**
- * Set of keywords that can be used as identifiers in certain contexts (like table fields, property access).
- */
 const CONTEXTUAL_KEYWORDS = new Set<TokenKind>([
   TokenKind.Type,
   TokenKind.Typeof,
@@ -482,21 +364,11 @@ const CONTEXTUAL_KEYWORDS = new Set<TokenKind>([
   TokenKind.Export,
 ]);
 
-/**
- * Checks if the current token can be used as an identifier (includes contextual keywords).
- * @param state The parser state
- * @returns True if current token is identifier-like, false otherwise
- */
 const isIdentifierLike = (state: ParserState): boolean => {
   const kind = current(state).kind;
   return kind === TokenKind.Identifier || CONTEXTUAL_KEYWORDS.has(kind);
 };
 
-/**
- * Parses an identifier or contextual keyword as an Identifier node.
- * @param state The parser state (will be mutated)
- * @returns An Identifier node
- */
 const parseIdentifierLike = (state: ParserState): Identifier => {
   const token = current(state);
   if (token.kind === TokenKind.Identifier || CONTEXTUAL_KEYWORDS.has(token.kind)) {
@@ -510,15 +382,9 @@ const parseIdentifierLike = (state: ParserState): Identifier => {
   return parseIdentifier(state);
 };
 
-/**
- * Parses a single table field (key=value, [expr]=value, or value).
- * @param state The parser state (will be mutated)
- * @returns A TableField node
- */
 const parseTableField = (state: ParserState): TableField => {
   const start = current(state);
 
-  // [expr] = expr
   if (check(state, TokenKind.LeftBracket)) {
     advance(state);
     const index = parseExpression(state);
@@ -533,7 +399,6 @@ const parseTableField = (state: ParserState): TableField => {
     };
   }
 
-  // name = expr (lookahead for =) - allow type/typeof as field names
   if (isIdentifierLike(state) && peek(state, 1).kind === TokenKind.Assign) {
     const key = parseIdentifierLike(state);
     consume(state, TokenKind.Assign, 'Expected =');
@@ -546,7 +411,6 @@ const parseTableField = (state: ParserState): TableField => {
     };
   }
 
-  // expr (array-style)
   const value = parseExpression(state);
   return {
     'kind': 'TableFieldValue',
@@ -555,11 +419,6 @@ const parseTableField = (state: ParserState): TableField => {
   };
 };
 
-/**
- * Parses a function expression (anonymous function).
- * @param state The parser state (will be mutated)
- * @returns A FunctionExpression node
- */
 const parseFunctionExpression = (state: ParserState): FunctionExpression => {
   const start = current(state);
   consume(state, TokenKind.Function, 'Expected function');
@@ -581,11 +440,6 @@ const parseFunctionExpression = (state: ParserState): FunctionExpression => {
   };
 };
 
-/**
- * Parses optional generic type parameters (e.g., <T, U>).
- * @param state The parser state (will be mutated)
- * @returns An array of TypeParameter nodes, or undefined if none present
- */
 const parseOptionalTypeParameters = (state: ParserState): ReadonlyArray<TypeParameter> | undefined => {
   if (check(state, TokenKind.Less) === false) return undefined;
   advance(state);
@@ -598,9 +452,6 @@ const parseOptionalTypeParameters = (state: ParserState): ReadonlyArray<TypePara
 
     let constraint: TypeAnnotation | undefined;
     let defaultType: TypeAnnotation | undefined;
-
-    // Handle constraint (Name : Type)
-    // Handle default (Name = Type)
 
     params.push({
       'kind': 'TypeParameter',
@@ -615,11 +466,6 @@ const parseOptionalTypeParameters = (state: ParserState): ReadonlyArray<TypePara
   return params;
 };
 
-/**
- * Parses function parameters including optional type annotations and vararg.
- * @param state The parser state (will be mutated)
- * @returns An object containing the parameter list and whether the function is variadic
- */
 const parseParameters = (state: ParserState): { params: Parameter[]; isVariadic: boolean } => {
   consume(state, TokenKind.LeftParen, 'Expected (');
 
@@ -673,22 +519,12 @@ const parseParameters = (state: ParserState): { params: Parameter[]; isVariadic:
   return { params, isVariadic };
 };
 
-/**
- * Parses an optional return type annotation (: Type).
- * @param state The parser state (will be mutated)
- * @returns A TypeAnnotation node, or undefined if no return type is specified
- */
 const parseOptionalReturnType = (state: ParserState): TypeAnnotation | undefined => {
   if (check(state, TokenKind.Colon) === false) return undefined;
   advance(state);
   return parseTypeAnnotation(state);
 };
 
-/**
- * Parses an if-then-else expression.
- * @param state The parser state (will be mutated)
- * @returns An IfExpression node
- */
 const parseIfExpression = (state: ParserState): Expression => {
   const start = current(state);
   consume(state, TokenKind.If, 'Expected if');
@@ -731,18 +567,12 @@ const parseIfExpression = (state: ParserState): Expression => {
   };
 };
 
-/**
- * Parses a suffix expression (primary expression with optional suffixes like .field, [index], :method(), ()).
- * @param state The parser state (will be mutated)
- * @returns An Expression node with any suffixes applied
- */
 const parseSuffixExpression = (state: ParserState): Expression => {
   let expr = parsePrimaryExpression(state);
 
   while (true) {
     if (check(state, TokenKind.Dot)) {
       advance(state);
-      // Allow type/typeof as property names (e.g., item.type)
       const property = isIdentifierLike(state) ? parseIdentifierLike(state) : parseIdentifier(state);
       expr = {
         'kind': 'MemberExpression',
@@ -762,7 +592,6 @@ const parseSuffixExpression = (state: ParserState): Expression => {
       };
     } else if (check(state, TokenKind.Colon)) {
       advance(state);
-      // Allow type/typeof as method names
       const method = isIdentifierLike(state) ? parseIdentifierLike(state) : parseIdentifier(state);
       const args = parseCallArguments(state);
       expr = {
@@ -801,13 +630,7 @@ const parseSuffixExpression = (state: ParserState): Expression => {
   return expr;
 };
 
-/**
- * Parses function call arguments (parenthesized list, string literal, or table).
- * @param state The parser state (will be mutated)
- * @returns An array of Expression nodes representing the arguments
- */
 const parseCallArguments = (state: ParserState): Expression[] => {
-  // String or table as single argument
   if (check(state, TokenKind.String)) {
     const token = advance(state);
     return [
@@ -824,7 +647,6 @@ const parseCallArguments = (state: ParserState): Expression[] => {
     return [parseTableExpression(state)];
   }
 
-  // Regular parenthesized arguments
   consume(state, TokenKind.LeftParen, 'Expected (');
 
   const args: Expression[] = [];
@@ -839,11 +661,6 @@ const parseCallArguments = (state: ParserState): Expression[] => {
   return args;
 };
 
-/**
- * Parses a unary expression (-, not, #) or a suffix expression.
- * @param state The parser state (will be mutated)
- * @returns An Expression node
- */
 const parseUnaryExpression = (state: ParserState): Expression => {
   if (check(state, TokenKind.Minus) || check(state, TokenKind.Not) || check(state, TokenKind.Hash)) {
     const start = current(state);
@@ -860,32 +677,21 @@ const parseUnaryExpression = (state: ParserState): Expression => {
   return parseSuffixExpression(state);
 };
 
-/**
- * Parses a binary expression using precedence climbing.
- * @param state The parser state (will be mutated)
- * @param minPrecedence The minimum precedence level to parse (default 0)
- * @returns An Expression node representing the binary expression tree
- */
 const parseBinaryExpression = (state: ParserState, minPrecedence = 0): Expression => {
   let left = parseUnaryExpression(state);
 
   while (true) {
-    const token = current(state);
-    const operator = tokenToBinaryOperator(token);
-
-    if (operator === undefined) break;
-
-    const precedence = BINARY_PRECEDENCE.get(operator);
-    if (precedence === undefined || precedence < minPrecedence) break;
+    const info = BINARY_OP_INFO.get(current(state).kind);
+    if (info === undefined || info.precedence < minPrecedence) break;
 
     advance(state);
 
-    const nextMinPrecedence = isRightAssociative(operator) ? precedence : precedence + 1;
+    const nextMinPrecedence = info.rightAssociative ? info.precedence : info.precedence + 1;
     const right = parseBinaryExpression(state, nextMinPrecedence);
 
     left = {
       'kind': 'BinaryExpression',
-      operator,
+      'operator': info.operator,
       left,
       right,
       'range': createRange(left.range.start, right.range.end),
@@ -895,69 +701,10 @@ const parseBinaryExpression = (state: ParserState, minPrecedence = 0): Expressio
   return left;
 };
 
-/**
- * Converts a token to its corresponding binary operator string, if applicable.
- * @param token The token to convert
- * @returns The binary operator string, or undefined if not a binary operator
- */
-const tokenToBinaryOperator = (token: Token): BinaryOperator | undefined => {
-  switch (token.kind) {
-    case TokenKind.Plus:
-      return '+';
-    case TokenKind.Minus:
-      return '-';
-    case TokenKind.Star:
-      return '*';
-    case TokenKind.Slash:
-      return '/';
-    case TokenKind.DoubleSlash:
-      return '//';
-    case TokenKind.Percent:
-      return '%';
-    case TokenKind.Caret:
-      return '^';
-    case TokenKind.Concat:
-      return '..';
-    case TokenKind.Equal:
-      return '==';
-    case TokenKind.NotEqual:
-      return '~=';
-    case TokenKind.Less:
-      return '<';
-    case TokenKind.LessEqual:
-      return '<=';
-    case TokenKind.Greater:
-      return '>';
-    case TokenKind.GreaterEqual:
-      return '>=';
-    case TokenKind.And:
-      return 'and';
-    case TokenKind.Or:
-      return 'or';
-    default:
-      return undefined;
-  }
-};
-
-/**
- * Parses an expression.
- * @param state The parser state (will be mutated)
- * @returns An Expression AST node
- */
 const parseExpression = (state: ParserState): Expression => parseBinaryExpression(state);
 
-/**
- * Parses a type annotation.
- * @param state The parser state (will be mutated)
- * @returns A TypeAnnotation AST node
- */
 const parseTypeAnnotation = (state: ParserState): TypeAnnotation => parseUnionType(state);
 
-/**
- * Parses a union type (A | B | C).
- * @param state The parser state (will be mutated)
- * @returns A TypeAnnotation node (UnionType if multiple types, otherwise the single type)
- */
 const parseUnionType = (state: ParserState): TypeAnnotation => {
   let left = parseIntersectionType(state);
 
@@ -974,11 +721,6 @@ const parseUnionType = (state: ParserState): TypeAnnotation => {
   return left;
 };
 
-/**
- * Parses an intersection type (A & B & C).
- * @param state The parser state (will be mutated)
- * @returns A TypeAnnotation node (IntersectionType if multiple types, otherwise the single type)
- */
 const parseIntersectionType = (state: ParserState): TypeAnnotation => {
   let left = parsePrimaryType(state);
 
@@ -995,16 +737,10 @@ const parseIntersectionType = (state: ParserState): TypeAnnotation => {
   return left;
 };
 
-/**
- * Parses a primary type (typeof, parenthesized type, table type, variadic, literal, or type reference).
- * @param state The parser state (will be mutated)
- * @returns A TypeAnnotation AST node
- */
 const parsePrimaryType = (state: ParserState): TypeAnnotation => {
   const start = current(state);
   let type: TypeAnnotation;
 
-  // typeof
   if (check(state, TokenKind.Typeof)) {
     advance(state);
     consume(state, TokenKind.LeftParen, 'Expected (');
@@ -1060,7 +796,7 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
     type = parseTypeReference(state);
   } else {
     state.errors.push({
-      'message': `Unexpected token in type: ${current(state).kind}`,
+      'message': `Unexpected token in type: ${TokenKindName.get(current(state).kind) ?? 'Unknown'}`,
       'range': createRange(start.start, start.end),
     });
     advance(state);
@@ -1079,24 +815,17 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
   return type;
 };
 
-/**
- * Parses a type reference (identifier with optional module prefix and type arguments).
- * @param state The parser state (will be mutated)
- * @returns A TypeReference node (possibly wrapped in OptionalType)
- */
 const parseTypeReference = (state: ParserState): TypeAnnotation => {
   const start = current(state);
   let name = consume(state, TokenKind.Identifier, 'Expected type name').value;
   let moduleName: string | undefined;
 
-  // Check for module.Type
   if (check(state, TokenKind.Dot)) {
     advance(state);
     moduleName = name;
     name = consume(state, TokenKind.Identifier, 'Expected type name').value;
   }
 
-  // Check for type arguments
   let typeArgs: TypeAnnotation[] | undefined;
   if (check(state, TokenKind.Less)) {
     advance(state);
@@ -1120,18 +849,9 @@ const parseTypeReference = (state: ParserState): TypeAnnotation => {
   };
 };
 
-/**
- * Parses either a function type or a parenthesized type.
- * Disambiguates based on presence of -> after the closing parenthesis.
- * @param state The parser state (will be mutated)
- * @returns A FunctionType, ParenthesizedType, or ErrorType node
- */
 const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
   const start = current(state);
   consume(state, TokenKind.LeftParen, 'Expected (');
-
-  // Check if this is a function type by looking for ->
-  // We need to parse the parameter list and then check
 
   const params: FunctionTypeParam[] = [];
   let isVariadic = false;
@@ -1140,7 +860,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
   while (check(state, TokenKind.RightParen) === false && isAtEnd(state) === false) {
     const paramStart = current(state);
 
-    // Handle 'this' type annotation
     if (check(state, TokenKind.Identifier) && current(state).value === 'this') {
       advance(state);
       consume(state, TokenKind.Colon, 'Expected :');
@@ -1152,7 +871,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       continue;
     }
 
-    // Handle variadic
     if (check(state, TokenKind.Vararg)) {
       advance(state);
       const type = parseTypeAnnotation(state);
@@ -1166,13 +884,12 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       break;
     }
 
-    // Check for named parameter (name: type) or just type
     let paramName: string | undefined;
     let paramType: TypeAnnotation;
 
     if (check(state, TokenKind.Identifier) && peek(state, 1).kind === TokenKind.Colon) {
       paramName = advance(state).value;
-      advance(state); // :
+      advance(state);
       paramType = parseTypeAnnotation(state);
     } else {
       paramType = parseTypeAnnotation(state);
@@ -1191,7 +908,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
 
   consume(state, TokenKind.RightParen, 'Expected )');
 
-  // If we see ->, it's a function type
   if (check(state, TokenKind.Arrow)) {
     advance(state);
     const returnType = parseTypeAnnotation(state);
@@ -1206,7 +922,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  // Empty parens () - represents nil/void return type
   if (params.length === 0) {
     return {
       'kind': 'TypeReference',
@@ -1217,7 +932,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  // Single unnamed param - parenthesized type (T)
   if (params.length === 1 && params[0]!.name === undefined) {
     return {
       'kind': 'ParenthesizedType',
@@ -1226,8 +940,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  // Multiple params without -> is a tuple return type (T, U)
-  // Use the first type as the primary return type
   if (params.length > 1 && params[0] !== undefined) {
     return {
       'kind': 'ParenthesizedType',
@@ -1236,7 +948,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  // Error - malformed type
   state.errors.push({
     'message': 'Expected -> for function type',
     'range': createRange(start.start, current(state).start),
@@ -1244,11 +955,6 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
   return { 'kind': 'ErrorType', 'message': 'Malformed type', 'range': createRange(start.start, current(state).start) };
 };
 
-/**
- * Parses a table type ({ field: Type, [KeyType]: ValueType }).
- * @param state The parser state (will be mutated)
- * @returns A TableType node
- */
 const parseTableType = (state: ParserState): TypeAnnotation => {
   const start = current(state);
   consume(state, TokenKind.LeftBrace, 'Expected {');
@@ -1261,7 +967,6 @@ const parseTableType = (state: ParserState): TypeAnnotation => {
   while (check(state, TokenKind.RightBrace) === false && isAtEnd(state) === false) {
     const propStart = current(state);
 
-    // [type]: type (indexer)
     if (check(state, TokenKind.LeftBracket)) {
       advance(state);
       const keyType = parseTypeAnnotation(state);
@@ -1317,11 +1022,6 @@ const parseTableType = (state: ParserState): TypeAnnotation => {
   };
 };
 
-/**
- * Parses a statement, dispatching to the appropriate parser based on the current token.
- * @param state The parser state (will be mutated)
- * @returns A Statement AST node
- */
 const parseStatement = (state: ParserState): Statement => {
   const token = current(state);
 
@@ -1349,12 +1049,9 @@ const parseStatement = (state: ParserState): Statement => {
       advance(state);
       return { 'kind': 'ContinueStatement', 'range': createRange(token.start, token.end) };
     case TokenKind.Type:
-      // Check if this is a type alias (type Name = ...) or a function call (type({}))
-      // Type alias is followed by identifier, function call is followed by ( or string/table
       if (checkAhead(state, 1, TokenKind.Identifier)) {
         return parseTypeAliasStatement(state);
       }
-      // Otherwise treat as expression statement (type(...) function call)
       return parseExpressionStatement(state);
     case TokenKind.Export:
       return parseExportStatement(state);
@@ -1363,11 +1060,6 @@ const parseStatement = (state: ParserState): Statement => {
   }
 };
 
-/**
- * Parses a local statement (local variable declaration or local function).
- * @param state The parser state (will be mutated)
- * @returns A LocalDeclaration or LocalFunction node
- */
 const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFunction => {
   const docComment = collectDocComment(state);
   const start = current(state);
@@ -1432,11 +1124,6 @@ const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFuncti
   };
 };
 
-/**
- * Parses a global function declaration statement.
- * @param state The parser state (will be mutated)
- * @returns A FunctionDeclaration node
- */
 const parseFunctionStatement = (state: ParserState): FunctionDeclaration => {
   const docComment = collectDocComment(state);
   const start = current(state);
@@ -1469,11 +1156,6 @@ const parseFunctionStatement = (state: ParserState): FunctionDeclaration => {
   };
 };
 
-/**
- * Parses a function name (base.path1.path2:method).
- * @param state The parser state (will be mutated)
- * @returns A FunctionName node
- */
 const parseFunctionName = (state: ParserState): FunctionName => {
   const start = current(state);
   const base = parseIdentifier(state);
@@ -1499,11 +1181,6 @@ const parseFunctionName = (state: ParserState): FunctionName => {
   };
 };
 
-/**
- * Parses an if statement with optional elseif and else clauses.
- * @param state The parser state (will be mutated)
- * @returns An IfStatement node
- */
 const parseIfStatement = (state: ParserState): IfStatement => {
   const start = current(state);
   consume(state, TokenKind.If, 'Expected if');
@@ -1546,11 +1223,6 @@ const parseIfStatement = (state: ParserState): IfStatement => {
   };
 };
 
-/**
- * Parses a while loop statement.
- * @param state The parser state (will be mutated)
- * @returns A WhileStatement node
- */
 const parseWhileStatement = (state: ParserState): WhileStatement => {
   const start = current(state);
   consume(state, TokenKind.While, 'Expected while');
@@ -1568,11 +1240,6 @@ const parseWhileStatement = (state: ParserState): WhileStatement => {
   };
 };
 
-/**
- * Parses a repeat-until loop statement.
- * @param state The parser state (will be mutated)
- * @returns A RepeatStatement node
- */
 const parseRepeatStatement = (state: ParserState): RepeatStatement => {
   const start = current(state);
   consume(state, TokenKind.Repeat, 'Expected repeat');
@@ -1589,18 +1256,12 @@ const parseRepeatStatement = (state: ParserState): RepeatStatement => {
   };
 };
 
-/**
- * Parses a for loop statement (either numeric or generic).
- * @param state The parser state (will be mutated)
- * @returns A ForNumeric or ForGeneric node
- */
 const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
   const start = current(state);
   consume(state, TokenKind.For, 'Expected for');
 
   const firstVar = parseIdentifier(state);
 
-  // Numeric for: for i = start, end, step do
   if (check(state, TokenKind.Assign)) {
     advance(state);
     const startExpr = parseExpression(state);
@@ -1628,7 +1289,6 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
     };
   }
 
-  // Generic for: for k, v in iterator do
   const variables: Identifier[] = [firstVar];
   while (check(state, TokenKind.Comma)) {
     advance(state);
@@ -1655,11 +1315,6 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
   };
 };
 
-/**
- * Parses a do-end block statement.
- * @param state The parser state (will be mutated)
- * @returns A DoStatement node
- */
 const parseDoStatement = (state: ParserState): DoStatement => {
   const start = current(state);
   consume(state, TokenKind.Do, 'Expected do');
@@ -1673,26 +1328,13 @@ const parseDoStatement = (state: ParserState): DoStatement => {
   };
 };
 
-/**
- * Parses a return statement with optional return values.
- * @param state The parser state (will be mutated)
- * @returns A ReturnStatement node
- */
 const parseReturnStatement = (state: ParserState): ReturnStatement => {
   const start = current(state);
   consume(state, TokenKind.Return, 'Expected return');
 
   const values: Expression[] = [];
 
-  // Check if there are return values (not at end of block or followed by semicolon)
-  if (
-    isAtEnd(state) === false &&
-    check(state, TokenKind.End) === false &&
-    check(state, TokenKind.Else) === false &&
-    check(state, TokenKind.Elseif) === false &&
-    check(state, TokenKind.Until) === false &&
-    check(state, TokenKind.Semicolon) === false
-  ) {
+  if (isAtEnd(state) === false && RETURN_END_TOKENS.has(current(state).kind) === false) {
     do {
       values.push(parseExpression(state));
     } while (match(state, TokenKind.Comma));
@@ -1705,12 +1347,6 @@ const parseReturnStatement = (state: ParserState): ReturnStatement => {
   };
 };
 
-/**
- * Parses a type alias statement (type Name = Type).
- * @param state The parser state (will be mutated)
- * @param existingDocComment Optional pre-collected documentation comment
- * @returns A TypeAlias node
- */
 const parseTypeAliasStatement = (state: ParserState, existingDocComment?: DocComment): TypeAlias => {
   const docComment = existingDocComment ?? collectDocComment(state);
   const start = current(state);
@@ -1731,11 +1367,6 @@ const parseTypeAliasStatement = (state: ParserState, existingDocComment?: DocCom
   };
 };
 
-/**
- * Parses an export statement (export type Name = Type).
- * @param state The parser state (will be mutated)
- * @returns An ExportStatement node
- */
 const parseExportStatement = (state: ParserState): ExportStatement => {
   const docComment = collectDocComment(state);
   const start = current(state);
@@ -1750,16 +1381,10 @@ const parseExportStatement = (state: ParserState): ExportStatement => {
   };
 };
 
-/**
- * Parses an expression statement (assignment, compound assignment, or call statement).
- * @param state The parser state (will be mutated)
- * @returns An Assignment, CompoundAssignment, CallStatement, or ErrorStatement node
- */
 const parseExpressionStatement = (state: ParserState): Statement => {
   const start = current(state);
   const expr = parseSuffixExpression(state);
 
-  // Check for assignment
   if (check(state, TokenKind.Assign) || check(state, TokenKind.Comma)) {
     const targets: AssignmentTarget[] = [expr as AssignmentTarget];
 
@@ -1783,7 +1408,6 @@ const parseExpressionStatement = (state: ParserState): Statement => {
     };
   }
 
-  // Check for compound assignment
   const compoundOp = getCompoundOperator(current(state));
   if (compoundOp !== undefined) {
     advance(state);
@@ -1798,7 +1422,6 @@ const parseExpressionStatement = (state: ParserState): Statement => {
     };
   }
 
-  // Must be a call statement
   if (expr.kind === 'CallExpression' || expr.kind === 'MethodCallExpression') {
     return {
       'kind': 'CallStatement',
@@ -1807,7 +1430,6 @@ const parseExpressionStatement = (state: ParserState): Statement => {
     };
   }
 
-  // Error - expression is not a valid statement
   state.errors.push({
     'message': 'Expression is not a valid statement',
     'range': expr.range,
@@ -1820,64 +1442,28 @@ const parseExpressionStatement = (state: ParserState): Statement => {
   };
 };
 
-/**
- * Gets the compound assignment operator for a token, if applicable.
- * @param token The token to check
- * @returns The compound operator string, or undefined if not a compound assignment
- */
-const getCompoundOperator = (token: Token): CompoundOperator | undefined => {
-  switch (token.kind) {
-    case TokenKind.PlusAssign:
-      return '+=';
-    case TokenKind.MinusAssign:
-      return '-=';
-    case TokenKind.StarAssign:
-      return '*=';
-    case TokenKind.SlashAssign:
-      return '/=';
-    case TokenKind.DoubleSlashAssign:
-      return '//=';
-    case TokenKind.PercentAssign:
-      return '%=';
-    case TokenKind.CaretAssign:
-      return '^=';
-    case TokenKind.ConcatAssign:
-      return '..=';
-    default:
-      return undefined;
-  }
-};
+const COMPOUND_OP_MAP: ReadonlyMap<TokenKind, CompoundOperator> = new Map([
+  [TokenKind.PlusAssign, '+='],
+  [TokenKind.MinusAssign, '-='],
+  [TokenKind.StarAssign, '*='],
+  [TokenKind.SlashAssign, '/='],
+  [TokenKind.DoubleSlashAssign, '//='],
+  [TokenKind.PercentAssign, '%='],
+  [TokenKind.CaretAssign, '^='],
+  [TokenKind.ConcatAssign, '..='],
+]);
 
-/**
- * Parses a block of statements until a block-ending keyword is reached.
- * @param state The parser state (will be mutated)
- * @returns An array of Statement nodes
- */
+const getCompoundOperator = (token: Token): CompoundOperator | undefined => COMPOUND_OP_MAP.get(token.kind);
+
 const parseBlock = (state: ParserState): Statement[] => {
   const statements: Statement[] = [];
 
-  while (
-    isAtEnd(state) === false &&
-    check(state, TokenKind.End) === false &&
-    check(state, TokenKind.Else) === false &&
-    check(state, TokenKind.Elseif) === false &&
-    check(state, TokenKind.Until) === false
-  ) {
-    // Skip optional semicolons between statements
+  while (isAtEnd(state) === false && BLOCK_END_TOKENS.has(current(state).kind) === false) {
     while (check(state, TokenKind.Semicolon)) {
       advance(state);
     }
 
-    // Check again after skipping semicolons
-    if (
-      isAtEnd(state) ||
-      check(state, TokenKind.End) ||
-      check(state, TokenKind.Else) ||
-      check(state, TokenKind.Elseif) ||
-      check(state, TokenKind.Until)
-    ) {
-      break;
-    }
+    if (isAtEnd(state) || BLOCK_END_TOKENS.has(current(state).kind)) break;
 
     try {
       statements.push(parseStatement(state));
@@ -1889,12 +1475,6 @@ const parseBlock = (state: ParserState): Statement[] => {
   return statements;
 };
 
-/**
- * Finds a documentation comment that immediately precedes a token.
- * @param state The parser state
- * @param tokenOffset The offset of the token to find preceding comments for
- * @returns A DocComment if found, undefined otherwise
- */
 const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocComment | undefined => {
   const docCommentLines: string[] = [];
 
@@ -1927,21 +1507,12 @@ const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocCo
   return parseDocComment(combined);
 };
 
-/**
- * Collects any documentation comment that precedes the current token.
- * @param state The parser state
- * @returns A DocComment if found, undefined otherwise
- */
 const collectDocComment = (state: ParserState): DocComment | undefined => {
   const currentToken = current(state);
   return findPrecedingDocComment(state, currentToken.start.offset);
 };
 
-/**
- * Parses Luau source code into an Abstract Syntax Tree (AST).
- * @param source The Luau source code to parse
- * @returns A ParseResult containing the AST and any parsing errors
- */
+/** Parses Luau source code into an Abstract Syntax Tree (AST). */
 export const parse = (source: string): ParseResult => {
   const allTokens = createLexer(source).tokens();
   const tokens = allTokens.filter(t => isTrivia(t.kind) === false);

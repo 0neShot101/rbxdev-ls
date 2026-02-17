@@ -1,27 +1,4 @@
-/**
- * Common Instance Children Type Hints
- *
- * Provides smart type inference for common parent-child relationships in Roblox.
- * This module contains mappings of parent class names to their commonly accessed
- * children along with the expected child types. This enables the language server
- * to provide accurate type information when accessing children through indexing
- * operations like `model.Humanoid` or `player.Character`.
- */
-
-/**
- * Maps parent class names to their commonly accessed children and the expected types.
- *
- * The structure is: ParentClass -> ChildName -> ExpectedChildType
- *
- * For example, a Model class commonly has a Humanoid child which is of type Humanoid,
- * and a Player instance commonly has a Character child which is of type Model.
- *
- * @example
- * ```typescript
- * const humanoidType = COMMON_CHILDREN.get('Model')?.get('Humanoid'); // 'Humanoid'
- * const characterType = COMMON_CHILDREN.get('Player')?.get('Character'); // 'Model'
- * ```
- */
+/** Maps parent class names to their commonly accessed children and expected types. */
 export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
   [
     'Model',
@@ -223,11 +200,8 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['Modules', 'Folder'],
     ]),
   ],
-  // Camera common children
   ['Camera', new Map([['CameraSubject', 'Humanoid']])],
-  // Players service children
   ['Players', new Map([['LocalPlayer', 'Player']])],
-  // Lighting common children
   [
     'Lighting',
     new Map([
@@ -240,7 +214,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['SunRaysEffect', 'SunRaysEffect'],
     ]),
   ],
-  // ViewportFrame common children
   [
     'ViewportFrame',
     new Map([
@@ -248,7 +221,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['WorldModel', 'WorldModel'],
     ]),
   ],
-  // Folder - generic container
   [
     'Folder',
     new Map([
@@ -256,7 +228,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['Assets', 'Folder'],
     ]),
   ],
-  // DataModel (game) common children
   [
     'DataModel',
     new Map([
@@ -275,7 +246,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['Chat', 'Chat'],
     ]),
   ],
-  // RunService events - common patterns
   [
     'RunService',
     new Map([
@@ -287,7 +257,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['PostSimulation', 'RBXScriptSignal'],
     ]),
   ],
-  // UserInputService common children
   [
     'UserInputService',
     new Map([
@@ -296,7 +265,6 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
       ['InputChanged', 'RBXScriptSignal'],
     ]),
   ],
-  // Character model specifics (common R6/R15 parts)
   [
     'CharacterModel',
     new Map([
@@ -326,26 +294,7 @@ export const COMMON_CHILDREN: ReadonlyMap<string, ReadonlyMap<string, string>> =
   ],
 ]);
 
-/**
- * Looks up a common child type for a given parent class and child name.
- *
- * This function traverses the inheritance chain to find the expected type of a child
- * instance. If the parent class itself does not have a mapping for the child name,
- * the function will check the parent's superclass, and so on up the hierarchy.
- *
- * @param parentClassName - The class name of the parent instance (e.g., 'Model', 'Player')
- * @param childName - The name of the child being accessed (e.g., 'Humanoid', 'Character')
- * @param getSuperclass - Optional function to resolve the superclass of a given class name.
- *                        If not provided, only the direct parent class mapping is checked.
- * @returns The expected child type as a string, or undefined if no mapping exists
- *
- * @example
- * ```typescript
- * const type = getCommonChildType('Model', 'Humanoid'); // 'Humanoid'
- * const type2 = getCommonChildType('Player', 'Character'); // 'Model'
- * const type3 = getCommonChildType('Model', 'Unknown'); // undefined
- * ```
- */
+/** Looks up a common child type for a given parent class and child name. */
 export const getCommonChildType = (
   parentClassName: string,
   childName: string,
