@@ -222,7 +222,7 @@ local bridgeAlive = true
 
 local remoteSpyEnabled = false
 local remoteSpyFilter = ''
-local originalNamecall = nil
+local spyCleanup = nil
 
 -- Register this bridge instance globally for cleanup on re-execution
 if getgenv then
@@ -915,23 +915,18 @@ MESSAGE_HANDLERS.cloneInstance = function(message)
 end
 
 MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
-	if hookmetamethod == nil then
-		sendResult('setRemoteSpyEnabledResult', message.id, false, { error = 'hookmetamethod not available in this executor' })
+	if oth == nil and hookfunction == nil and hookmetamethod == nil then
+		sendResult('setRemoteSpyEnabledResult', message.id, false, { error = 'No hooking method available in this executor' })
 		return
 	end
 
 	local ok, err = pcall(function()
 		if message.enabled and not remoteSpyEnabled then
-			local oldNamecall
-			oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+			local logRemoteCall = function(self, method, ...)
 				local args = { ... }
-				local method = getnamecallmethod()
-				local results = { oldNamecall(self, unpack(args)) }
-
 				pcall(function()
 					if checkcaller and checkcaller() then return end
 					if not remoteSpyEnabled or not connected then return end
-					if method ~= 'FireServer' and method ~= 'InvokeServer' then return end
 					if typeof(self) ~= 'Instance' then return end
 
 					local className = self.ClassName
@@ -953,18 +948,91 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 						},
 					})
 				end)
+			end
 
-				return unpack(results)
-			end))
+			if oth ~= nil and type(oth.hook) == 'function' then
+				-- Tier 1: OTH — hook __namecall on a separate thread (undetectable)
+				local mt = getrawmetatable(game)
+				local ncFunc = rawget(mt, '__namecall')
+				local oldNamecall
+				oldNamecall = oth.hook(ncFunc, newcclosure(function(self, ...)
+					local method = getnamecallmethod()
+					if method == 'FireServer' or method == 'InvokeServer' then
+						logRemoteCall(self, method, ...)
+					end
+					return oldNamecall(self, ...)
+				end))
 
-			originalNamecall = oldNamecall
+				spyCleanup = function()
+					if type(oth.unhook) == 'function' then
+						oth.unhook(ncFunc)
+					else
+						oth.hook(ncFunc, oldNamecall)
+					end
+				end
+				print'[rbxdev-bridge] Remote spy enabled (oth)'
+
+			elseif hookfunction ~= nil then
+				-- Tier 2: hookfunction — hook individual methods (avoids __namecall detection)
+				local tempRE = Instance.new('RemoteEvent')
+				local tempRF = Instance.new('RemoteFunction')
+				local tempURE = Instance.new('UnreliableRemoteEvent')
+
+				local refFire = tempRE.FireServer
+				local refInvoke = tempRF.InvokeServer
+				local refUnreliableFire = tempURE.FireServer
+
+				tempRE:Destroy()
+				tempRF:Destroy()
+				tempURE:Destroy()
+
+				local origFire, origInvoke, origUnreliableFire
+
+				origFire = hookfunction(refFire, newcclosure(function(self, ...)
+					logRemoteCall(self, 'FireServer', ...)
+					return origFire(self, ...)
+				end))
+
+				origInvoke = hookfunction(refInvoke, newcclosure(function(self, ...)
+					logRemoteCall(self, 'InvokeServer', ...)
+					return origInvoke(self, ...)
+				end))
+
+				origUnreliableFire = hookfunction(refUnreliableFire, newcclosure(function(self, ...)
+					logRemoteCall(self, 'FireServer', ...)
+					return origUnreliableFire(self, ...)
+				end))
+
+				spyCleanup = function()
+					pcall(hookfunction, refFire, origFire)
+					pcall(hookfunction, refInvoke, origInvoke)
+					pcall(hookfunction, refUnreliableFire, origUnreliableFire)
+				end
+				print'[rbxdev-bridge] Remote spy enabled (hookfunction)'
+
+			else
+				-- Tier 3: hookmetamethod — last resort (detectable by __namecall checks)
+				local oldNamecall
+				oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+					local method = getnamecallmethod()
+					if method == 'FireServer' or method == 'InvokeServer' then
+						logRemoteCall(self, method, ...)
+					end
+					return oldNamecall(self, ...)
+				end))
+
+				spyCleanup = function()
+					hookmetamethod(game, '__namecall', oldNamecall)
+				end
+				print'[rbxdev-bridge] Remote spy enabled (hookmetamethod)'
+			end
+
 			remoteSpyEnabled = true
-			print'[rbxdev-bridge] Remote spy enabled'
 
 		elseif not message.enabled and remoteSpyEnabled then
-			if originalNamecall ~= nil then
-				hookmetamethod(game, '__namecall', originalNamecall)
-				originalNamecall = nil
+			if spyCleanup ~= nil then
+				pcall(spyCleanup)
+				spyCleanup = nil
 			end
 			remoteSpyEnabled = false
 			print'[rbxdev-bridge] Remote spy disabled'

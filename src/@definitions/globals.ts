@@ -12,6 +12,8 @@ import {
 
 import type { GlobalEnvironment, LoadedDefinitions } from '@typings/definitions';
 import { loadDefinitions } from './loader';
+import { addLuarmorGlobals } from './luarmor';
+import { addLuraphGlobals } from './luraph';
 import { convertRobloxApiToTypes } from './roblox';
 import { createAllStdLibraries } from './stdlib';
 import { convertSuncApiToTypes, getDefaultSuncApi } from './sunc';
@@ -2013,6 +2015,9 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
       });
     }
   }
+
+  addLuarmorGlobals(env);
+  addLuraphGlobals(env);
 
   return { env, robloxClasses, robloxEnums, robloxDataTypes };
 };

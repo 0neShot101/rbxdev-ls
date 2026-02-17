@@ -233,6 +233,19 @@ export const setupFormattingHandler = (
     ];
   });
 
+  const countBlockBalance = (lines: string[]): number => {
+    let balance = 0;
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (line.length === 0 || line.startsWith('--')) continue;
+      if (/^(end|until)\b/.test(line)) balance--;
+      if (/\b(then|do)\s*(--.*)?$/.test(line)) balance++;
+      if (/\brepeat\s*(--.*)?$/.test(line)) balance++;
+      if (/\bfunction\s*[^(]*\([^)]*\)\s*(--.*)?$/.test(line)) balance++;
+    }
+    return balance;
+  };
+
   connection.onDocumentOnTypeFormatting((params: DocumentOnTypeFormattingParams): TextEdit[] => {
     const document = documents.get(params.textDocument.uri);
     if (document === undefined) return [];
@@ -252,11 +265,14 @@ export const setupFormattingHandler = (
     const prevIndent = prevIndentMatch?.[1] ?? '';
     const indentUnit = params.options.insertSpaces === true ? ' '.repeat(params.options.tabSize) : '\t';
 
-    const blockOpeners = /\b(then|do|else|repeat)\s*$|function\s*\([^)]*\)\s*$/;
     const blockClosers = /^\s*(end|until|else|elseif)\b/;
 
-    if (blockOpeners.test(prevTrimmed)) {
-      return [
+    const endOpeners = /\b(then|do)\s*(--.*)?$|function\s*\([^)]*\)\s*(--.*)?$/;
+    const untilOpener = /\brepeat\s*(--.*)?$/;
+    const indentOnlyOpeners = /\b(else|elseif\b.*\bthen)\s*(--.*)?$/;
+
+    if (endOpeners.test(prevTrimmed) || untilOpener.test(prevTrimmed) || indentOnlyOpeners.test(prevTrimmed)) {
+      const edits: TextEdit[] = [
         {
           'range': {
             'start': { 'line': currentLine, 'character': 0 },
@@ -265,6 +281,22 @@ export const setupFormattingHandler = (
           'newText': prevIndent + indentUnit,
         },
       ];
+
+      if (indentOnlyOpeners.test(prevTrimmed) === false) {
+        const balance = countBlockBalance(lines);
+        if (balance > 0) {
+          const closer = untilOpener.test(prevTrimmed) ? 'until' : 'end';
+          edits.push({
+            'range': {
+              'start': { 'line': currentLine, 'character': params.position.character },
+              'end': { 'line': currentLine, 'character': params.position.character },
+            },
+            'newText': `\n${prevIndent}${closer}`,
+          });
+        }
+      }
+
+      return edits;
     }
 
     const currentLineText = lines[currentLine];

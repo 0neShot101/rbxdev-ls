@@ -1,4 +1,6 @@
 import { getCommonChildType } from '@definitions/commonChildren';
+import { addLuarmorGlobals } from '@definitions/luarmor';
+import { addLuraphGlobals } from '@definitions/luraph';
 
 import type {
   Assignment,
@@ -124,6 +126,8 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
   addLuauBuiltins(env);
   addRobloxGlobals(env);
   addSuncGlobals(env);
+  addLuarmorGlobals(env);
+  addLuraphGlobals(env);
 
   if (options.classes !== undefined) {
     for (const [name, classType] of options.classes) {

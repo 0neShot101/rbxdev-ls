@@ -565,6 +565,37 @@ const formatFunctionDetail = (func: FunctionType): string => {
   return `(${params.join(', ')})`;
 };
 
+const escapeSnippet = (text: string): string => text.replace(/[$}\\]/g, '\\$&');
+
+const formatFunctionSnippet = (name: string, func: FunctionType): string => {
+  if (func.params.length === 0) return `${name}()$0`;
+
+  let tabIndex = 1;
+  let hasCallback = false;
+  const paramSnippets: string[] = [];
+
+  for (const p of func.params) {
+    if (p.type.kind === 'Function' && hasCallback === false) {
+      hasCallback = true;
+      const innerFunc = p.type;
+      if (innerFunc.params.length === 0) {
+        paramSnippets.push(`function()\n\t$0\nend`);
+      } else {
+        const innerParams = innerFunc.params.map(ip => {
+          const pName = escapeSnippet(ip.name ?? 'arg');
+          return `\${${tabIndex++}:${pName}}`;
+        });
+        paramSnippets.push(`function(${innerParams.join(', ')})\n\t$0\nend`);
+      }
+    } else {
+      const paramName = escapeSnippet(p.name ?? 'arg');
+      paramSnippets.push(`\${${tabIndex++}:${paramName}}`);
+    }
+  }
+
+  return `${name}(${paramSnippets.join(', ')})`;
+};
+
 const formatDocumentation = (docComment: DocComment | undefined): { kind: 'markdown'; value: string } | undefined => {
   if (docComment === undefined) return undefined;
 
@@ -590,7 +621,8 @@ const getTableCompletions = (table: TableType, prefix: string): CompletionItem[]
 
     if (prop.type.kind === 'Function') {
       item.detail = formatFunctionDetail(prop.type);
-      item.insertText = name;
+      item.insertText = formatFunctionSnippet(name, prop.type);
+      item.insertTextFormat = InsertTextFormat.Snippet;
     }
 
     if (prop.deprecated === true) {
@@ -758,6 +790,12 @@ const getClassCompletions = (
       'kind': typeToCompletionKind(prop.type),
     };
 
+    if (prop.type.kind === 'Function') {
+      item.detail = formatFunctionDetail(prop.type);
+      item.insertText = formatFunctionSnippet(name, prop.type);
+      item.insertTextFormat = InsertTextFormat.Snippet;
+    }
+
     if (prop.deprecated === true) {
       item.tags = [CompletionItemTag.Deprecated];
       if (prop.deprecationMessage !== undefined) {
@@ -778,7 +816,8 @@ const getClassCompletions = (
       'label': name,
       'kind': CompletionItemKind.Method,
       'detail': formatFunctionDetail(method.func),
-      'insertText': name,
+      'insertText': formatFunctionSnippet(name, method.func),
+      'insertTextFormat': InsertTextFormat.Snippet,
     };
 
     if (method.deprecated === true) {
@@ -847,7 +886,11 @@ const getGlobalCompletions = (documentManager: DocumentManager, prefix: string):
       'kind': typeToCompletionKind(symbol.type),
     };
 
-    if (symbol.type.kind === 'Function') item.detail = formatFunctionDetail(symbol.type);
+    if (symbol.type.kind === 'Function') {
+      item.detail = formatFunctionDetail(symbol.type);
+      item.insertText = formatFunctionSnippet(name, symbol.type);
+      item.insertTextFormat = InsertTextFormat.Snippet;
+    }
 
     item.data = { 'resolve': 'global', 'name': name };
 
@@ -955,7 +998,7 @@ const LUAU_SNIPPETS: ReadonlyArray<{
   },
   {
     'label': 'connect',
-    'insertText': ':Connect(function(${1:args})\n\t$0\nend)',
+    'insertText': 'Connect(function(${1:args})\n\t$0\nend)',
     'detail': 'Connect to event',
     'documentation': 'Connects a callback function to an event.',
   },
