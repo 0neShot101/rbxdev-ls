@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
-    // Language and Environment
+// Language and Environment
     "target": "ES2022",
     "lib": ["ES2022"],
+    "types": ["bun-types"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
@@ -15,7 +16,7 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "removeComments": false,
     "importHelpers": true,
     "downlevelIteration": true,
@@ -48,26 +49,25 @@
     "noPropertyAccessFromIndexSignature": false,
 
     // Modules
-    "baseUrl": ".",
     "paths": {
-      "@core/*": ["src/@core/*"],
-      "@parser/*": ["src/@parser/*"],
-      "@typings/*": ["src/@typings/*"],
-      "@analyzer/*": ["src/@analyzer/*"],
-      "@definitions/*": ["src/@definitions/*"],
-      "@lsp/*": ["src/@lsp/*"],
-      "@utils/*": ["src/@utils/*"],
-      "@workspace/*": ["src/@workspace/*"],
-      "@executor": ["src/@executor/index.ts"],
-      "@executor/*": ["src/@executor/*"],
-      "@mcp": ["src/@mcp/index.ts"],
-      "@mcp/*": ["src/@mcp/*"]
+      "@core/*": ["./src/@core/*"],
+      "@parser/*": ["./src/@parser/*"],
+      "@typings/*": ["./src/@typings/*"],
+      "@analyzer/*": ["./src/@analyzer/*"],
+      "@definitions/*": ["./src/@definitions/*"],
+      "@lsp/*": ["./src/@lsp/*"],
+      "@utils/*": ["./src/@utils/*"],
+      "@workspace/*": ["./src/@workspace/*"],
+      "@executor": ["./src/@executor/index.ts"],
+      "@executor/*": ["./src/@executor/*"],
+      "@mcp": ["./src/@mcp/index.ts"],
+      "@mcp/*": ["./src/@mcp/*"]
     },
 
     // Emit Rules
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

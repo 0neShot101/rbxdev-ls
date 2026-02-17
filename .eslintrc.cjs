@@ -35,11 +35,10 @@ module.exports = {
     'import/order': [
       'error',
       {
-        'groups': ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'type'],
-        'newlines-between': 'always',
+        'groups': ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+        'newlines-between': 'ignore',
         'alphabetize': {
-          'order': 'asc',
-          'caseInsensitive': true,
+          'order': 'ignore',
         },
       },
     ],
