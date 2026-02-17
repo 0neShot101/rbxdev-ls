@@ -955,13 +955,13 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 				local mt = getrawmetatable(game)
 				local ncFunc = rawget(mt, '__namecall')
 				local oldNamecall
-				oldNamecall = oth.hook(ncFunc, newcclosure(function(self, ...)
+				oldNamecall = oth.hook(ncFunc, function(self, ...)
 					local method = getnamecallmethod()
 					if method == 'FireServer' or method == 'InvokeServer' then
 						logRemoteCall(self, method, ...)
 					end
 					return oldNamecall(self, ...)
-				end))
+				end)
 
 				spyCleanup = function()
 					if type(oth.unhook) == 'function' then
