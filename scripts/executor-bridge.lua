@@ -915,7 +915,7 @@ MESSAGE_HANDLERS.cloneInstance = function(message)
 end
 
 MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
-	if hookfunction == nil and hookmetamethod == nil then
+	if oth == nil and hookfunction == nil and hookmetamethod == nil then
 		sendResult('setRemoteSpyEnabledResult', message.id, false, { error = 'No hooking method available in this executor' })
 		return
 	end
@@ -949,7 +949,29 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 				end)
 			end
 
-			if hookfunction ~= nil then
+			if oth ~= nil and type(oth.hook) == 'function' then
+				local mt = getrawmetatable(game)
+				local ncFunc = rawget(mt, '__namecall')
+				local oldNamecall
+				oldNamecall = oth.hook(ncFunc, function(self, ...)
+					local method = getnamecallmethod()
+					if method == 'FireServer' or method == 'InvokeServer' then
+						logRemoteCall(self, method, ...)
+					end
+					setnamecallmethod(method)
+					return oldNamecall(self, ...)
+				end)
+
+				spyCleanup = function()
+					if type(oth.unhook) == 'function' then
+						oth.unhook(ncFunc)
+					else
+						oth.hook(ncFunc, oldNamecall)
+					end
+				end
+				print'[rbxdev-bridge] Remote spy enabled (oth)'
+
+			elseif hookfunction ~= nil then
 				local mt = getrawmetatable(game)
 				local ncFunc = rawget(mt, '__namecall')
 				local oldNamecall
@@ -958,6 +980,7 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 					if method == 'FireServer' or method == 'InvokeServer' then
 						logRemoteCall(self, method, ...)
 					end
+					setnamecallmethod(method)
 					return oldNamecall(self, ...)
 				end))
 
@@ -973,6 +996,7 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 					if method == 'FireServer' or method == 'InvokeServer' then
 						logRemoteCall(self, method, ...)
 					end
+					setnamecallmethod(method)
 					return oldNamecall(self, ...)
 				end))
 
