@@ -1,7 +1,3 @@
-/**
- * Luau Type System - Type Environment and Scope Management
- */
-
 import { createAllStdLibraries } from '@definitions/stdlib';
 import { RequestOptionsType, RequestResponseType } from '@definitions/sunc';
 import {
@@ -14,31 +10,21 @@ import {
   StringType,
 } from '@typings/types';
 
-import type { DocComment } from '@parser/docComment';
+import type { DocComment } from '@typings/parser';
 import type { TypeCheckMode } from '@typings/subtyping';
 import type { ClassType, EnumType, LuauType } from '@typings/types';
 
-/**
- * Represents a symbol in the type environment (variable, function, type alias, etc.)
- */
+/** Represents a symbol in the type environment (variable, function, type alias, etc.) */
 export interface Symbol {
-  /** The name of the symbol */
   readonly name: string;
-  /** The type of the symbol */
   readonly type: LuauType;
-  /** The kind of symbol (Variable, Function, Parameter, etc.) */
   readonly kind: SymbolKind;
-  /** Whether the symbol can be reassigned */
   readonly mutable: boolean;
-  /** The location where the symbol was declared */
   readonly declarationLocation: SymbolLocation | undefined;
-  /** Associated documentation comment */
   readonly docComment: DocComment | undefined;
 }
 
-/**
- * The kind of symbol in the type environment
- */
+/** The kind of symbol in the type environment. */
 export type SymbolKind =
   | 'Variable'
   | 'Function'
@@ -49,47 +35,28 @@ export type SymbolKind =
   | 'Class'
   | 'Enum';
 
-/**
- * Represents the source location of a symbol declaration
- */
+/** Represents the source location of a symbol declaration. */
 export interface SymbolLocation {
-  /** The file URI */
   readonly uri: string;
-  /** The 1-based line number */
   readonly line: number;
-  /** The 1-based column number */
   readonly column: number;
 }
 
-/**
- * Represents a lexical scope in the type environment
- */
+/** Represents a lexical scope in the type environment. */
 export interface Scope {
-  /** Unique identifier for this scope */
   readonly id: number;
-  /** The parent scope (undefined for global scope) */
   readonly parent: Scope | undefined;
-  /** Map of symbol names to their definitions */
   readonly symbols: Map<string, Symbol>;
-  /** Map of type alias names to their definitions */
   readonly types: Map<string, LuauType>;
-  /** The kind of scope */
   readonly kind: ScopeKind;
 }
 
-/**
- * The kind of lexical scope
- */
+/** The kind of lexical scope. */
 export type ScopeKind = 'Global' | 'Module' | 'Function' | 'Block' | 'Loop' | 'Conditional';
 
 let scopeIdCounter = 0;
 
-/**
- * Creates a new lexical scope
- * @param parent - The parent scope, or undefined for a root scope
- * @param kind - The kind of scope (defaults to 'Block')
- * @returns A new Scope object
- */
+/** Creates a new lexical scope. */
 export const createScope = (parent: Scope | undefined, kind: ScopeKind = 'Block'): Scope => ({
   'id': scopeIdCounter++,
   parent,
@@ -98,34 +65,21 @@ export const createScope = (parent: Scope | undefined, kind: ScopeKind = 'Block'
   kind,
 });
 
-/**
- * Resets the scope ID counter (primarily for testing)
- */
+/** Resets the scope ID counter (primarily for testing). */
 export const resetScopeCounter = (): void => {
   scopeIdCounter = 0;
 };
 
-/**
- * The type environment containing scopes, classes, and enums for type checking
- */
+/** The type environment containing scopes, classes, and enums for type checking. */
 export interface TypeEnvironment {
-  /** The type checking mode (strict, nonstrict, etc.) */
   readonly mode: TypeCheckMode;
-  /** The global/root scope */
   readonly globalScope: Scope;
-  /** The currently active scope */
   currentScope: Scope;
-  /** Map of class names to their type definitions */
   readonly classes: Map<string, ClassType>;
-  /** Map of enum names to their type definitions */
   readonly enums: Map<string, EnumType>;
 }
 
-/**
- * Creates a new type environment for type checking
- * @param mode - The type checking mode (defaults to 'strict')
- * @returns A new TypeEnvironment with an empty global scope
- */
+/** Creates a new type environment for type checking. */
 export const createTypeEnvironment = (mode: TypeCheckMode = 'strict'): TypeEnvironment => {
   const globalScope = createScope(undefined, 'Global');
   return {
@@ -137,15 +91,7 @@ export const createTypeEnvironment = (mode: TypeCheckMode = 'strict'): TypeEnvir
   };
 };
 
-/**
- * Defines a symbol in the current scope
- * @param env - The type environment
- * @param name - The name of the symbol
- * @param type - The type of the symbol
- * @param kind - The kind of symbol
- * @param mutable - Whether the symbol can be reassigned (defaults to true)
- * @param docComment - Optional documentation comment
- */
+/** Defines a symbol in the current scope. */
 export const defineSymbol = (
   env: TypeEnvironment,
   name: string,
@@ -164,16 +110,7 @@ export const defineSymbol = (
   });
 };
 
-/**
- * Defines a symbol in the current scope with a source location
- * @param env - The type environment
- * @param name - The name of the symbol
- * @param type - The type of the symbol
- * @param kind - The kind of symbol
- * @param location - The source location of the declaration
- * @param mutable - Whether the symbol can be reassigned (defaults to true)
- * @param docComment - Optional documentation comment
- */
+/** Defines a symbol in the current scope with a source location. */
 export const defineSymbolWithLocation = (
   env: TypeEnvironment,
   name: string,
@@ -193,12 +130,7 @@ export const defineSymbolWithLocation = (
   });
 };
 
-/**
- * Looks up a symbol by name, searching through parent scopes
- * @param env - The type environment
- * @param name - The name of the symbol to find
- * @returns The symbol if found, undefined otherwise
- */
+/** Looks up a symbol by name, searching through parent scopes. */
 export const lookupSymbol = (env: TypeEnvironment, name: string): Symbol | undefined => {
   let scope: Scope | undefined = env.currentScope;
 
@@ -211,30 +143,15 @@ export const lookupSymbol = (env: TypeEnvironment, name: string): Symbol | undef
   return undefined;
 };
 
-/**
- * Looks up a symbol in a specific scope only (does not search parent scopes)
- * @param scope - The scope to search in
- * @param name - The name of the symbol to find
- * @returns The symbol if found in this scope, undefined otherwise
- */
+/** Looks up a symbol in a specific scope only (does not search parent scopes). */
 export const lookupSymbolInScope = (scope: Scope, name: string): Symbol | undefined => scope.symbols.get(name);
 
-/**
- * Defines a type alias in the current scope
- * @param env - The type environment
- * @param name - The name of the type alias
- * @param type - The type that the alias refers to
- */
+/** Defines a type alias in the current scope. */
 export const defineTypeAlias = (env: TypeEnvironment, name: string, type: LuauType): void => {
   env.currentScope.types.set(name, type);
 };
 
-/**
- * Looks up a type alias by name, searching through parent scopes
- * @param env - The type environment
- * @param name - The name of the type alias to find
- * @returns The type if found, undefined otherwise
- */
+/** Looks up a type alias by name, searching through parent scopes. */
 export const lookupTypeAlias = (env: TypeEnvironment, name: string): LuauType | undefined => {
   let scope: Scope | undefined = env.currentScope;
 
@@ -247,58 +164,30 @@ export const lookupTypeAlias = (env: TypeEnvironment, name: string): LuauType | 
   return undefined;
 };
 
-/**
- * Registers a class type in the environment
- * @param env - The type environment
- * @param classType - The class type to register
- */
+/** Registers a class type in the environment. */
 export const defineClass = (env: TypeEnvironment, classType: ClassType): void => {
   env.classes.set(classType.name, classType);
 };
 
-/**
- * Looks up a class type by name
- * @param env - The type environment
- * @param name - The name of the class to find
- * @returns The class type if found, undefined otherwise
- */
+/** Looks up a class type by name. */
 export const lookupClass = (env: TypeEnvironment, name: string): ClassType | undefined => env.classes.get(name);
 
-/**
- * Registers an enum type in the environment
- * @param env - The type environment
- * @param enumType - The enum type to register
- */
+/** Registers an enum type in the environment. */
 export const defineEnum = (env: TypeEnvironment, enumType: EnumType): void => {
   env.enums.set(enumType.name, enumType);
 };
 
-/**
- * Looks up an enum type by name
- * @param env - The type environment
- * @param name - The name of the enum to find
- * @returns The enum type if found, undefined otherwise
- */
+/** Looks up an enum type by name. */
 export const lookupEnum = (env: TypeEnvironment, name: string): EnumType | undefined => env.enums.get(name);
 
-/**
- * Enters a new scope, making it the current scope
- * @param env - The type environment
- * @param kind - The kind of scope to create (defaults to 'Block')
- * @returns The newly created scope
- */
+/** Enters a new scope, making it the current scope. */
 export const enterScope = (env: TypeEnvironment, kind: ScopeKind = 'Block'): Scope => {
   const newScope = createScope(env.currentScope, kind);
   env.currentScope = newScope;
   return newScope;
 };
 
-/**
- * Exits the current scope, returning to the parent scope
- * @param env - The type environment
- * @returns The scope that was exited
- * @throws Error if attempting to exit the global scope
- */
+/** Exits the current scope, returning to the parent scope. */
 export const exitScope = (env: TypeEnvironment): Scope => {
   if (env.currentScope.parent === undefined) {
     throw new Error('Cannot exit global scope');
@@ -308,11 +197,7 @@ export const exitScope = (env: TypeEnvironment): Scope => {
   return oldScope;
 };
 
-/**
- * Checks if the current scope is within a function
- * @param env - The type environment
- * @returns True if inside a function scope, false otherwise
- */
+/** Checks if the current scope is within a function. */
 export const isInFunctionScope = (env: TypeEnvironment): boolean => {
   let scope: Scope | undefined = env.currentScope;
   while (scope !== undefined) {
@@ -322,25 +207,18 @@ export const isInFunctionScope = (env: TypeEnvironment): boolean => {
   return false;
 };
 
-/**
- * Checks if the current scope is within a loop (stops at function boundaries)
- * @param env - The type environment
- * @returns True if inside a loop scope, false otherwise
- */
+/** Checks if the current scope is within a loop (stops at function boundaries). */
 export const isInLoopScope = (env: TypeEnvironment): boolean => {
   let scope: Scope | undefined = env.currentScope;
   while (scope !== undefined) {
     if (scope.kind === 'Loop') return true;
-    if (scope.kind === 'Function') return false; // Stop at function boundary
+    if (scope.kind === 'Function') return false;
     scope = scope.parent;
   }
   return false;
 };
 
-/**
- * Adds standard Luau built-in functions and variables to the environment
- * @param env - The type environment to populate
- */
+/** Adds standard Luau built-in functions and variables to the environment. */
 export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
@@ -365,9 +243,13 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'error',
-    createFunctionType([{ 'name': 'message', 'type': AnyType, 'optional': false }], { 'kind': 'Never' }, {
-      'description': 'Raises an error with the given message. This function never returns.',
-    }),
+    createFunctionType(
+      [{ 'name': 'message', 'type': AnyType, 'optional': false }],
+      { 'kind': 'Never' },
+      {
+        'description': 'Raises an error with the given message. This function never returns.',
+      },
+    ),
     'Global',
     false,
   );
@@ -380,7 +262,10 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'message', 'type': StringType, 'optional': true },
       ],
       AnyType,
-      { 'description': 'Raises an error if the condition is false or nil. Returns all arguments if the condition is truthy.' },
+      {
+        'description':
+          'Raises an error if the condition is false or nil. Returns all arguments if the condition is truthy.',
+      },
     ),
     'Global',
     false,
@@ -506,7 +391,10 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
         { 'name': 'index', 'type': AnyType, 'optional': true },
       ],
       AnyType,
-      { 'description': 'Returns the next key-value pair in the table after the given index. Returns nil when there are no more elements.' },
+      {
+        'description':
+          'Returns the next key-value pair in the table after the given index. Returns nil when there are no more elements.',
+      },
     ),
     'Global',
     false,
@@ -600,7 +488,8 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
     env,
     'require',
     createFunctionType([{ 'name': 'module', 'type': AnyType, 'optional': false }], AnyType, {
-      'description': 'Loads and runs the given module, returning any values the module returns. Caches the result for subsequent calls.',
+      'description':
+        'Loads and runs the given module, returning any values the module returns. Caches the result for subsequent calls.',
     }),
     'Global',
     false,
@@ -609,7 +498,8 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
     env,
     'getfenv',
     createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': true }], AnyType, {
-      'description': 'Returns the environment table of the given function or the current function if none is specified.',
+      'description':
+        'Returns the environment table of the given function or the current function if none is specified.',
     }),
     'Global',
     false,
@@ -632,13 +522,13 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
     env,
     'newproxy',
     createFunctionType([{ 'name': 'addMeta', 'type': BooleanType, 'optional': true }], AnyType, {
-      'description': 'Creates a blank userdata. If addMeta is true, the userdata will have an empty metatable that can be modified.',
+      'description':
+        'Creates a blank userdata. If addMeta is true, the userdata will have an empty metatable that can be modified.',
     }),
     'Global',
     false,
   );
 
-  // Global variables - _G and shared allow dynamic property access
   defineSymbol(
     env,
     '_G',
@@ -655,17 +545,13 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
     true,
   );
 
-  // Standard libraries (math, string, table, task, etc.)
   const stdLibs = createAllStdLibraries();
   for (const [name, type] of stdLibs) {
     defineSymbol(env, name, type, 'Global', false);
   }
 };
 
-/**
- * Adds Roblox-specific globals and datatype constructors to the environment
- * @param env - The type environment to populate
- */
+/** Adds Roblox-specific globals and datatype constructors to the environment. */
 export const addRobloxGlobals = (env: TypeEnvironment): void => {
   defineSymbol(env, 'game', AnyType, 'Global', false);
   defineSymbol(env, 'workspace', AnyType, 'Global', false);
@@ -674,7 +560,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
   defineSymbol(env, 'Enum', AnyType, 'Global', false);
   defineSymbol(env, 'Instance', AnyType, 'Global', false);
 
-  // Roblox datatype constructors
   const vector3Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const vector2Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
   const cframeType: LuauType = { 'kind': 'TypeReference', 'name': 'CFrame' };
@@ -682,7 +567,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
   const udim2Type: LuauType = { 'kind': 'TypeReference', 'name': 'UDim2' };
   const udimType: LuauType = { 'kind': 'TypeReference', 'name': 'UDim' };
 
-  // Vector3
   defineSymbol(
     env,
     'Vector3',
@@ -735,7 +619,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Vector2
   defineSymbol(
     env,
     'Vector2',
@@ -766,7 +649,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // CFrame
   defineSymbol(
     env,
     'CFrame',
@@ -918,7 +800,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Color3
   defineSymbol(
     env,
     'Color3',
@@ -966,7 +847,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'v', 'type': NumberType, 'optional': false },
               ],
               color3Type,
-              { 'description': 'Creates a Color3 from hue, saturation, and value components, each in the range [0, 1].' },
+              {
+                'description': 'Creates a Color3 from hue, saturation, and value components, each in the range [0, 1].',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -975,11 +858,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromHex',
           {
-            'type': createFunctionType(
-              [{ 'name': 'hex', 'type': StringType, 'optional': false }],
-              color3Type,
-              { 'description': 'Creates a Color3 from a hexadecimal string (e.g., "#FF0000" or "FF0000").' },
-            ),
+            'type': createFunctionType([{ 'name': 'hex', 'type': StringType, 'optional': false }], color3Type, {
+              'description': 'Creates a Color3 from a hexadecimal string (e.g., "#FF0000" or "FF0000").',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -990,7 +871,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // BrickColor
   defineSymbol(
     env,
     'BrickColor',
@@ -999,11 +879,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType(
-              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a BrickColor from a name, number, or Color3 value.' },
-            ),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType, {
+              'description': 'Creates a BrickColor from a name, number, or Color3 value.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1011,16 +889,21 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'palette',
           {
-            'type': createFunctionType(
-              [{ 'name': 'index', 'type': NumberType, 'optional': false }],
-              AnyType,
-              { 'description': 'Returns the BrickColor from the default palette at the given index (0-127).' },
-            ),
+            'type': createFunctionType([{ 'name': 'index', 'type': NumberType, 'optional': false }], AnyType, {
+              'description': 'Returns the BrickColor from the default palette at the given index (0-127).',
+            }),
             'readonly': true,
             'optional': false,
           },
         ],
-        ['random', { 'type': createFunctionType([], AnyType, { 'description': 'Returns a random BrickColor.' }), 'readonly': true, 'optional': false }],
+        [
+          'random',
+          {
+            'type': createFunctionType([], AnyType, { 'description': 'Returns a random BrickColor.' }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
         ['White', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
         ['Black', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
         ['Red', { 'type': createFunctionType([], AnyType), 'readonly': true, 'optional': false }],
@@ -1033,7 +916,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // UDim
   defineSymbol(
     env,
     'UDim',
@@ -1060,7 +942,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // UDim2
   defineSymbol(
     env,
     'UDim2',
@@ -1119,7 +1000,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Rect
   defineSymbol(
     env,
     'Rect',
@@ -1127,7 +1007,14 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Rect from min/max points or x/y coordinates.' }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], AnyType, {
+              'isVariadic': true,
+              'description': 'Creates a new Rect from min/max points or x/y coordinates.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1135,7 +1022,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Region3
   defineSymbol(
     env,
     'Region3',
@@ -1162,7 +1048,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Ray
   defineSymbol(
     env,
     'Ray',
@@ -1189,7 +1074,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // TweenInfo
   defineSymbol(
     env,
     'TweenInfo',
@@ -1220,7 +1104,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // NumberRange
   defineSymbol(
     env,
     'NumberRange',
@@ -1247,7 +1130,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // NumberSequence
   defineSymbol(
     env,
     'NumberSequence',
@@ -1256,11 +1138,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType(
-              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a new NumberSequence from a single value, two values, or an array of NumberSequenceKeypoints.' },
-            ),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType, {
+              'description':
+                'Creates a new NumberSequence from a single value, two values, or an array of NumberSequenceKeypoints.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1271,7 +1152,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // NumberSequenceKeypoint
   defineSymbol(
     env,
     'NumberSequenceKeypoint',
@@ -1287,7 +1167,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'envelope', 'type': NumberType, 'optional': true },
               ],
               AnyType,
-              { 'description': 'Creates a new NumberSequenceKeypoint at the given time with a value and optional envelope.' },
+              {
+                'description':
+                  'Creates a new NumberSequenceKeypoint at the given time with a value and optional envelope.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1299,7 +1182,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // ColorSequence
   defineSymbol(
     env,
     'ColorSequence',
@@ -1308,11 +1190,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType(
-              [{ 'name': 'value', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a new ColorSequence from a single Color3, two Color3s, or an array of ColorSequenceKeypoints.' },
-            ),
+            'type': createFunctionType([{ 'name': 'value', 'type': AnyType, 'optional': false }], AnyType, {
+              'description':
+                'Creates a new ColorSequence from a single Color3, two Color3s, or an array of ColorSequenceKeypoints.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1323,7 +1204,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // ColorSequenceKeypoint
   defineSymbol(
     env,
     'ColorSequenceKeypoint',
@@ -1350,7 +1230,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // PhysicalProperties
   defineSymbol(
     env,
     'PhysicalProperties',
@@ -1359,11 +1238,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'new',
           {
-            'type': createFunctionType(
-              [{ 'name': 'material', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates custom PhysicalProperties from a material or explicit density, friction, and elasticity values.' },
-            ),
+            'type': createFunctionType([{ 'name': 'material', 'type': AnyType, 'optional': false }], AnyType, {
+              'description':
+                'Creates custom PhysicalProperties from a material or explicit density, friction, and elasticity values.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1374,29 +1252,48 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // OverlapParams
   defineSymbol(
     env,
     'OverlapParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new OverlapParams object for use with spatial query methods.' }), 'readonly': true, 'optional': false }]]),
+      new Map([
+        [
+          'new',
+          {
+            'type': createFunctionType([], AnyType, {
+              'description': 'Creates a new OverlapParams object for use with spatial query methods.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+      ]),
     ),
     'Global',
     false,
   );
 
-  // RaycastParams
   defineSymbol(
     env,
     'RaycastParams',
     createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new RaycastParams object for use with workspace:Raycast().' }), 'readonly': true, 'optional': false }]]),
+      new Map([
+        [
+          'new',
+          {
+            'type': createFunctionType([], AnyType, {
+              'description': 'Creates a new RaycastParams object for use with workspace:Raycast().',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+      ]),
     ),
     'Global',
     false,
   );
 
-  // Native vector type (Luau built-in)
   defineSymbol(
     env,
     'vector',
@@ -1421,11 +1318,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'magnitude',
           {
-            'type': createFunctionType(
-              [{ 'name': 'v', 'type': AnyType, 'optional': false }],
-              NumberType,
-              { 'description': 'Returns the magnitude (length) of the vector.' },
-            ),
+            'type': createFunctionType([{ 'name': 'v', 'type': AnyType, 'optional': false }], NumberType, {
+              'description': 'Returns the magnitude (length) of the vector.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1539,7 +1434,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'max',
           {
-            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true, 'description': 'Returns the component-wise maximum of the given vectors.' }),
+            'type': createFunctionType(
+              [],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'isVariadic': true, 'description': 'Returns the component-wise maximum of the given vectors.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1547,7 +1446,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'min',
           {
-            'type': createFunctionType([], { 'kind': 'Primitive', 'name': 'vector' }, { 'isVariadic': true, 'description': 'Returns the component-wise minimum of the given vectors.' }),
+            'type': createFunctionType(
+              [],
+              { 'kind': 'Primitive', 'name': 'vector' },
+              { 'isVariadic': true, 'description': 'Returns the component-wise minimum of the given vectors.' },
+            ),
             'readonly': true,
             'optional': false,
           },
@@ -1560,7 +1463,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Axes
   defineSymbol(
     env,
     'Axes',
@@ -1568,7 +1470,14 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Axes object from a combination of Enum.Axis or Enum.NormalId values.' }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], AnyType, {
+              'isVariadic': true,
+              'description': 'Creates a new Axes object from a combination of Enum.Axis or Enum.NormalId values.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1576,7 +1485,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Faces
   defineSymbol(
     env,
     'Faces',
@@ -1584,7 +1492,14 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
       new Map([
         [
           'new',
-          { 'type': createFunctionType([], AnyType, { 'isVariadic': true, 'description': 'Creates a new Faces object from a combination of Enum.NormalId values.' }), 'readonly': true, 'optional': false },
+          {
+            'type': createFunctionType([], AnyType, {
+              'isVariadic': true,
+              'description': 'Creates a new Faces object from a combination of Enum.NormalId values.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
         ],
       ]),
     ),
@@ -1592,7 +1507,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Font
   defineSymbol(
     env,
     'Font',
@@ -1608,7 +1522,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
                 { 'name': 'style', 'type': AnyType, 'optional': true },
               ],
               AnyType,
-              { 'description': 'Creates a new Font from a font family asset ID or path, with optional weight and style.' },
+              {
+                'description':
+                  'Creates a new Font from a font family asset ID or path, with optional weight and style.',
+              },
             ),
             'readonly': true,
             'optional': false,
@@ -1617,11 +1534,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromEnum',
           {
-            'type': createFunctionType(
-              [{ 'name': 'font', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a Font from an Enum.Font value.' },
-            ),
+            'type': createFunctionType([{ 'name': 'font', 'type': AnyType, 'optional': false }], AnyType, {
+              'description': 'Creates a Font from an Enum.Font value.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1664,21 +1579,27 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // DateTime
   defineSymbol(
     env,
     'DateTime',
     createTableType(
       new Map([
-        ['now', { 'type': createFunctionType([], AnyType, { 'description': 'Returns a DateTime representing the current UTC time.' }), 'readonly': true, 'optional': false }],
+        [
+          'now',
+          {
+            'type': createFunctionType([], AnyType, {
+              'description': 'Returns a DateTime representing the current UTC time.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
         [
           'fromUnixTimestamp',
           {
-            'type': createFunctionType(
-              [{ 'name': 'timestamp', 'type': NumberType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a DateTime from a Unix timestamp (seconds since epoch).' },
-            ),
+            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], AnyType, {
+              'description': 'Creates a DateTime from a Unix timestamp (seconds since epoch).',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1686,11 +1607,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromUnixTimestampMillis',
           {
-            'type': createFunctionType(
-              [{ 'name': 'timestamp', 'type': NumberType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a DateTime from a Unix timestamp in milliseconds.' },
-            ),
+            'type': createFunctionType([{ 'name': 'timestamp', 'type': NumberType, 'optional': false }], AnyType, {
+              'description': 'Creates a DateTime from a Unix timestamp in milliseconds.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1698,11 +1617,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromIsoDate',
           {
-            'type': createFunctionType(
-              [{ 'name': 'isoDate', 'type': StringType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a DateTime from an ISO 8601 date-time string.' },
-            ),
+            'type': createFunctionType([{ 'name': 'isoDate', 'type': StringType, 'optional': false }], AnyType, {
+              'description': 'Creates a DateTime from an ISO 8601 date-time string.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1710,11 +1627,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromLocalTime',
           {
-            'type': createFunctionType(
-              [{ 'name': 'dateTime', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a DateTime from a table of local time components.' },
-            ),
+            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], AnyType, {
+              'description': 'Creates a DateTime from a table of local time components.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1722,11 +1637,9 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
         [
           'fromUniversalTime',
           {
-            'type': createFunctionType(
-              [{ 'name': 'dateTime', 'type': AnyType, 'optional': false }],
-              AnyType,
-              { 'description': 'Creates a DateTime from a table of UTC time components.' },
-            ),
+            'type': createFunctionType([{ 'name': 'dateTime', 'type': AnyType, 'optional': false }], AnyType, {
+              'description': 'Creates a DateTime from a table of UTC time components.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1737,7 +1650,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // PathWaypoint
   defineSymbol(
     env,
     'PathWaypoint',
@@ -1765,31 +1677,17 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // CatalogSearchParams
   defineSymbol(
     env,
     'CatalogSearchParams',
-    createTableType(
-      new Map([['new', { 'type': createFunctionType([], AnyType, { 'description': 'Creates a new CatalogSearchParams object for searching the avatar catalog.' }), 'readonly': true, 'optional': false }]]),
-    ),
-    'Global',
-    false,
-  );
-
-  // Random
-  defineSymbol(
-    env,
-    'Random',
     createTableType(
       new Map([
         [
           'new',
           {
-            'type': createFunctionType(
-              [{ 'name': 'seed', 'type': NumberType, 'optional': true }],
-              AnyType,
-              { 'description': 'Creates a new Random number generator with an optional seed.' },
-            ),
+            'type': createFunctionType([], AnyType, {
+              'description': 'Creates a new CatalogSearchParams object for searching the avatar catalog.',
+            }),
             'readonly': true,
             'optional': false,
           },
@@ -1800,7 +1698,27 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Region3int16
+  defineSymbol(
+    env,
+    'Random',
+    createTableType(
+      new Map([
+        [
+          'new',
+          {
+            'type': createFunctionType([{ 'name': 'seed', 'type': NumberType, 'optional': true }], AnyType, {
+              'description': 'Creates a new Random number generator with an optional seed.',
+            }),
+            'readonly': true,
+            'optional': false,
+          },
+        ],
+      ]),
+    ),
+    'Global',
+    false,
+  );
+
   defineSymbol(
     env,
     'Region3int16',
@@ -1827,7 +1745,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Vector2int16
   defineSymbol(
     env,
     'Vector2int16',
@@ -1854,7 +1771,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Vector3int16
   defineSymbol(
     env,
     'Vector3int16',
@@ -1882,15 +1798,12 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Roblox-specific globals
   defineSymbol(
     env,
     'wait',
-    createFunctionType(
-      [{ 'name': 'seconds', 'type': NumberType, 'optional': true }],
-      NumberType,
-      { 'description': 'Yields the current thread for the given duration. Deprecated in favor of task.wait().' },
-    ),
+    createFunctionType([{ 'name': 'seconds', 'type': NumberType, 'optional': true }], NumberType, {
+      'description': 'Yields the current thread for the given duration. Deprecated in favor of task.wait().',
+    }),
     'Global',
     false,
   );
@@ -1911,26 +1824,52 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
   defineSymbol(
     env,
     'spawn',
-    createFunctionType(
-      [{ 'name': 'callback', 'type': AnyType, 'optional': false }],
-      NilType,
-      { 'description': 'Schedules a function to run in a new thread. Deprecated in favor of task.spawn().' },
-    ),
+    createFunctionType([{ 'name': 'callback', 'type': AnyType, 'optional': false }], NilType, {
+      'description': 'Schedules a function to run in a new thread. Deprecated in favor of task.spawn().',
+    }),
     'Global',
     false,
   );
-  defineSymbol(env, 'tick', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since the Unix epoch. Deprecated in favor of os.clock() or DateTime.' }), 'Global', false);
-  defineSymbol(env, 'time', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since the game started running.' }), 'Global', false);
-  defineSymbol(env, 'elapsedTime', createFunctionType([], NumberType, { 'description': 'Returns the time in seconds since Roblox started. Deprecated in favor of os.clock().' }), 'Global', false);
-  defineSymbol(env, 'gcinfo', createFunctionType([], NumberType, { 'description': 'Returns the total memory heap size in kilobytes.' }), 'Global', false);
+  defineSymbol(
+    env,
+    'tick',
+    createFunctionType([], NumberType, {
+      'description': 'Returns the time in seconds since the Unix epoch. Deprecated in favor of os.clock() or DateTime.',
+    }),
+    'Global',
+    false,
+  );
+  defineSymbol(
+    env,
+    'time',
+    createFunctionType([], NumberType, {
+      'description': 'Returns the time in seconds since the game started running.',
+    }),
+    'Global',
+    false,
+  );
+  defineSymbol(
+    env,
+    'elapsedTime',
+    createFunctionType([], NumberType, {
+      'description': 'Returns the time in seconds since Roblox started. Deprecated in favor of os.clock().',
+    }),
+    'Global',
+    false,
+  );
+  defineSymbol(
+    env,
+    'gcinfo',
+    createFunctionType([], NumberType, { 'description': 'Returns the total memory heap size in kilobytes.' }),
+    'Global',
+    false,
+  );
   defineSymbol(
     env,
     'collectgarbage',
-    createFunctionType(
-      [{ 'name': 'opt', 'type': StringType, 'optional': true }],
-      AnyType,
-      { 'description': 'Performs garbage collection operations. Only "count" is supported on Roblox.' },
-    ),
+    createFunctionType([{ 'name': 'opt', 'type': StringType, 'optional': true }], AnyType, {
+      'description': 'Performs garbage collection operations. Only "count" is supported on Roblox.',
+    }),
     'Global',
     false,
   );
@@ -1946,7 +1885,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // UserGameSettings type - returned by UserSettings():GetService("UserGameSettings")
   const vector2Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
   const userGameSettingsType: LuauType = createTableType(
     new Map([
@@ -2080,7 +2018,6 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     ]),
   );
 
-  // UserSettings type - returned by UserSettings() global function
   const userSettingsType: LuauType = createTableType(
     new Map([
       [
@@ -2105,15 +2042,11 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
     ]),
   );
 
-  // UserSettings() global function
   defineSymbol(env, 'UserSettings', createFunctionType([], userSettingsType), 'Global', false);
   defineSymbol(env, 'settings', createFunctionType([], AnyType), 'Global', false);
 };
 
-/**
- * Adds Sunc executor-specific globals to the environment
- * @param env - The type environment to populate
- */
+/** Adds Sunc executor-specific globals to the environment. */
 export const addSuncGlobals = (env: TypeEnvironment): void => {
   defineSymbol(env, 'checkcaller', createFunctionType([], BooleanType), 'Global', false);
   defineSymbol(
@@ -2145,7 +2078,7 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
         { 'name': 'method', 'type': StringType, 'optional': false },
         { 'name': 'hook', 'type': AnyType, 'optional': false },
       ],
-      createFunctionType([], AnyType, { 'isVariadic': true }), // Returns the original function
+      createFunctionType([], AnyType, { 'isVariadic': true }),
     ),
     'Global',
     false,
@@ -2186,7 +2119,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Environment
   defineSymbol(env, 'getgc', createFunctionType([], AnyType), 'Global', false);
   defineSymbol(env, 'getgenv', createFunctionType([], AnyType), 'Global', false);
   defineSymbol(env, 'getrenv', createFunctionType([], AnyType), 'Global', false);
@@ -2199,7 +2131,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Filesystem
   defineSymbol(
     env,
     'readfile',
@@ -2290,7 +2221,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Encoding
   defineSymbol(
     env,
     'base64encode',
@@ -2326,7 +2256,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Instances
   defineSymbol(
     env,
     'cloneref',
@@ -2379,7 +2308,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Scripts
   defineSymbol(env, 'getcallingscript', createFunctionType([], AnyType), 'Global', false);
   defineSymbol(env, 'getloadedmodules', createFunctionType([], AnyType), 'Global', false);
   defineSymbol(env, 'getrunningscripts', createFunctionType([], AnyType), 'Global', false);
@@ -2413,7 +2341,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Metatable
   defineSymbol(
     env,
     'getrawmetatable',
@@ -2456,7 +2383,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
   );
   defineSymbol(env, 'getnamecallmethod', createFunctionType([], StringType), 'Global', false);
 
-  // Reflection
   defineSymbol(
     env,
     'gethiddenproperty',
@@ -2520,7 +2446,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Signals
   defineSymbol(
     env,
     'firesignal',
@@ -2543,7 +2468,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Misc
   defineSymbol(
     env,
     'identifyexecutor',
@@ -2559,7 +2483,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Additional common executor globals
   defineSymbol(
     env,
     'setsimulationradius',
@@ -2658,13 +2581,11 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Executor detection flags
   defineSymbol(env, 'PROTOSMASHER_LOADED', BooleanType, 'Global', false);
   defineSymbol(env, 'KRNL_LOADED', BooleanType, 'Global', false);
   defineSymbol(env, 'SENTINEL_LOADED', BooleanType, 'Global', false);
   defineSymbol(env, 'SIRHURT_LOADED', BooleanType, 'Global', false);
 
-  // Console functions
   defineSymbol(
     env,
     'rconsoleprint',
@@ -2703,7 +2624,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Mouse functions
   defineSymbol(env, 'mouse1click', createFunctionType([], NilType), 'Global', false);
   defineSymbol(env, 'mouse1press', createFunctionType([], NilType), 'Global', false);
   defineSymbol(env, 'mouse1release', createFunctionType([], NilType), 'Global', false);
@@ -2744,7 +2664,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Keyboard functions
   defineSymbol(
     env,
     'keypress',
@@ -2762,7 +2681,6 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
   defineSymbol(env, 'isrbxactive', createFunctionType([], BooleanType), 'Global', false);
   defineSymbol(env, 'isgameactive', createFunctionType([], BooleanType), 'Global', false);
 
-  // HTTP variants
   defineSymbol(
     env,
     'http_request',
@@ -2778,11 +2696,9 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  // Crypt namespace
   const cryptNamespace = createTableType(new Map(), { 'indexer': { 'keyType': StringType, 'valueType': AnyType } });
   defineSymbol(env, 'crypt', cryptNamespace, 'Global', false);
 
-  // syn namespace (Synapse X specific)
   const synNamespace = createTableType(
     new Map([
       [

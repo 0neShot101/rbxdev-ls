@@ -1,19 +1,3 @@
-/**
- * Luau Standard Library Type Definitions
- *
- * This module provides type definitions for the Luau standard library, including:
- * - math: Mathematical functions (abs, sin, cos, random, etc.)
- * - string: String manipulation functions (sub, find, format, etc.)
- * - table: Table manipulation functions (insert, remove, sort, etc.)
- * - coroutine: Coroutine management functions (create, resume, yield, etc.)
- * - bit32: Bitwise operations (band, bor, bxor, lshift, rshift, etc.)
- * - utf8: UTF-8 string utilities (char, codepoint, len, etc.)
- * - os: Operating system functions (clock, date, time)
- * - buffer: Binary data manipulation (create, read/write operations)
- * - task: Task scheduling functions (spawn, delay, wait, defer)
- * - debug: Debugging utilities (info, traceback, profilebegin)
- */
-
 import {
   AnyType,
   BooleanType,
@@ -26,47 +10,16 @@ import {
   StringType,
 } from '@typings/types';
 
-/**
- * Creates a function parameter definition.
- *
- * @param name - The name of the parameter
- * @param type - The Luau type of the parameter
- * @param optional - Whether the parameter is optional (defaults to false)
- * @returns A FunctionParam object
- */
 const createParam = (name: string, type: LuauType, optional = false): FunctionParam => ({
   name,
   type,
   optional,
 });
 
-/**
- * Creates a method type (function type) with the given parameters and return type.
- *
- * @param params - Array of function parameters
- * @param returnType - The return type of the method
- * @param isVariadic - Whether the method accepts variadic arguments (defaults to false)
- * @param description - A short description of the method for documentation
- * @returns A FunctionType representing the method
- */
 const createMethod = (params: FunctionParam[], returnType: LuauType, isVariadic = false, description?: string) =>
   createFunctionType(params, returnType, { isVariadic, ...(description !== undefined ? { description } : {}) });
 
-/**
- * Creates the Luau math library type definition.
- *
- * The math library provides mathematical functions including:
- * - Trigonometric: sin, cos, tan, asin, acos, atan, atan2
- * - Hyperbolic: sinh, cosh, tanh
- * - Rounding: ceil, floor, round, sign
- * - Exponential: exp, log, log10, pow, sqrt
- * - Utility: abs, clamp, min, max, fmod, modf, frexp, ldexp
- * - Random: random, randomseed
- * - Luau-specific: noise (Perlin noise)
- * - Constants: pi, huge
- *
- * @returns A TableType representing the math library
- */
+/** Creates the Luau math library type definition with trigonometric, rounding, and utility functions. */
 export const createMathLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -457,21 +410,7 @@ export const createMathLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau string library type definition.
- *
- * The string library provides string manipulation functions including:
- * - Character conversion: byte, char
- * - Pattern matching: find, match, gmatch, gsub
- * - Formatting: format
- * - Case conversion: lower, upper
- * - Substring: sub, len, reverse
- * - Repetition: rep
- * - Binary packing: pack, packsize, unpack
- * - Luau-specific: split
- *
- * @returns A TableType representing the string library
- */
+/** Creates the Luau string library type definition with pattern matching, formatting, and manipulation functions. */
 export const createStringLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -707,19 +646,7 @@ export const createStringLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau table library type definition.
- *
- * The table library provides table manipulation functions including:
- * - Modification: insert, remove, clear, sort
- * - Creation: create, clone, pack
- * - Traversal: concat, move, unpack
- * - Search: find
- * - Utility: getn, maxn
- * - Luau-specific: freeze, isfrozen
- *
- * @returns A TableType representing the table library
- */
+/** Creates the Luau table library type definition with insertion, removal, sorting, and freeze operations. */
 export const createTableLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -951,17 +878,7 @@ export const createTableLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau coroutine library type definition.
- *
- * The coroutine library provides coroutine management functions including:
- * - Creation: create, wrap
- * - Execution: resume, yield
- * - State: status, running, isyieldable
- * - Cleanup: close
- *
- * @returns A TableType representing the coroutine library
- */
+/** Creates the Luau coroutine library type definition with create, resume, yield, and status operations. */
 export const createCoroutineLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -1062,19 +979,7 @@ export const createCoroutineLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau bit32 library type definition.
- *
- * The bit32 library provides bitwise operations including:
- * - Logical: band, bor, bxor, bnot
- * - Shifts: lshift, rshift, arshift
- * - Rotation: lrotate, rrotate
- * - Extraction: extract, replace
- * - Testing: btest
- * - Counting: countlz, countrz
- *
- * @returns A TableType representing the bit32 library
- */
+/** Creates the Luau bit32 library type definition with bitwise logical, shift, and rotation operations. */
 export const createBit32Library = (): LuauType =>
   createTableType(
     new Map([
@@ -1243,20 +1148,7 @@ export const createBit32Library = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau utf8 library type definition.
- *
- * The utf8 library provides UTF-8 string utilities including:
- * - Conversion: char, codepoint
- * - Iteration: codes
- * - Length: len
- * - Position: offset
- * - Normalization: nfcnormalize, nfdnormalize
- * - Grapheme iteration: graphemes
- * - Pattern: charpattern
- *
- * @returns A TableType representing the utf8 library
- */
+/** Creates the Luau utf8 library type definition with codepoint conversion, iteration, and normalization. */
 export const createUtf8Library = (): LuauType =>
   createTableType(
     new Map([
@@ -1363,18 +1255,7 @@ export const createUtf8Library = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau os library type definition.
- *
- * The os library provides operating system related functions including:
- * - Timing: clock, time, difftime
- * - Date formatting: date
- *
- * Note: Luau's os library is sandboxed and does not include file system
- * operations, execute, or other potentially dangerous functions.
- *
- * @returns A TableType representing the os library
- */
+/** Creates the Luau os library type definition with clock, time, date, and difftime. */
 export const createOsLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -1428,19 +1309,7 @@ export const createOsLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau buffer library type definition.
- *
- * The buffer library provides binary data manipulation functions including:
- * - Creation: create, fromstring
- * - Conversion: tostring
- * - Information: len
- * - Copying: copy, fill
- * - Reading: readi8, readu8, readi16, readu16, readi32, readu32, readf32, readf64, readstring
- * - Writing: writei8, writeu8, writei16, writeu16, writei32, writeu32, writef32, writef64, writestring
- *
- * @returns A TableType representing the buffer library
- */
+/** Creates the Luau buffer library type definition with binary data read, write, and copy operations. */
 export const createBufferLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -1811,20 +1680,7 @@ export const createBufferLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau task library type definition.
- *
- * The task library provides task scheduling functions including:
- * - Spawning: spawn, defer
- * - Delayed execution: delay, wait
- * - Cancellation: cancel
- * - Parallel Luau: synchronize, desynchronize
- *
- * This is the Roblox-specific task scheduler API that provides more
- * control over script execution compared to the legacy spawn/wait functions.
- *
- * @returns A TableType representing the task library
- */
+/** Creates the Luau task library type definition with spawn, defer, delay, wait, and cancel operations. */
 export const createTaskLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -1915,20 +1771,7 @@ export const createTaskLibrary = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Luau debug library type definition.
- *
- * The debug library provides debugging utilities including:
- * - Stack inspection: info, traceback
- * - Profiling: profilebegin, profileend
- * - Memory: setmemorycategory, resetmemorycategory
- *
- * Note: Luau's debug library is sandboxed and does not include
- * getupvalue, setupvalue, or other potentially dangerous functions
- * in the standard Roblox environment (these may be available in executors).
- *
- * @returns A TableType representing the debug library
- */
+/** Creates the Luau debug library type definition with info, traceback, and profiling operations. */
 export const createDebugLibrary = (): LuauType =>
   createTableType(
     new Map([
@@ -2003,30 +1846,9 @@ export const createDebugLibrary = (): LuauType =>
     ]),
   );
 
-/** Cached standard library types - they never change so we can reuse them */
 let cachedStdLibs: Map<string, LuauType> | undefined;
 
-/**
- * Creates and returns all Luau standard library type definitions.
- *
- * This function creates type definitions for all standard Luau libraries
- * and caches the result for subsequent calls, since the standard library
- * definitions never change.
- *
- * Libraries included:
- * - math: Mathematical operations
- * - string: String manipulation
- * - table: Table operations
- * - coroutine: Coroutine management
- * - bit32: Bitwise operations
- * - utf8: UTF-8 utilities
- * - os: OS-related functions
- * - buffer: Binary data manipulation
- * - task: Task scheduling
- * - debug: Debugging utilities
- *
- * @returns A Map of library names to their TableType definitions
- */
+/** Creates and returns all Luau standard library type definitions, caching the result for reuse. */
 export const createAllStdLibraries = (): Map<string, LuauType> => {
   if (cachedStdLibs !== undefined) return cachedStdLibs;
 

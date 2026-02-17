@@ -1,25 +1,11 @@
-/**
- * Roblox API Type Definitions Validation Tests
- * Run with: bun tests/roblox-api-validation.test.ts
- *
- * This test validates that the Roblox API type definitions are complete and correct:
- * - Players class has LocalPlayer property returning Player
- * - Player class has Character property returning Model
- * - TweenService has Create method returning Tween
- * - Tween inherits from TweenBase which has Play method
- * - Instance has GetChildren, FindFirstChild, WaitForChild methods
- * - DataModel (game) has GetService method
- * - Humanoid has Health, WalkSpeed properties
- */
+import { buildGlobalEnvironment } from '@definitions/globals';
+import { describe, expect, test } from 'bun:test';
 
-import { buildGlobalEnvironment } from '../src/@definitions/globals';
-import type { LuauType, ClassType, ClassMethod, ClassProperty, FunctionType } from '../src/@typings/types';
+import type { ClassMethod, ClassProperty, ClassType, LuauType } from '@typings/types';
 
 const globalEnv = buildGlobalEnvironment();
 
 const isClassType = (type: LuauType): type is ClassType => type.kind === 'Class';
-
-const isFunctionType = (type: LuauType): type is FunctionType => type.kind === 'Function';
 
 const resolveTypeReference = (type: LuauType): LuauType => {
   if (type.kind === 'TypeReference') {
@@ -45,21 +31,6 @@ const getPropertyFromClass = (cls: ClassType, propName: string): ClassProperty |
   return undefined;
 };
 
-let testsPassed = 0;
-let testsFailed = 0;
-const failures: string[] = [];
-
-const pass = (message: string): void => {
-  console.log(`  PASS: ${message}`);
-  testsPassed++;
-};
-
-const fail = (message: string): void => {
-  console.log(`  FAIL: ${message}`);
-  testsFailed++;
-  failures.push(message);
-};
-
 const getClass = (name: string): ClassType | undefined => {
   const cls = globalEnv.robloxClasses.get(name);
   if (cls === undefined) return undefined;
@@ -67,258 +38,235 @@ const getClass = (name: string): ClassType | undefined => {
   return cls;
 };
 
-console.log('Roblox API Type Definitions Validation\n');
-console.log('='.repeat(50));
+describe('1. Players class - LocalPlayer property', () => {
+  const playersClass = getClass('Players');
 
-console.log('\n1. Players class - LocalPlayer property');
-const playersClass = getClass('Players');
-if (playersClass === undefined) {
-  fail('Players class not found');
-} else {
-  pass('Players class exists');
+  test('Players class exists', () => {
+    expect(playersClass).toBeDefined();
+  });
 
-  const localPlayerProp = getPropertyFromClass(playersClass, 'LocalPlayer');
-  if (localPlayerProp === undefined) {
-    fail('Players.LocalPlayer property not found');
-  } else {
-    pass('Players.LocalPlayer property exists');
+  test('Players.LocalPlayer property exists', () => {
+    expect(playersClass).toBeDefined();
+    const localPlayerProp = getPropertyFromClass(playersClass!, 'LocalPlayer');
+    expect(localPlayerProp).toBeDefined();
+  });
 
-    const resolvedType = resolveTypeReference(localPlayerProp.type);
-    if (isClassType(resolvedType) && resolvedType.name === 'Player') {
-      pass('Players.LocalPlayer returns Player type');
-    } else if (localPlayerProp.type.kind === 'TypeReference' && localPlayerProp.type.name === 'Player') {
-      pass('Players.LocalPlayer returns Player (as TypeReference)');
+  test('Players.LocalPlayer returns Player type', () => {
+    expect(playersClass).toBeDefined();
+    const localPlayerProp = getPropertyFromClass(playersClass!, 'LocalPlayer');
+    expect(localPlayerProp).toBeDefined();
+
+    const resolvedType = resolveTypeReference(localPlayerProp!.type);
+    const isPlayerClass = isClassType(resolvedType) && resolvedType.name === 'Player';
+    const isPlayerRef = localPlayerProp!.type.kind === 'TypeReference' && localPlayerProp!.type.name === 'Player';
+    expect(isPlayerClass || isPlayerRef).toBe(true);
+  });
+});
+
+describe('2. Player class - Character property', () => {
+  const playerClass = getClass('Player');
+
+  test('Player class exists', () => {
+    expect(playerClass).toBeDefined();
+  });
+
+  test('Player.Character property exists', () => {
+    expect(playerClass).toBeDefined();
+    const characterProp = getPropertyFromClass(playerClass!, 'Character');
+    expect(characterProp).toBeDefined();
+  });
+
+  test('Player.Character returns Model type', () => {
+    expect(playerClass).toBeDefined();
+    const characterProp = getPropertyFromClass(playerClass!, 'Character');
+    expect(characterProp).toBeDefined();
+
+    const resolvedType = resolveTypeReference(characterProp!.type);
+    const isModelClass = isClassType(resolvedType) && resolvedType.name === 'Model';
+    const isModelRef = characterProp!.type.kind === 'TypeReference' && characterProp!.type.name === 'Model';
+    expect(isModelClass || isModelRef).toBe(true);
+  });
+});
+
+describe('3. TweenService class - Create method', () => {
+  const tweenServiceClass = getClass('TweenService');
+
+  test('TweenService class exists', () => {
+    expect(tweenServiceClass).toBeDefined();
+  });
+
+  test('TweenService:Create method exists', () => {
+    expect(tweenServiceClass).toBeDefined();
+    const createMethod = getMethodFromClass(tweenServiceClass!, 'Create');
+    expect(createMethod).toBeDefined();
+  });
+
+  test('TweenService:Create returns Tween type', () => {
+    expect(tweenServiceClass).toBeDefined();
+    const createMethod = getMethodFromClass(tweenServiceClass!, 'Create');
+    expect(createMethod).toBeDefined();
+
+    const returnType = resolveTypeReference(createMethod!.func.returnType);
+    const isTweenClass = isClassType(returnType) && returnType.name === 'Tween';
+    const isTweenRef =
+      createMethod!.func.returnType.kind === 'TypeReference' && createMethod!.func.returnType.name === 'Tween';
+    expect(isTweenClass || isTweenRef).toBe(true);
+  });
+});
+
+describe('4. Tween inherits from TweenBase which has Play method', () => {
+  const tweenClass = getClass('Tween');
+  const tweenBaseClass = getClass('TweenBase');
+
+  test('Tween class exists', () => {
+    expect(tweenClass).toBeDefined();
+  });
+
+  test('TweenBase class exists', () => {
+    expect(tweenBaseClass).toBeDefined();
+  });
+
+  test('Tween inherits from TweenBase', () => {
+    expect(tweenClass).toBeDefined();
+    expect(tweenClass!.superclass).toBeDefined();
+    expect(tweenClass!.superclass!.name).toBe('TweenBase');
+  });
+
+  test('TweenBase:Play method exists', () => {
+    expect(tweenBaseClass).toBeDefined();
+    const playMethod = getMethodFromClass(tweenBaseClass!, 'Play');
+    expect(playMethod).toBeDefined();
+  });
+
+  test('TweenBase:Pause method exists', () => {
+    expect(tweenBaseClass).toBeDefined();
+    const pauseMethod = getMethodFromClass(tweenBaseClass!, 'Pause');
+    expect(pauseMethod).toBeDefined();
+  });
+
+  test('TweenBase:Cancel method exists', () => {
+    expect(tweenBaseClass).toBeDefined();
+    const cancelMethod = getMethodFromClass(tweenBaseClass!, 'Cancel');
+    expect(cancelMethod).toBeDefined();
+  });
+
+  test('Play method accessible from Tween via inheritance', () => {
+    expect(tweenClass).toBeDefined();
+    const playMethodFromTween = getMethodFromClass(tweenClass!, 'Play');
+    expect(playMethodFromTween).toBeDefined();
+  });
+});
+
+describe('5. Instance class - GetChildren, FindFirstChild, WaitForChild methods', () => {
+  const instanceClass = getClass('Instance');
+
+  test('Instance class exists', () => {
+    expect(instanceClass).toBeDefined();
+  });
+
+  test('Instance:GetChildren method exists', () => {
+    expect(instanceClass).toBeDefined();
+    const getChildrenMethod = getMethodFromClass(instanceClass!, 'GetChildren');
+    expect(getChildrenMethod).toBeDefined();
+  });
+
+  test('Instance:FindFirstChild method exists', () => {
+    expect(instanceClass).toBeDefined();
+    const findFirstChildMethod = getMethodFromClass(instanceClass!, 'FindFirstChild');
+    expect(findFirstChildMethod).toBeDefined();
+  });
+
+  test('Instance:WaitForChild method exists', () => {
+    expect(instanceClass).toBeDefined();
+    const waitForChildMethod = getMethodFromClass(instanceClass!, 'WaitForChild');
+    expect(waitForChildMethod).toBeDefined();
+  });
+});
+
+describe('6. DataModel (game) class - GetService method', () => {
+  const dataModelClass = getClass('DataModel');
+
+  test('DataModel class exists', () => {
+    expect(dataModelClass).toBeDefined();
+  });
+
+  test('DataModel:GetService method exists', () => {
+    expect(dataModelClass).toBeDefined();
+    const getServiceMethod = getMethodFromClass(dataModelClass!, 'GetService');
+    expect(getServiceMethod).toBeDefined();
+  });
+
+  test('DataModel:GetService has at least one parameter', () => {
+    expect(dataModelClass).toBeDefined();
+    const getServiceMethod = getMethodFromClass(dataModelClass!, 'GetService');
+    expect(getServiceMethod).toBeDefined();
+    expect(getServiceMethod!.func.params.length >= 1).toBe(true);
+  });
+});
+
+describe('7. Humanoid class - Health, WalkSpeed properties', () => {
+  const humanoidClass = getClass('Humanoid');
+
+  test('Humanoid class exists', () => {
+    expect(humanoidClass).toBeDefined();
+  });
+
+  test('Humanoid.Health property exists', () => {
+    expect(humanoidClass).toBeDefined();
+    const healthProp = getPropertyFromClass(humanoidClass!, 'Health');
+    expect(healthProp).toBeDefined();
+  });
+
+  test('Humanoid.Health is number type', () => {
+    expect(humanoidClass).toBeDefined();
+    const healthProp = getPropertyFromClass(humanoidClass!, 'Health');
+    expect(healthProp).toBeDefined();
+    const isNumberPrimitive = healthProp!.type.kind === 'Primitive' && healthProp!.type.name === 'number';
+    expect(isNumberPrimitive).toBe(true);
+  });
+
+  test('Humanoid.WalkSpeed property exists', () => {
+    expect(humanoidClass).toBeDefined();
+    const walkSpeedProp = getPropertyFromClass(humanoidClass!, 'WalkSpeed');
+    expect(walkSpeedProp).toBeDefined();
+  });
+
+  test('Humanoid Torso property is either absent or deprecated', () => {
+    expect(humanoidClass).toBeDefined();
+    const torsoProp = getPropertyFromClass(humanoidClass!, 'Torso');
+    if (torsoProp !== undefined) {
+      expect(torsoProp.deprecated).toBe(true);
     } else {
-      fail(`Players.LocalPlayer returns wrong type: ${JSON.stringify(localPlayerProp.type)}`);
+      expect(torsoProp).toBeUndefined();
     }
-  }
-}
+  });
+});
 
-console.log('\n2. Player class - Character property');
-const playerClass = getClass('Player');
-if (playerClass === undefined) {
-  fail('Player class not found');
-} else {
-  pass('Player class exists');
+describe('8. Verify game global has proper services', () => {
+  const gameSymbol = globalEnv.env.globalScope.symbols.get('game');
 
-  const characterProp = getPropertyFromClass(playerClass, 'Character');
-  if (characterProp === undefined) {
-    fail('Player.Character property not found');
-  } else {
-    pass('Player.Character property exists');
+  test('game global exists', () => {
+    expect(gameSymbol).toBeDefined();
+  });
 
-    const resolvedType = resolveTypeReference(characterProp.type);
-    if (isClassType(resolvedType) && resolvedType.name === 'Model') {
-      pass('Player.Character returns Model type');
-    } else if (characterProp.type.kind === 'TypeReference' && characterProp.type.name === 'Model') {
-      pass('Player.Character returns Model (as TypeReference)');
-    } else {
-      fail(`Player.Character returns wrong type: ${JSON.stringify(characterProp.type)}`);
-    }
-  }
-}
+  test('game is ClassType', () => {
+    expect(gameSymbol).toBeDefined();
+    expect(isClassType(gameSymbol!.type)).toBe(true);
+  });
 
-console.log('\n3. TweenService class - Create method');
-const tweenServiceClass = getClass('TweenService');
-if (tweenServiceClass === undefined) {
-  fail('TweenService class not found');
-} else {
-  pass('TweenService class exists');
-
-  const createMethod = getMethodFromClass(tweenServiceClass, 'Create');
-  if (createMethod === undefined) {
-    fail('TweenService.Create method not found');
-  } else {
-    pass('TweenService:Create method exists');
-
-    const returnType = resolveTypeReference(createMethod.func.returnType);
-    if (isClassType(returnType) && returnType.name === 'Tween') {
-      pass('TweenService:Create returns Tween type');
-    } else if (createMethod.func.returnType.kind === 'TypeReference' && createMethod.func.returnType.name === 'Tween') {
-      pass('TweenService:Create returns Tween (as TypeReference)');
-    } else {
-      fail(`TweenService:Create returns wrong type: ${JSON.stringify(createMethod.func.returnType)}`);
-    }
-  }
-}
-
-console.log('\n4. Tween inherits from TweenBase which has Play method');
-const tweenClass = getClass('Tween');
-const tweenBaseClass = getClass('TweenBase');
-if (tweenClass === undefined) {
-  fail('Tween class not found');
-} else {
-  pass('Tween class exists');
-
-  if (tweenBaseClass === undefined) {
-    fail('TweenBase class not found');
-  } else {
-    pass('TweenBase class exists');
-
-    if (tweenClass.superclass === undefined) {
-      fail('Tween has no superclass');
-    } else if (tweenClass.superclass.name === 'TweenBase') {
-      pass('Tween inherits from TweenBase');
-    } else {
-      fail(`Tween superclass is ${tweenClass.superclass.name}, expected TweenBase`);
-    }
-
-    const playMethod = getMethodFromClass(tweenBaseClass, 'Play');
-    if (playMethod === undefined) {
-      fail('TweenBase.Play method not found');
-    } else {
-      pass('TweenBase:Play method exists');
-    }
-
-    const pauseMethod = getMethodFromClass(tweenBaseClass, 'Pause');
-    if (pauseMethod === undefined) {
-      fail('TweenBase.Pause method not found');
-    } else {
-      pass('TweenBase:Pause method exists');
-    }
-
-    const cancelMethod = getMethodFromClass(tweenBaseClass, 'Cancel');
-    if (cancelMethod === undefined) {
-      fail('TweenBase.Cancel method not found');
-    } else {
-      pass('TweenBase:Cancel method exists');
-    }
-
-    const playMethodFromTween = getMethodFromClass(tweenClass, 'Play');
-    if (playMethodFromTween === undefined) {
-      fail('Play method not accessible from Tween (inheritance issue)');
-    } else {
-      pass('Play method accessible from Tween via inheritance');
-    }
-  }
-}
-
-console.log('\n5. Instance class - GetChildren, FindFirstChild, WaitForChild methods');
-const instanceClass = getClass('Instance');
-if (instanceClass === undefined) {
-  fail('Instance class not found');
-} else {
-  pass('Instance class exists');
-
-  const getChildrenMethod = getMethodFromClass(instanceClass, 'GetChildren');
-  if (getChildrenMethod === undefined) {
-    fail('Instance.GetChildren method not found');
-  } else {
-    pass('Instance:GetChildren method exists');
-  }
-
-  const findFirstChildMethod = getMethodFromClass(instanceClass, 'FindFirstChild');
-  if (findFirstChildMethod === undefined) {
-    fail('Instance.FindFirstChild method not found');
-  } else {
-    pass('Instance:FindFirstChild method exists');
-  }
-
-  const waitForChildMethod = getMethodFromClass(instanceClass, 'WaitForChild');
-  if (waitForChildMethod === undefined) {
-    fail('Instance.WaitForChild method not found');
-  } else {
-    pass('Instance:WaitForChild method exists');
-  }
-}
-
-console.log('\n6. DataModel (game) class - GetService method');
-const dataModelClass = getClass('DataModel');
-if (dataModelClass === undefined) {
-  fail('DataModel class not found');
-} else {
-  pass('DataModel class exists');
-
-  const getServiceMethod = getMethodFromClass(dataModelClass, 'GetService');
-  if (getServiceMethod === undefined) {
-    fail('DataModel.GetService method not found');
-  } else {
-    pass('DataModel:GetService method exists');
-
-    if (getServiceMethod.func.params.length < 1) {
-      fail('DataModel:GetService has no parameters');
-    } else {
-      const firstParam = getServiceMethod.func.params[0];
-      if (firstParam !== undefined && firstParam.name === 'className') {
-        pass('DataModel:GetService has className parameter');
-      } else {
-        pass('DataModel:GetService has parameter (name may differ)');
-      }
-    }
-  }
-}
-
-console.log('\n7. Humanoid class - Health, WalkSpeed properties (NOT Torso)');
-const humanoidClass = getClass('Humanoid');
-if (humanoidClass === undefined) {
-  fail('Humanoid class not found');
-} else {
-  pass('Humanoid class exists');
-
-  const healthProp = getPropertyFromClass(humanoidClass, 'Health');
-  if (healthProp === undefined) {
-    fail('Humanoid.Health property not found');
-  } else {
-    pass('Humanoid.Health property exists');
-
-    if (healthProp.type.kind === 'Primitive' && healthProp.type.name === 'number') {
-      pass('Humanoid.Health is number type');
-    } else {
-      pass('Humanoid.Health exists (type may be variant)');
-    }
-  }
-
-  const walkSpeedProp = getPropertyFromClass(humanoidClass, 'WalkSpeed');
-  if (walkSpeedProp === undefined) {
-    fail('Humanoid.WalkSpeed property not found');
-  } else {
-    pass('Humanoid.WalkSpeed property exists');
-  }
-
-  const torsoProp = getPropertyFromClass(humanoidClass, 'Torso');
-  if (torsoProp !== undefined) {
-    console.log('  NOTE: Humanoid has Torso property (this is deprecated, but exists in API)');
-  } else {
-    pass('Humanoid does NOT have Torso as direct property (correct - Torso is a child)');
-  }
-}
-
-console.log('\n8. Verify game global has proper services');
-const gameSymbol = globalEnv.env.globalScope.symbols.get('game');
-if (gameSymbol === undefined) {
-  fail('game global not found');
-} else {
-  pass('game global exists');
-
-  if (isClassType(gameSymbol.type)) {
-    const gameType = gameSymbol.type;
+  test('game.Players accessible as property', () => {
+    expect(gameSymbol).toBeDefined();
+    expect(isClassType(gameSymbol!.type)).toBe(true);
+    const gameType = gameSymbol!.type as ClassType;
     const playersProperty = getPropertyFromClass(gameType, 'Players');
-    if (playersProperty !== undefined) {
-      pass('game.Players accessible as property');
-    } else {
-      fail('game.Players not accessible as property');
-    }
+    expect(playersProperty).toBeDefined();
+  });
 
+  test('game.TweenService accessible as property', () => {
+    expect(gameSymbol).toBeDefined();
+    expect(isClassType(gameSymbol!.type)).toBe(true);
+    const gameType = gameSymbol!.type as ClassType;
     const tweenServiceProp = getPropertyFromClass(gameType, 'TweenService');
-    if (tweenServiceProp !== undefined) {
-      pass('game.TweenService accessible as property');
-    } else {
-      fail('game.TweenService not accessible as property');
-    }
-  } else {
-    fail('game is not ClassType');
-  }
-}
-
-console.log('\n' + '='.repeat(50));
-console.log(`\nResults: ${testsPassed} passed, ${testsFailed} failed`);
-
-if (testsFailed > 0) {
-  console.log('\nFailures:');
-  for (const f of failures) {
-    console.log(`  - ${f}`);
-  }
-  process.exit(1);
-}
-
-console.log('\nAll Roblox API type definitions are valid!');
+    expect(tweenServiceProp).toBeDefined();
+  });
+});

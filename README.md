@@ -20,6 +20,7 @@
 ## Features
 
 ### Intelligent Completions
+
 - Full Roblox API — all classes, methods, properties, and events
 - Sunc executor functions out of the box
 - Live game tree completions when connected to an executor
@@ -27,6 +28,7 @@
 - Context-aware table field completions
 
 ### Type Checking
+
 - Bidirectional type inference
 - `--!strict`, `--!nonstrict`, and `--!nocheck` modes
 - All Roblox datatypes (Vector3, CFrame, Color3, UDim2, etc.)
@@ -34,12 +36,14 @@
 - Inheritance-aware class typing
 
 ### Navigation
+
 - Go to definition
 - Find all references
 - Rename symbol across files
 - Document symbol outline
 
 ### Editor Goodies
+
 - Hover docs with full type signatures
 - Signature help while typing function args
 - Semantic highlighting
@@ -48,6 +52,7 @@
 - StyLua formatting integration
 
 ### Workspace Integration
+
 - Rojo project file support
 - DataModel path resolution
 - Automatic require path generation

@@ -1,9 +1,45 @@
-/**
- * Luau Type System - Type Checker
- */
-
 import { getCommonChildType } from '@definitions/commonChildren';
 
+import type {
+  Assignment,
+  BinaryExpression,
+  CallExpression,
+  Chunk,
+  CompoundAssignment,
+  Expression,
+  ForGeneric,
+  ForNumeric,
+  FunctionDeclaration,
+  FunctionExpression,
+  Identifier,
+  IfStatement,
+  IndexExpression,
+  LocalDeclaration,
+  LocalFunction,
+  MemberExpression,
+  MethodCallExpression,
+  NodeRange,
+  RepeatStatement,
+  ReturnStatement,
+  Statement,
+  TableExpression,
+  TypeAlias,
+  TypeAnnotation,
+  UnaryExpression,
+  WhileStatement,
+} from '@typings/ast';
+import type { DocComment } from '@typings/parser';
+import type {
+  ClassMethod,
+  ClassProperty,
+  ClassType,
+  FunctionParam,
+  FunctionType,
+  LuauType,
+  PropertyType,
+  TableType,
+  TypeParameterDef,
+} from '@typings/types';
 import {
   addLuauBuiltins,
   addRobloxGlobals,
@@ -39,83 +75,24 @@ import {
   typeToString,
 } from './types';
 
-import type {
-  Assignment,
-  BinaryExpression,
-  CallExpression,
-  Chunk,
-  CompoundAssignment,
-  Expression,
-  ForGeneric,
-  ForNumeric,
-  FunctionDeclaration,
-  FunctionExpression,
-  Identifier,
-  IfStatement,
-  IndexExpression,
-  LocalDeclaration,
-  LocalFunction,
-  MemberExpression,
-  MethodCallExpression,
-  NodeRange,
-  RepeatStatement,
-  ReturnStatement,
-  Statement,
-  TableExpression,
-  TypeAlias,
-  TypeAnnotation,
-  UnaryExpression,
-  WhileStatement,
-} from '@parser/ast';
-import type { DocComment } from '@parser/docComment';
-import type {
-  ClassMethod,
-  ClassProperty,
-  ClassType,
-  FunctionParam,
-  FunctionType,
-  LuauType,
-  PropertyType,
-  TableType,
-  TypeParameterDef,
-} from '@typings/types';
-
-/**
- * Tag indicating special diagnostic semantics for IDE rendering.
- * - 'deprecated': The referenced symbol is deprecated and should be shown with strikethrough
- * - 'unnecessary': The code is unreachable or unused and should be shown dimmed
- */
+/** Tag indicating special diagnostic semantics for IDE rendering. */
 export type DiagnosticTag = 'deprecated' | 'unnecessary';
 
-/**
- * Represents a type-related diagnostic message produced by the type checker.
- * Contains all information needed to display the diagnostic in an IDE.
- */
+/** Represents a type-related diagnostic message produced by the type checker. */
 export interface TypeDiagnostic {
-  /** The human-readable diagnostic message describing the issue */
   readonly message: string;
-  /** The source location range where the diagnostic applies */
   readonly range: NodeRange;
-  /** The severity level determining how the diagnostic is displayed */
   readonly severity: 'error' | 'warning' | 'info' | 'hint';
-  /** A unique error code identifying the diagnostic type (e.g., 'E001', 'W002') */
   readonly code: string;
-  /** Optional tags providing additional semantic information for IDE rendering */
   readonly tags?: ReadonlyArray<DiagnosticTag>;
 }
 
 export { typeToString } from './types';
 
-/**
- * The result of type checking a Luau program.
- * Contains diagnostics, the final type environment, and all discovered symbols.
- */
+/** The result of type checking a Luau program. */
 export interface TypeCheckResult {
-  /** Array of type diagnostics (errors, warnings, hints) found during type checking */
   readonly diagnostics: ReadonlyArray<TypeDiagnostic>;
-  /** The type environment after checking, containing all scope and type information */
   readonly environment: TypeEnvironment;
-  /** Map of all symbol names to their inferred or declared types */
   readonly allSymbols: ReadonlyMap<string, LuauType>;
 }
 
@@ -148,14 +125,12 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
   addRobloxGlobals(env);
   addSuncGlobals(env);
 
-  // Copy provided classes to env.classes for TypeReference resolution
   if (options.classes !== undefined) {
     for (const [name, classType] of options.classes) {
       (env.classes as Map<string, ClassType>).set(name, classType);
     }
   }
 
-  // Register data types (Vector3, CFrame, etc.) as type aliases for type annotation resolution
   if (options.dataTypes !== undefined) {
     for (const [name, type] of options.dataTypes) {
       env.globalScope.types.set(name, type);
@@ -190,16 +165,10 @@ const addDiagnostic = (
   state.diagnostics.push(diagnostic);
 };
 
-/** Helper to define a symbol and also track it in allSymbols */
 const trackSymbol = (state: CheckerState, name: string, type: LuauType): void => {
   state.allSymbols.set(name, type);
 };
 
-/**
- * Widen literal and nil types to their base types for mutable variables.
- * This allows reassignment: `local x = false; x = true` works because x is `boolean`, not literal `false`.
- * For nil, we widen to `any` to allow initial nil assignment then reassignment to any type.
- */
 const widenTypeForMutableVariable = (type: LuauType): LuauType => {
   if (type.kind === 'Literal') {
     switch (type.baseType) {
@@ -212,10 +181,7 @@ const widenTypeForMutableVariable = (type: LuauType): LuauType => {
     }
   }
 
-  // Widen nil to any (allows `local x = nil` then `x = someValue`)
-  if (type.kind === 'Primitive' && type.name === 'nil') {
-    return AnyType;
-  }
+  if (type.kind === 'Primitive' && type.name === 'nil') return AnyType;
 
   return type;
 };
@@ -233,12 +199,8 @@ const stripNilFromType = (type: LuauType): LuauType => {
 };
 
 const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
-  // Handle parenthesized expressions
-  if (condition.kind === 'ParenthesizedExpression') {
-    return extractNarrowing(state, condition.expression);
-  }
+  if (condition.kind === 'ParenthesizedExpression') return extractNarrowing(state, condition.expression);
 
-  // Pattern: x:IsA("ClassName")
   if (condition.kind === 'MethodCallExpression') {
     if (condition.method.name !== 'IsA') return undefined;
     if (condition.args.length === 0) return undefined;
@@ -256,7 +218,6 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
     return undefined;
   }
 
-  // Pattern: x ~= nil (narrows away nil) or x == nil (not useful for then-branch)
   if (condition.kind === 'BinaryExpression' && condition.operator === '~=') {
     if (condition.right.kind === 'NilLiteral' && condition.left.kind === 'Identifier') {
       const symbol = lookupSymbol(state.env, condition.left.name);
@@ -265,13 +226,11 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
     }
     if (condition.left.kind === 'NilLiteral' && condition.right.kind === 'Identifier') {
       const symbol = lookupSymbol(state.env, condition.right.name);
-      if (symbol !== undefined) {
+      if (symbol !== undefined)
         return { 'variableName': condition.right.name, 'narrowedType': stripNilFromType(symbol.type) };
-      }
     }
   }
 
-  // Pattern: type(x) == "typename"
   if (condition.kind === 'BinaryExpression' && condition.operator === '==') {
     const typeofNarrowing = extractTypeofNarrowing(state, condition.left, condition.right);
     if (typeofNarrowing !== undefined) return typeofNarrowing;
@@ -279,18 +238,14 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
     if (reverseNarrowing !== undefined) return reverseNarrowing;
   }
 
-  // Pattern: x (truthiness check - identifier used directly as condition)
   if (condition.kind === 'Identifier') {
     const symbol = lookupSymbol(state.env, condition.name);
     if (symbol !== undefined) {
       const narrowed = stripNilFromType(symbol.type);
-      if (narrowed !== symbol.type) {
-        return { 'variableName': condition.name, 'narrowedType': narrowed };
-      }
+      if (narrowed !== symbol.type) return { 'variableName': condition.name, 'narrowedType': narrowed };
     }
   }
 
-  // Pattern: x and y - handle combined checks
   if (condition.kind === 'BinaryExpression' && condition.operator === 'and') {
     const rightNarrowing = extractNarrowing(state, condition.right);
     if (rightNarrowing !== undefined) return rightNarrowing;
@@ -345,15 +300,11 @@ const extractTypeofNarrowing = (
 };
 
 const applyNarrowings = (state: CheckerState, narrowings: ReadonlyArray<TypeNarrowing>): void => {
-  for (const narrowing of narrowings) {
-    state.narrowings.set(narrowing.variableName, narrowing.narrowedType);
-  }
+  for (const narrowing of narrowings) state.narrowings.set(narrowing.variableName, narrowing.narrowedType);
 };
 
 const clearNarrowings = (state: CheckerState, narrowings: ReadonlyArray<TypeNarrowing>): void => {
-  for (const narrowing of narrowings) {
-    state.narrowings.delete(narrowing.variableName);
-  }
+  for (const narrowing of narrowings) state.narrowings.delete(narrowing.variableName);
 };
 
 const lookupClassMethod = (classType: ClassType, methodName: string): ClassMethod | undefined => {
@@ -385,16 +336,7 @@ const lookupClassProperty = (classType: ClassType, propertyName: string): ClassP
   return undefined;
 };
 
-/**
- * Checks a Luau program for type errors and produces diagnostics.
- * Performs full type inference and validation on the AST, tracking all
- * symbols and their types throughout the program.
- * @param chunk - The parsed AST chunk representing the Luau program to check
- * @param options - Optional configuration for type checking behavior
- * @param options.mode - The strictness mode: 'strict', 'nonstrict', or 'nocheck'
- * @param options.classes - Map of Roblox class definitions for instance type resolution
- * @returns The type check result containing diagnostics, environment, and symbol map
- */
+/** Checks a Luau program for type errors and produces diagnostics. */
 export const checkProgram = (
   chunk: Chunk,
   options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType>; dataTypes?: Map<string, LuauType> },
@@ -449,9 +391,7 @@ const extractGuardNarrowing = (state: CheckerState, condition: Expression): Type
 };
 
 const checkBlock = (state: CheckerState, statements: ReadonlyArray<Statement>): void => {
-  for (const stmt of statements) {
-    checkStatement(state, stmt);
-  }
+  for (const stmt of statements) checkStatement(state, stmt);
 };
 
 const checkStatement = (state: CheckerState, stmt: Statement): void => {
@@ -539,14 +479,12 @@ const checkStatement = (state: CheckerState, stmt: Statement): void => {
 const resolveDocTypeAnnotation = (state: CheckerState, typeStr: string): LuauType | undefined => {
   const trimmed = typeStr.trim();
 
-  // Handle optional types (ending with ?)
   if (trimmed.endsWith('?')) {
     const baseType = resolveDocTypeAnnotation(state, trimmed.slice(0, -1));
     if (baseType === undefined) return undefined;
     return createUnionType([baseType, NilType]);
   }
 
-  // Handle union types (type1|type2)
   if (trimmed.includes('|')) {
     const parts = trimmed.split('|').map(p => p.trim());
     const resolvedTypes: LuauType[] = [];
@@ -558,14 +496,12 @@ const resolveDocTypeAnnotation = (state: CheckerState, typeStr: string): LuauTyp
     return createUnionType(resolvedTypes);
   }
 
-  // Handle array types (type[])
   if (trimmed.endsWith('[]')) {
     const elementType = resolveDocTypeAnnotation(state, trimmed.slice(0, -2));
     if (elementType === undefined) return undefined;
     return createArrayType(elementType);
   }
 
-  // Handle primitive and built-in types
   switch (trimmed) {
     case 'nil':
       return NilType;
@@ -605,9 +541,7 @@ const resolveDocTypeAnnotation = (state: CheckerState, typeStr: string): LuauTyp
 const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): void => {
   const valueTypes: LuauType[] = [];
 
-  for (const value of decl.values) {
-    valueTypes.push(inferExpression(state, value));
-  }
+  for (const value of decl.values) valueTypes.push(inferExpression(state, value));
 
   const docComment = decl.docComment;
 
@@ -639,8 +573,6 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
       const docType = resolveDocTypeAnnotation(state, docComment.type);
       declaredType = docType !== undefined ? docType : widenTypeForMutableVariable(valueType);
     } else {
-      // Widen literal types to base types for mutable variables
-      // e.g., `local x = false` should be `boolean`, not literal `false`
       declaredType = widenTypeForMutableVariable(valueType);
     }
 
@@ -688,9 +620,7 @@ const checkFunctionExpressionWithDocComment = (
     for (const docParam of docComment.params) {
       if (docParam.type !== undefined) {
         const resolvedType = resolveDocTypeAnnotation(state, docParam.type);
-        if (resolvedType !== undefined) {
-          docParamTypes.set(docParam.name, resolvedType);
-        }
+        if (resolvedType !== undefined) docParamTypes.set(docParam.name, resolvedType);
       }
     }
   }
@@ -699,13 +629,9 @@ const checkFunctionExpressionWithDocComment = (
   for (const param of func.params) {
     if (param.name !== undefined) {
       let paramType: LuauType;
-      if (param.type !== undefined) {
-        paramType = resolveTypeAnnotation(state, param.type);
-      } else if (docParamTypes.has(param.name.name)) {
-        paramType = docParamTypes.get(param.name.name)!;
-      } else {
-        paramType = AnyType;
-      }
+      if (param.type !== undefined) paramType = resolveTypeAnnotation(state, param.type);
+      else if (docParamTypes.has(param.name.name)) paramType = docParamTypes.get(param.name.name)!;
+      else paramType = AnyType;
       params.push({ 'name': param.name.name, 'type': paramType, 'optional': false });
       defineSymbol(state.env, param.name.name, paramType, 'Parameter', false);
       trackSymbol(state, param.name.name, paramType);
@@ -716,9 +642,8 @@ const checkFunctionExpressionWithDocComment = (
   }
 
   let declaredReturnType: LuauType | undefined;
-  if (func.returnType !== undefined) {
-    declaredReturnType = resolveTypeAnnotation(state, func.returnType);
-  } else if (docComment !== undefined && docComment.returns.length > 0 && docComment.returns[0]!.type !== undefined) {
+  if (func.returnType !== undefined) declaredReturnType = resolveTypeAnnotation(state, func.returnType);
+  else if (docComment !== undefined && docComment.returns.length > 0 && docComment.returns[0]!.type !== undefined) {
     const docReturnType = resolveDocTypeAnnotation(state, docComment.returns[0]!.type!);
     declaredReturnType = docReturnType;
   }
@@ -764,8 +689,6 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
     const target = stmt.targets[i]!;
     const valueType = valueTypes[i] ?? NilType;
 
-    // For identifier targets, use the original declared type (not narrowed)
-    // Narrowing affects reads, not writes
     let targetType: LuauType;
     if (target.kind === 'Identifier') {
       const symbol = lookupSymbol(state.env, target.name);
@@ -794,20 +717,16 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
   const targetType = inferExpression(state, stmt.target);
   const valueType = inferExpression(state, stmt.value);
 
-  // In nonstrict mode, skip operator type checks entirely
   if (state.env.mode === 'nonstrict') return;
 
-  // Check operand compatibility based on operator
   const numericOps = ['+=', '-=', '*=', '/=', '//=', '%=', '^='];
   const stringOps = ['..='];
 
   if (numericOps.includes(stmt.operator)) {
-    if (isSubtype(targetType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+    if (isSubtype(targetType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(state, `Operator '${stmt.operator}' requires numeric operand`, stmt.target.range, 'error', 'E003');
-    }
-    if (isSubtype(valueType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+    if (isSubtype(valueType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(state, `Operator '${stmt.operator}' requires numeric operand`, stmt.value.range, 'error', 'E003');
-    }
   } else if (stringOps.includes(stmt.operator)) {
     const stringOrNumber = createUnionType([StringType, NumberType]);
     if (isSubtype(targetType, stringOrNumber, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
@@ -825,7 +744,6 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
 const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   inferExpression(state, stmt.condition);
 
-  // Extract type narrowings from the condition
   const narrowing = extractNarrowing(state, stmt.condition);
   const narrowings: TypeNarrowing[] = narrowing !== undefined ? [narrowing] : [];
 
@@ -838,7 +756,6 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   for (const clause of stmt.elseifClauses) {
     inferExpression(state, clause.condition);
 
-    // Extract narrowings for elseif clauses
     const clauseNarrowing = extractNarrowing(state, clause.condition);
     const clauseNarrowings: TypeNarrowing[] = clauseNarrowing !== undefined ? [clauseNarrowing] : [];
 
@@ -855,13 +772,9 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
     exitScope(state.env);
   }
 
-  // Guard clause narrowing: if the then-body always exits (return/break/continue)
-  // and there are no elseif/else clauses, apply the inverse narrowing after the if
   if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody)) {
     const guardNarrowing = extractGuardNarrowing(state, stmt.condition);
-    if (guardNarrowing !== undefined) {
-      state.narrowings.set(guardNarrowing.variableName, guardNarrowing.narrowedType);
-    }
+    if (guardNarrowing !== undefined) state.narrowings.set(guardNarrowing.variableName, guardNarrowing.narrowedType);
   }
 };
 
@@ -884,20 +797,16 @@ const checkForNumeric = (state: CheckerState, stmt: ForNumeric): void => {
   const endType = inferExpression(state, stmt.end);
   const stepType = stmt.step !== undefined ? inferExpression(state, stmt.step) : NumberType;
 
-  // In nonstrict mode, skip for loop type checks entirely
   if (state.env.mode !== 'nonstrict') {
-    if (isSubtype(startType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+    if (isSubtype(startType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(state, 'For loop start must be a number', stmt.start.range, 'error', 'E004');
-    }
-    if (isSubtype(endType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+    if (isSubtype(endType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(state, 'For loop end must be a number', stmt.end.range, 'error', 'E004');
-    }
     if (
       isSubtype(stepType, NumberType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false &&
       stmt.step !== undefined
-    ) {
+    )
       addDiagnostic(state, 'For loop step must be a number', stmt.step.range, 'error', 'E004');
-    }
   }
 
   enterScope(state.env, 'Loop');
@@ -912,7 +821,6 @@ const inferForGenericTypes = (state: CheckerState, stmt: ForGeneric): LuauType[]
 
   const firstIter = stmt.iterators[0]!;
 
-  // Pattern: pairs(t) or ipairs(t)
   if (firstIter.kind === 'CallExpression' && firstIter.callee.kind === 'Identifier') {
     const funcName = firstIter.callee.name;
     if ((funcName === 'pairs' || funcName === 'ipairs') && firstIter.args.length > 0) {
@@ -920,22 +828,15 @@ const inferForGenericTypes = (state: CheckerState, stmt: ForGeneric): LuauType[]
 
       if (tableType.kind === 'Table') {
         if (funcName === 'ipairs') {
-          // ipairs: i is number, v is array element type
           const valueType = tableType.indexer !== undefined ? tableType.indexer.valueType : AnyType;
           return [NumberType, valueType];
         }
 
-        // pairs: k and v from indexer or string keys
-        if (tableType.indexer !== undefined) {
-          return [tableType.indexer.keyType, tableType.indexer.valueType];
-        }
+        if (tableType.indexer !== undefined) return [tableType.indexer.keyType, tableType.indexer.valueType];
 
-        // If table has named properties, k is string, v is union of all property types
         if (tableType.properties.size > 0) {
           const valueTypes: LuauType[] = [];
-          for (const [, prop] of tableType.properties) {
-            valueTypes.push(prop.type);
-          }
+          for (const [, prop] of tableType.properties) valueTypes.push(prop.type);
           const valueType = valueTypes.length === 1 ? valueTypes[0]! : createUnionType(valueTypes);
           return [StringType, valueType];
         }
@@ -943,18 +844,13 @@ const inferForGenericTypes = (state: CheckerState, stmt: ForGeneric): LuauType[]
     }
   }
 
-  // Generalized iteration: for k, v in t (Luau feature)
   if (firstIter.kind !== 'CallExpression') {
     const iterType = resolveType(inferExpression(state, firstIter));
     if (iterType.kind === 'Table') {
-      if (iterType.indexer !== undefined) {
-        return [iterType.indexer.keyType, iterType.indexer.valueType];
-      }
+      if (iterType.indexer !== undefined) return [iterType.indexer.keyType, iterType.indexer.valueType];
       if (iterType.properties.size > 0) {
         const valueTypes: LuauType[] = [];
-        for (const [, prop] of iterType.properties) {
-          valueTypes.push(prop.type);
-        }
+        for (const [, prop] of iterType.properties) valueTypes.push(prop.type);
         const valueType = valueTypes.length === 1 ? valueTypes[0]! : createUnionType(valueTypes);
         return [StringType, valueType];
       }
@@ -965,10 +861,7 @@ const inferForGenericTypes = (state: CheckerState, stmt: ForGeneric): LuauType[]
 };
 
 const checkForGeneric = (state: CheckerState, stmt: ForGeneric): void => {
-  // Infer iterator types
-  for (const iter of stmt.iterators) {
-    inferExpression(state, iter);
-  }
+  for (const iter of stmt.iterators) inferExpression(state, iter);
 
   const inferredTypes = inferForGenericTypes(state, stmt);
 
@@ -1006,12 +899,8 @@ const checkReturnStatement = (state: CheckerState, stmt: ReturnStatement): void 
 };
 
 const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
-  // Register the type name first with a self-referential TypeReference
-  // This allows self-references within the type body to resolve
   defineTypeAlias(state.env, stmt.name.name, { 'kind': 'TypeReference', 'name': stmt.name.name });
 
-  // Define type parameters as AnyType in a child scope during resolution
-  // so references like T in `type Array<T> = {[number]: T}` resolve
   if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
     enterScope(state.env, 'Block');
     for (const param of stmt.typeParams) {
@@ -1022,11 +911,8 @@ const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
 
   const resolvedType = resolveTypeAnnotation(state, stmt.type);
 
-  if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
-    exitScope(state.env);
-  }
+  if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) exitScope(state.env);
 
-  // Update with the fully resolved type
   defineTypeAlias(state.env, stmt.name.name, resolvedType);
 };
 
@@ -1124,16 +1010,13 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
 };
 
 const inferIdentifier = (state: CheckerState, id: Identifier): LuauType => {
-  // Check for narrowed type first (from IsA checks, etc.)
   const narrowedType = state.narrowings.get(id.name);
   if (narrowedType !== undefined) return narrowedType;
 
   const symbol = lookupSymbol(state.env, id.name);
 
   if (symbol === undefined) {
-    if (state.env.mode === 'strict') {
-      addDiagnostic(state, `Unknown identifier '${id.name}'`, id.range, 'error', 'E006');
-    }
+    if (state.env.mode === 'strict') addDiagnostic(state, `Unknown identifier '${id.name}'`, id.range, 'error', 'E006');
     return AnyType;
   }
 
@@ -1179,9 +1062,7 @@ const inferTableExpression = (state: CheckerState, table: TableExpression): Tabl
 
       case 'TableFieldValue': {
         const valueType = inferExpression(state, field.value);
-        if (isArray) {
-          elementTypes.push(valueType);
-        }
+        if (isArray) elementTypes.push(valueType);
         properties.set(String(arrayIndex++), { 'type': valueType, 'readonly': false, 'optional': false });
         break;
       }
@@ -1205,12 +1086,10 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
   const arithmeticOps = ['+', '-', '*', '/', '//', '%', '^'];
   const comparisonOps = ['<', '<=', '>', '>='];
 
-  // Check arithmetic operators require numeric operands
   if (arithmeticOps.includes(expr.operator)) {
     const leftResolved = resolveType(leftType, state.env.classes);
     const rightResolved = resolveType(rightType, state.env.classes);
 
-    // Math-compatible types that support arithmetic
     const mathTypeNames = ['Vector3', 'Vector2', 'CFrame', 'UDim', 'UDim2', 'Color3'];
 
     const isNumericCompatible = (t: LuauType): boolean => {
@@ -1218,22 +1097,15 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
       if (t.kind === 'Primitive' && t.name === 'number') return true;
       if (t.kind === 'Literal' && t.baseType === 'number') return true;
       if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return true;
-      // Union types: if any member is numeric, it's compatible (may be nil-guarded)
-      if (t.kind === 'Union') {
-        return t.types.some(member => isNumericCompatible(member));
-      }
+      if (t.kind === 'Union') return t.types.some(member => isNumericCompatible(member));
       if (t.kind === 'Table') {
-        // Check if it's a Vector3/CFrame table type (has X, Y)
         if (t.properties.has('X') && t.properties.has('Y')) return true;
-        // Check for UDim2 (has Width/Height which are UDim)
         if (t.properties.has('Width') && t.properties.has('Height')) return true;
-        // Check for UDim (has Scale/Offset)
         if (t.properties.has('Scale') && t.properties.has('Offset')) return true;
       }
       return false;
     };
 
-    // Check if type is definitively numeric (not union with nil)
     const isDefinitelyNumeric = (t: LuauType): boolean => {
       if (t.kind === 'Any' || t.kind === 'Error') return true;
       if (t.kind === 'Primitive' && t.name === 'number') return true;
@@ -1250,7 +1122,6 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
 
     const checkOperand = (resolved: LuauType, original: LuauType, range: typeof expr.left.range): void => {
       if (isNumericCompatible(resolved) === false) {
-        // Definitely not numeric - always error
         addDiagnostic(
           state,
           `Operator '${expr.operator}' cannot be applied to type '${typeToString(original)}'`,
@@ -1258,11 +1129,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
           'error',
           'E011',
         );
-      } else if (isDefinitelyNumeric(resolved) === false && state.env.mode === 'nonstrict') {
-        // Possibly numeric (union with nil) - warning in nonstrict mode
-        // Don't report anything in nonstrict mode for number | nil cases
-      } else if (isDefinitelyNumeric(resolved) === false) {
-        // Possibly numeric but in strict mode - error
+      } else if (isDefinitelyNumeric(resolved) === false && state.env.mode !== 'nonstrict') {
         addDiagnostic(
           state,
           `Operator '${expr.operator}' cannot be applied to type '${typeToString(original)}'`,
@@ -1276,17 +1143,12 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     checkOperand(leftResolved, leftType, expr.left.range);
     checkOperand(rightResolved, rightType, expr.right.range);
 
-    // Determine return type based on operand types
-    // If either operand is a math type (Vector3, Vector2, CFrame, UDim, UDim2, Color3), return that type
     const getMathType = (t: LuauType): LuauType | undefined => {
       if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return t;
       if (t.kind === 'Class' && mathTypeNames.includes(t.name)) return t;
       if (t.kind === 'Table') {
-        // Check for Vector3/Vector2/CFrame (has X, Y properties)
         if (t.properties.has('X') && t.properties.has('Y')) return t;
-        // Check for UDim2 (has Width/Height which are UDim)
         if (t.properties.has('Width') && t.properties.has('Height')) return t;
-        // Check for UDim (has Scale/Offset)
         if (t.properties.has('Scale') && t.properties.has('Offset')) return t;
       }
       return undefined;
@@ -1301,10 +1163,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     return NumberType;
   }
 
-  // Check comparison operators
-  if (comparisonOps.includes(expr.operator)) {
-    return BooleanType;
-  }
+  if (comparisonOps.includes(expr.operator)) return BooleanType;
 
   switch (expr.operator) {
     case '..':
@@ -1329,7 +1188,6 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
 };
 
 const inferUnaryExpression = (state: CheckerState, expr: UnaryExpression): LuauType => {
-  // Infer operand for side effects (diagnostics)
   inferExpression(state, expr.operand);
 
   switch (expr.operator) {
@@ -1347,11 +1205,7 @@ const inferUnaryExpression = (state: CheckerState, expr: UnaryExpression): LuauT
   }
 };
 
-/**
- * Checks if an expression is Instance.new and returns the class type if a string literal is provided
- */
 const inferInstanceNewCall = (state: CheckerState, expr: CallExpression): LuauType | undefined => {
-  // Check for Instance.new("ClassName") pattern
   if (expr.callee.kind !== 'MemberExpression') return undefined;
   if (expr.callee.object.kind !== 'Identifier') return undefined;
   if (expr.callee.object.name !== 'Instance') return undefined;
@@ -1365,7 +1219,6 @@ const inferInstanceNewCall = (state: CheckerState, expr: CallExpression): LuauTy
   const classType = state.env.classes.get(className);
   if (classType !== undefined) return classType;
 
-  // Return Instance type as fallback for unknown class names
   const instanceClass = state.env.classes.get('Instance');
   return instanceClass;
 };
@@ -1373,53 +1226,34 @@ const inferInstanceNewCall = (state: CheckerState, expr: CallExpression): LuauTy
 const inferCallExpression = (state: CheckerState, expr: CallExpression): LuauType => {
   const calleeType = resolveType(inferExpression(state, expr.callee), state.env.classes);
 
-  // Check arguments
-  for (const arg of expr.args) {
-    inferExpression(state, arg);
-  }
+  for (const arg of expr.args) inferExpression(state, arg);
 
-  // Special case: Instance.new("ClassName") returns that class type
   const instanceNewType = inferInstanceNewCall(state, expr);
   if (instanceNewType !== undefined) return instanceNewType;
 
-  if (calleeType.kind === 'Function') {
-    return resolveType(calleeType.returnType, state.env.classes);
-  }
+  if (calleeType.kind === 'Function') return resolveType(calleeType.returnType, state.env.classes);
 
-  if (calleeType.kind === 'Any') {
-    return AnyType;
-  }
+  if (calleeType.kind === 'Any') return AnyType;
 
-  // Avoid cascading errors when the callee is already an error type
-  if (calleeType.kind === 'Error') {
-    return calleeType;
-  }
+  if (calleeType.kind === 'Error') return calleeType;
 
-  if (state.env.mode === 'strict') {
+  if (state.env.mode === 'strict')
     addDiagnostic(state, `Type '${typeToString(calleeType)}' is not callable`, expr.callee.range, 'error', 'E007');
-  }
 
   return createErrorType('not callable');
 };
 
-/**
- * Extracts a string literal value from an expression if possible
- */
 const extractStringLiteral = (expr: Expression): string | undefined => {
   if (expr.kind === 'StringLiteral') return expr.value;
   return undefined;
 };
 
-/**
- * Handles special Roblox method patterns that return specific types based on arguments
- */
 const inferSpecialMethodReturnType = (
   state: CheckerState,
   objectType: LuauType,
   methodName: string,
   args: ReadonlyArray<Expression>,
 ): LuauType | undefined => {
-  // GetService("ServiceName") returns the service class
   if (methodName === 'GetService' && args.length >= 1) {
     const serviceName = extractStringLiteral(args[0]!);
     if (serviceName !== undefined) {
@@ -1428,12 +1262,10 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  // Clone() returns the same type as the object being cloned
   if (methodName === 'Clone' && args.length === 0) {
     if (objectType.kind === 'Class') return objectType;
   }
 
-  // FindFirstChildOfClass("ClassName") returns that class type or nil
   if (methodName === 'FindFirstChildOfClass' && args.length >= 1) {
     const className = extractStringLiteral(args[0]!);
     if (className !== undefined) {
@@ -1442,7 +1274,6 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  // FindFirstChildWhichIsA("ClassName") returns that class type or nil
   if (methodName === 'FindFirstChildWhichIsA' && args.length >= 1) {
     const className = extractStringLiteral(args[0]!);
     if (className !== undefined) {
@@ -1451,7 +1282,6 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  // FindFirstAncestorOfClass("ClassName") returns that class type or nil
   if (methodName === 'FindFirstAncestorOfClass' && args.length >= 1) {
     const className = extractStringLiteral(args[0]!);
     if (className !== undefined) {
@@ -1460,7 +1290,6 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  // FindFirstAncestorWhichIsA("ClassName") returns that class type or nil
   if (methodName === 'FindFirstAncestorWhichIsA' && args.length >= 1) {
     const className = extractStringLiteral(args[0]!);
     if (className !== undefined) {
@@ -1469,12 +1298,9 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  // WaitForChild("Name", timeout?) with string literal can still give hints
-  // For now, return Instance type but this could be enhanced with common children
   if (methodName === 'WaitForChild' && args.length >= 1) {
     const childName = extractStringLiteral(args[0]!);
     if (childName !== undefined && objectType.kind === 'Class') {
-      // Could check common children map here for better inference
       const instanceClass = state.env.classes.get('Instance');
       if (instanceClass !== undefined) return instanceClass;
     }
@@ -1483,46 +1309,34 @@ const inferSpecialMethodReturnType = (
   return undefined;
 };
 
-/**
- * Extracts callback parameter types from an RBXScriptSignal for Wait() method
- */
 const inferSignalWaitReturnType = (signalType: LuauType): LuauType => {
   if (signalType.kind !== 'Table') return AnyType;
 
-  // Look for Connect method to understand the callback signature
   const connectProp = signalType.properties.get('Connect');
   if (connectProp === undefined || connectProp.type.kind !== 'Function') return AnyType;
 
-  // Connect takes a callback function as its first parameter
   const connectParams = connectProp.type.params;
   if (connectParams.length === 0) return AnyType;
 
   const callbackParam = connectParams[0];
   if (callbackParam === undefined || callbackParam.type.kind !== 'Function') return AnyType;
 
-  // The callback parameters are what Wait() returns
   const callbackParamTypes = callbackParam.type.params.map(p => p.type);
 
   if (callbackParamTypes.length === 0) return NilType;
   if (callbackParamTypes.length === 1) return callbackParamTypes[0]!;
 
-  // For multiple return values, we return the first type (most common case for Wait is single return)
   return callbackParamTypes[0]!;
 };
 
 const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpression): LuauType => {
   const objectType = resolveType(inferExpression(state, expr.object), state.env.classes);
 
-  // Check arguments
-  for (const arg of expr.args) {
-    inferExpression(state, arg);
-  }
+  for (const arg of expr.args) inferExpression(state, arg);
 
-  // Check for special Roblox method patterns first
   const specialReturnType = inferSpecialMethodReturnType(state, objectType, expr.method.name, expr.args);
   if (specialReturnType !== undefined) return specialReturnType;
 
-  // Handle Union types (like Tool | nil) - check if method exists on any non-nil member
   if (objectType.kind === 'Union') {
     const nonNilTypes = objectType.types.filter(t => t.kind !== 'Primitive' || t.name !== 'nil');
     for (const memberType of nonNilTypes) {
@@ -1537,25 +1351,21 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
                 : `'${expr.method.name}' is deprecated.`;
             addDiagnostic(state, message, expr.method.range, 'warning', 'W001', ['deprecated']);
           }
-          // Return type might include nil since the object could be nil
           return resolveType(method.func.returnType, state.env.classes);
         }
         const prop = lookupClassProperty(resolved, expr.method.name);
-        if (prop !== undefined && prop.type.kind === 'Function') {
+        if (prop !== undefined && prop.type.kind === 'Function')
           return resolveType(prop.type.returnType, state.env.classes);
-        }
       }
       if (resolved.kind === 'Table') {
         const prop = resolved.properties.get(expr.method.name);
-        if (prop !== undefined && prop.type.kind === 'Function') {
+        if (prop !== undefined && prop.type.kind === 'Function')
           return resolveType(prop.type.returnType, state.env.classes);
-        }
       }
     }
   }
 
   if (objectType.kind === 'Class') {
-    // Look up method including inherited methods from superclasses
     const method = lookupClassMethod(objectType, expr.method.name);
     if (method !== undefined) {
       if (method.deprecated === true) {
@@ -1568,7 +1378,6 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
       return resolveType(method.func.returnType, state.env.classes);
     }
 
-    // Check properties too (could be a function-typed property)
     const prop = lookupClassProperty(objectType, expr.method.name);
     if (prop !== undefined && prop.type.kind === 'Function') {
       if (prop.deprecated === true) {
@@ -1585,7 +1394,6 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
   if (objectType.kind === 'Table') {
     const prop = objectType.properties.get(expr.method.name);
     if (prop !== undefined && prop.type.kind === 'Function') {
-      // Special case: Wait() on RBXScriptSignal should return callback params
       if (expr.method.name === 'Wait') {
         return inferSignalWaitReturnType(objectType);
       }
@@ -1595,34 +1403,26 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
 
   if (objectType.kind === 'Any') return AnyType;
 
-  // Avoid cascading errors when the object type is already an error type
-  if (objectType.kind === 'Error') {
-    return objectType;
-  }
+  if (objectType.kind === 'Error') return objectType;
 
-  // String method calls - look up in string library (e.g., s:lower() -> string.lower(s))
   if (objectType.kind === 'Primitive' && objectType.name === 'string') {
     const stringLib = lookupSymbol(state.env, 'string');
     if (stringLib !== undefined && stringLib.type.kind === 'Table') {
       const method = stringLib.type.properties.get(expr.method.name);
-      if (method !== undefined && method.type.kind === 'Function') {
+      if (method !== undefined && method.type.kind === 'Function')
         return resolveType(method.type.returnType, state.env.classes);
-      }
     }
   }
 
-  // String literal method calls
   if (objectType.kind === 'Literal' && objectType.baseType === 'string') {
     const stringLib = lookupSymbol(state.env, 'string');
     if (stringLib !== undefined && stringLib.type.kind === 'Table') {
       const method = stringLib.type.properties.get(expr.method.name);
-      if (method !== undefined && method.type.kind === 'Function') {
+      if (method !== undefined && method.type.kind === 'Function')
         return resolveType(method.type.returnType, state.env.classes);
-      }
     }
   }
 
-  // Check for common case-sensitivity issues and suggest corrections
   const methodCorrections: Record<string, string> = {
     'connect': 'Connect',
     'disconnect': 'Disconnect',
@@ -1676,20 +1476,16 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
       'warning',
       'W002',
     );
-    // Try to find the correct method and return its type
     if (objectType.kind === 'Class') {
       const correctMethod = lookupClassMethod(objectType, correction);
-      if (correctMethod !== undefined) {
-        return resolveType(correctMethod.func.returnType, state.env.classes);
-      }
+      if (correctMethod !== undefined) return resolveType(correctMethod.func.returnType, state.env.classes);
     }
     if (objectType.kind === 'Table') {
       const correctProp = objectType.properties.get(correction);
-      if (correctProp !== undefined && correctProp.type.kind === 'Function') {
+      if (correctProp !== undefined && correctProp.type.kind === 'Function')
         return resolveType(correctProp.type.returnType, state.env.classes);
-      }
     }
-    return AnyType; // Return any to avoid cascading errors
+    return AnyType;
   }
 
   if (state.env.mode === 'strict') {
@@ -1707,19 +1503,14 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
 
 const inferIndexExpression = (state: CheckerState, expr: IndexExpression): LuauType => {
   const objectType = resolveType(inferExpression(state, expr.object), state.env.classes);
-  // Infer index for side effects (diagnostics)
   inferExpression(state, expr.index);
 
-  if (objectType.kind === 'Table' && objectType.indexer !== undefined) {
+  if (objectType.kind === 'Table' && objectType.indexer !== undefined)
     return resolveType(objectType.indexer.valueType, state.env.classes);
-  }
 
   if (objectType.kind === 'Any') return AnyType;
 
-  // Avoid cascading errors when the object type is already an error type
-  if (objectType.kind === 'Error') {
-    return objectType;
-  }
+  if (objectType.kind === 'Error') return objectType;
 
   return AnyType;
 };
@@ -1731,14 +1522,10 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
     const prop = objectType.properties.get(expr.property.name);
     if (prop !== undefined) return resolveType(prop.type, state.env.classes);
 
-    // Check for indexer access
-    if (objectType.indexer !== undefined) {
-      return resolveType(objectType.indexer.valueType, state.env.classes);
-    }
+    if (objectType.indexer !== undefined) return resolveType(objectType.indexer.valueType, state.env.classes);
   }
 
   if (objectType.kind === 'Class') {
-    // Look up property including inherited properties from superclasses
     const prop = lookupClassProperty(objectType, expr.property.name);
     if (prop !== undefined) {
       if (prop.deprecated === true) {
@@ -1751,7 +1538,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
       return resolveType(prop.type, state.env.classes);
     }
 
-    // Look up method including inherited methods from superclasses
     const method = lookupClassMethod(objectType, expr.property.name);
     if (method !== undefined) {
       if (method.deprecated === true) {
@@ -1764,7 +1550,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
       return method.func;
     }
 
-    // Check COMMON_CHILDREN for implicit child access (like character.Humanoid)
     const getSuperclass = (className: string): string | undefined => {
       const classType = state.env.classes.get(className);
       return classType?.superclass?.name;
@@ -1776,7 +1561,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
       return { 'kind': 'TypeReference', 'name': commonChildType };
     }
 
-    // All Roblox Instance-derived classes can have arbitrary children accessed via dot notation
     if (isInstanceDerived(objectType)) {
       const instanceClass = state.env.classes.get('Instance');
       if (instanceClass !== undefined) return instanceClass;
@@ -1786,12 +1570,8 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
 
   if (objectType.kind === 'Any') return AnyType;
 
-  // Avoid cascading errors when the object type is already an error type
-  if (objectType.kind === 'Error') {
-    return objectType;
-  }
+  if (objectType.kind === 'Error') return objectType;
 
-  // Check for common deprecated/incorrect property names and suggest corrections
   const propertyCorrections: Record<string, { correct: string; message: string }> = {
     'children': { 'correct': 'GetChildren', 'message': "Use 'GetChildren()' method instead of 'children' property." },
     'parent': { 'correct': 'Parent', 'message': "Use 'Parent' (capitalized) instead of 'parent'." },
@@ -1816,7 +1596,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
   const lowercaseName = expr.property.name.toLowerCase();
   const correction = propertyCorrections[lowercaseName];
   if (correction !== undefined && expr.property.name !== correction.correct) {
-    // Check if the correct property exists
     if (objectType.kind === 'Class') {
       const correctProp = lookupClassProperty(objectType, correction.correct);
       const correctMethod = lookupClassMethod(objectType, correction.correct);
@@ -1945,7 +1724,6 @@ const resolveTypeReference = (
     range: NodeRange;
   },
 ): LuauType => {
-  // Check for built-in types
   switch (ref.name) {
     case 'nil':
       return NilType;
@@ -1969,21 +1747,16 @@ const resolveTypeReference = (
       return NeverType;
   }
 
-  // Check for type alias
   const alias = lookupTypeAlias(state.env, ref.name);
   if (alias !== undefined) return alias;
 
-  // Check for class type
   const classType = state.env.classes.get(ref.name);
   if (classType !== undefined) return classType;
 
-  // Check for enum type
   const enumType = state.env.enums.get(ref.name);
   if (enumType !== undefined) return enumType;
 
-  if (state.env.mode === 'strict') {
-    addDiagnostic(state, `Unknown type '${ref.name}'`, ref.range, 'error', 'E010');
-  }
+  if (state.env.mode === 'strict') addDiagnostic(state, `Unknown type '${ref.name}'`, ref.range, 'error', 'E010');
 
   return AnyType;
 };

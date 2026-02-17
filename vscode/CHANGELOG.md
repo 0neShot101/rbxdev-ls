@@ -2,13 +2,33 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
-## [0.2.8] - 2026-02-15
+## [0.2.9] - 2026-02-16
+
+### Added
+
+- Comprehensive test suite — 685 tests across 19 files covering parser, type checker, LSP handlers, MCP server, doc comments, subtyping, and more
+- MCP server test coverage — 52 tests for all pure functions, tool definitions, bridge creation, and game tree model
+- VSIX build pipeline script (`bun run build:vsix`) — runs tests, type-checks, builds server + extension, and packages VSIX in one command
+- Auto version bumping — build script bumps patch by default, supports `major`/`minor`/`patch` argument and syncs both package.json files
+- Remote spy keybindings — `Ctrl+Shift+R` copy last remote call, `Ctrl+Shift+Alt+R` insert at cursor, `Ctrl+Alt+C` quick copy
+- Bundle & Execute mode — `Ctrl+Alt+E` to bundle and execute Luau files with `luau-bundle`
+- Ignore directives — `@rbxls-ignore`, `@rbxls-ignore-line`, `@rbxls-disable`/`@rbxls-enable` to suppress diagnostics
+- Code actions — quick fixes for undefined variables, missing requires, and type mismatches
+
+### Changed
+
+- Major codebase refactor — all source files cleaned up with consistent arrow functions, explicit equality checks, and path aliases
+- Improved formatter — better handling of table literals, method chains, and multiline expressions
+- Type checker improvements — better narrowing, subtyping, and diagnostic messages
 
 ### Fixed
 
 - Game tree no longer merges siblings with the same name into one entry (index-based path disambiguation)
 - Bridge script reconnects automatically after VS Code restart (retry on failed connect)
 - Re-executing the bridge script no longer causes old/new scripts to compete (unique bridge ID per execution)
+- Code formatting preserves semantic meaning in all edge cases
+- Semantic tokens correctly handle complex nested expressions
+- Completion handler no longer suggests duplicate items
 
 ## [0.2.7] - 2026-02-15
 

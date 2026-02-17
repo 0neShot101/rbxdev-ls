@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-/**
- * rbxdev-ls MCP Server
- *
- * Model Context Protocol server for AI assistants to interact with Roblox games
- */
 
 import { startMcpServer } from '@mcp/server';
 

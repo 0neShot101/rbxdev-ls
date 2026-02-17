@@ -1,23 +1,3 @@
-/**
- * Roblox DataType Definitions
- *
- * This module provides type definitions for Roblox DataTypes. DataTypes are
- * value types that represent various data structures used throughout the Roblox API,
- * including vectors, matrices, colors, and other compound types.
- *
- * Supported data types include:
- * - Vectors: Vector2, Vector3, Vector2int16, Vector3int16
- * - Transforms: CFrame
- * - Colors: Color3, BrickColor
- * - UI: UDim, UDim2, Rect
- * - Animation: TweenInfo, NumberSequence, ColorSequence
- * - Physics: Ray, Region3, RaycastParams, OverlapParams, PhysicalProperties
- * - Time: DateTime
- * - Randomness: Random
- * - Signals: RBXScriptSignal, RBXScriptConnection
- * - And many more...
- */
-
 import {
   AnyType,
   BooleanType,
@@ -31,14 +11,6 @@ import {
   type PropertyType,
 } from '@typings/types';
 
-/**
- * Creates a property definition for a data type.
- *
- * @param type - The Luau type of the property
- * @param readonly - Whether the property is read-only (defaults to true)
- * @param deprecated - Optional deprecation information with deprecated flag and message
- * @returns A PropertyType definition
- */
 const prop = (type: LuauType, readonly = true, deprecated?: { deprecated: true; message?: string }): PropertyType => ({
   type,
   readonly,
@@ -47,13 +19,6 @@ const prop = (type: LuauType, readonly = true, deprecated?: { deprecated: true; 
   ...(deprecated?.message ? { 'deprecationMessage': deprecated.message } : {}),
 });
 
-/**
- * Creates a method property definition for a data type.
- *
- * @param params - Array of parameter definitions with name, type, and optional flag
- * @param returnType - The return type of the method
- * @returns A PropertyType definition wrapping a FunctionType
- */
 const methodProp = (
   params: Array<{ name: string; type: LuauType; optional?: boolean }>,
   returnType: LuauType,
@@ -68,15 +33,7 @@ const methodProp = (
   'optional': false,
 });
 
-/**
- * Creates the RBXScriptConnection type definition.
- *
- * RBXScriptConnection represents a connection to an event signal. It provides:
- * - Connected: A boolean indicating if the connection is still active
- * - Disconnect: A method to disconnect from the event
- *
- * @returns A TableType representing RBXScriptConnection
- */
+/** Creates the RBXScriptConnection type definition with Connected and Disconnect members. */
 export const createRBXScriptConnectionType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -85,18 +42,7 @@ export const createRBXScriptConnectionType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates an RBXScriptSignal type with the given callback parameter types.
- *
- * RBXScriptSignal represents an event that can be connected to. The generated type includes:
- * - Connect(callback): Connects a callback to fire when the event fires, returns RBXScriptConnection
- * - ConnectParallel(callback): Connects a callback to run in parallel, returns RBXScriptConnection
- * - Once(callback): Connects a callback that disconnects after first fire, returns RBXScriptConnection
- * - Wait(): Yields until the event fires and returns the event arguments
- *
- * @param callbackParams - Array of parameter definitions for the callback function
- * @returns A TableType representing the RBXScriptSignal
- */
+/** Creates an RBXScriptSignal type with Connect, ConnectParallel, Once, and Wait members. */
 export const createRBXScriptSignalType = (callbackParams: Array<{ name: string; type: LuauType }>): LuauType => {
   const connectionType = createRBXScriptConnectionType();
   const callbackType = createFunctionType(
@@ -104,8 +50,6 @@ export const createRBXScriptSignalType = (callbackParams: Array<{ name: string; 
     NilType,
   );
 
-  // Wait() returns the first callback parameter when assigned to a single variable
-  // (Luau automatically extracts first value from tuple returns)
   const waitReturnType = callbackParams.length > 0 ? callbackParams[0]!.type : NilType;
 
   return createTableType(
@@ -139,28 +83,10 @@ export const createRBXScriptSignalType = (callbackParams: Array<{ name: string; 
   );
 };
 
-/**
- * Creates a generic RBXScriptSignal type without specific callback parameters.
- *
- * Used when the event parameters are not known or when creating a general
- * RBXScriptSignal type reference.
- *
- * @returns A TableType representing a generic RBXScriptSignal
- */
+/** Creates a generic RBXScriptSignal type without specific callback parameters. */
 export const createGenericRBXScriptSignalType = (): LuauType => createRBXScriptSignalType([]);
 
-/**
- * Creates the Vector2 instance type definition.
- *
- * Vector2 represents a 2D vector with X and Y components. Properties and methods include:
- * - X, Y: Numeric components
- * - Magnitude, Unit: Vector properties
- * - Abs, Ceil, Floor, Sign: Component-wise operations
- * - Angle, Cross, Dot: Vector operations
- * - FuzzyEq, Lerp, Max, Min: Utility methods
- *
- * @returns A TableType representing Vector2 instance
- */
+/** Creates the Vector2 instance type definition with X, Y components and vector operations. */
 export const createVector2InstanceType = (): LuauType => {
   const vector2Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
 
@@ -239,18 +165,7 @@ export const createVector2InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the Vector3 instance type definition.
- *
- * Vector3 represents a 3D vector with X, Y, and Z components. Properties and methods include:
- * - X, Y, Z: Numeric components
- * - Magnitude, Unit: Vector properties
- * - Abs, Ceil, Floor, Sign: Component-wise operations
- * - Angle, Cross, Dot: Vector operations
- * - FuzzyEq, Lerp, Max, Min: Utility methods
- *
- * @returns A TableType representing Vector3 instance
- */
+/** Creates the Vector3 instance type definition with X, Y, Z components and vector operations. */
 export const createVector3InstanceType = (): LuauType => {
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
 
@@ -326,22 +241,7 @@ export const createVector3InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the CFrame instance type definition.
- *
- * CFrame (Coordinate Frame) represents a 3D position and orientation. Properties and methods include:
- * - Position, Rotation: Transform components
- * - X, Y, Z: Position components
- * - LookVector, RightVector, UpVector, XVector, YVector, ZVector: Directional vectors
- * - Inverse, Lerp, Orthonormalize: Transform operations
- * - ToWorldSpace, ToObjectSpace: Space conversions
- * - PointToWorldSpace, PointToObjectSpace: Point conversions
- * - VectorToWorldSpace, VectorToObjectSpace: Vector conversions
- * - GetComponents, ToEulerAnglesXYZ, ToEulerAnglesYXZ, ToOrientation, ToAxisAngle: Decomposition
- * - FuzzyEq: Comparison
- *
- * @returns A TableType representing CFrame instance
- */
+/** Creates the CFrame instance type definition with position, orientation, and transform operations. */
 export const createCFrameInstanceType = (): LuauType => {
   const cframeRef: LuauType = { 'kind': 'TypeReference', 'name': 'CFrame' };
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
@@ -444,17 +344,7 @@ export const createCFrameInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the Color3 instance type definition.
- *
- * Color3 represents an RGB color. Properties and methods include:
- * - R, G, B: Color components (0-1 range)
- * - Lerp: Interpolates between two colors
- * - ToHSV: Converts to HSV representation
- * - ToHex: Converts to hexadecimal string
- *
- * @returns A TableType representing Color3 instance
- */
+/** Creates the Color3 instance type definition with R, G, B components and color operations. */
 export const createColor3InstanceType = (): LuauType => {
   const color3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Color3' };
 
@@ -480,16 +370,7 @@ export const createColor3InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the UDim instance type definition.
- *
- * UDim represents a one-dimensional UI value with scale and offset components.
- * Properties include:
- * - Scale: Fraction of parent size (0-1)
- * - Offset: Pixel offset
- *
- * @returns A TableType representing UDim instance
- */
+/** Creates the UDim instance type definition with Scale and Offset components. */
 export const createUDimInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -498,17 +379,7 @@ export const createUDimInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the UDim2 instance type definition.
- *
- * UDim2 represents a two-dimensional UI value with X and Y UDim components.
- * Properties and methods include:
- * - X, Y: UDim components
- * - Width, Height: Aliases for X and Y
- * - Lerp: Interpolates between two UDim2 values
- *
- * @returns A TableType representing UDim2 instance
- */
+/** Creates the UDim2 instance type definition with X, Y UDim components and Lerp. */
 export const createUDim2InstanceType = (): LuauType => {
   const udim2Ref: LuauType = { 'kind': 'TypeReference', 'name': 'UDim2' };
   const udimRef: LuauType = { 'kind': 'TypeReference', 'name': 'UDim' };
@@ -534,18 +405,7 @@ export const createUDim2InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the BrickColor instance type definition.
- *
- * BrickColor represents a legacy color value from the predefined Roblox palette.
- * Properties include:
- * - Name: The color name
- * - Number: The palette index
- * - Color: The Color3 equivalent
- * - r, g, b: RGB components (0-1 range)
- *
- * @returns A TableType representing BrickColor instance
- */
+/** Creates the BrickColor instance type definition with Name, Number, Color, and RGB components. */
 export const createBrickColorInstanceType = (): LuauType => {
   const color3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Color3' };
 
@@ -561,19 +421,7 @@ export const createBrickColorInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the TweenInfo instance type definition.
- *
- * TweenInfo describes the parameters for a tween animation. Properties include:
- * - Time: Duration in seconds
- * - EasingStyle: The easing function to use
- * - EasingDirection: Direction of the easing (In, Out, InOut)
- * - RepeatCount: Number of times to repeat (-1 for infinite)
- * - Reverses: Whether to reverse direction on repeat
- * - DelayTime: Delay before starting
- *
- * @returns A TableType representing TweenInfo instance
- */
+/** Creates the TweenInfo instance type definition with animation timing parameters. */
 export const createTweenInfoInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -586,15 +434,7 @@ export const createTweenInfoInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the NumberRange instance type definition.
- *
- * NumberRange represents a range between two numbers. Properties include:
- * - Min: The minimum value
- * - Max: The maximum value
- *
- * @returns A TableType representing NumberRange instance
- */
+/** Creates the NumberRange instance type definition with Min and Max values. */
 export const createNumberRangeInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -603,17 +443,7 @@ export const createNumberRangeInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the NumberSequenceKeypoint instance type definition.
- *
- * NumberSequenceKeypoint represents a single point in a NumberSequence.
- * Properties include:
- * - Time: Position in the sequence (0-1)
- * - Value: The numeric value at this point
- * - Envelope: Random variance range
- *
- * @returns A TableType representing NumberSequenceKeypoint instance
- */
+/** Creates the NumberSequenceKeypoint instance type definition with Time, Value, and Envelope. */
 export const createNumberSequenceKeypointInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -623,31 +453,14 @@ export const createNumberSequenceKeypointInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the NumberSequence instance type definition.
- *
- * NumberSequence represents a sequence of number values over time.
- * Properties include:
- * - Keypoints: Array of NumberSequenceKeypoint values
- *
- * @returns A TableType representing NumberSequence instance
- */
+/** Creates the NumberSequence instance type definition with a Keypoints array. */
 export const createNumberSequenceInstanceType = (): LuauType => {
   const keypointType: LuauType = { 'kind': 'TypeReference', 'name': 'NumberSequenceKeypoint' };
 
   return createTableType(new Map<string, PropertyType>([['Keypoints', prop(createArrayType(keypointType))]]));
 };
 
-/**
- * Creates the ColorSequenceKeypoint instance type definition.
- *
- * ColorSequenceKeypoint represents a single point in a ColorSequence.
- * Properties include:
- * - Time: Position in the sequence (0-1)
- * - Value: The Color3 value at this point
- *
- * @returns A TableType representing ColorSequenceKeypoint instance
- */
+/** Creates the ColorSequenceKeypoint instance type definition with Time and Color3 Value. */
 export const createColorSequenceKeypointInstanceType = (): LuauType => {
   const color3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Color3' };
 
@@ -659,34 +472,14 @@ export const createColorSequenceKeypointInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the ColorSequence instance type definition.
- *
- * ColorSequence represents a sequence of color values over time.
- * Properties include:
- * - Keypoints: Array of ColorSequenceKeypoint values
- *
- * @returns A TableType representing ColorSequence instance
- */
+/** Creates the ColorSequence instance type definition with a Keypoints array. */
 export const createColorSequenceInstanceType = (): LuauType => {
   const keypointType: LuauType = { 'kind': 'TypeReference', 'name': 'ColorSequenceKeypoint' };
 
   return createTableType(new Map<string, PropertyType>([['Keypoints', prop(createArrayType(keypointType))]]));
 };
 
-/**
- * Creates the Ray instance type definition.
- *
- * Ray represents a half-line with an origin and direction.
- * Properties and methods include:
- * - Origin: Starting point of the ray
- * - Direction: Direction vector of the ray
- * - Unit: Normalized version of the ray
- * - ClosestPoint: Returns the closest point on the ray to a given point
- * - Distance: Returns the distance from the ray to a given point
- *
- * @returns A TableType representing Ray instance
- */
+/** Creates the Ray instance type definition with Origin, Direction, and spatial query methods. */
 export const createRayInstanceType = (): LuauType => {
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const rayRef: LuauType = { 'kind': 'TypeReference', 'name': 'Ray' };
@@ -716,17 +509,7 @@ export const createRayInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the Region3 instance type definition.
- *
- * Region3 represents an axis-aligned 3D rectangular region.
- * Properties and methods include:
- * - CFrame: The center transform of the region
- * - Size: The dimensions of the region
- * - ExpandToGrid: Expands the region to align with a grid
- *
- * @returns A TableType representing Region3 instance
- */
+/** Creates the Region3 instance type definition with CFrame, Size, and ExpandToGrid. */
 export const createRegion3InstanceType = (): LuauType => {
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const cframeRef: LuauType = { 'kind': 'TypeReference', 'name': 'CFrame' };
@@ -748,17 +531,7 @@ export const createRegion3InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the Rect instance type definition.
- *
- * Rect represents a 2D rectangle. Properties include:
- * - Min: Minimum corner (top-left) as Vector2
- * - Max: Maximum corner (bottom-right) as Vector2
- * - Width: Width of the rectangle
- * - Height: Height of the rectangle
- *
- * @returns A TableType representing Rect instance
- */
+/** Creates the Rect instance type definition with Min, Max, Width, and Height. */
 export const createRectInstanceType = (): LuauType => {
   const vector2Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
 
@@ -772,19 +545,7 @@ export const createRectInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the DateTime instance type definition.
- *
- * DateTime represents a point in time. Properties and methods include:
- * - UnixTimestamp: Seconds since Unix epoch
- * - UnixTimestampMillis: Milliseconds since Unix epoch
- * - ToUniversalTime: Converts to UTC date table
- * - ToLocalTime: Converts to local date table
- * - ToIsoDate: Converts to ISO 8601 string
- * - FormatUniversalTime, FormatLocalTime: Custom formatting
- *
- * @returns A TableType representing DateTime instance
- */
+/** Creates the DateTime instance type definition with timestamps and formatting methods. */
 export const createDateTimeInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -818,18 +579,7 @@ export const createDateTimeInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Random instance type definition.
- *
- * Random provides deterministic random number generation. Methods include:
- * - NextNumber: Returns a random float in a range
- * - NextInteger: Returns a random integer in a range
- * - NextUnitVector: Returns a random unit Vector3
- * - Shuffle: Randomly shuffles a table in-place
- * - Clone: Creates a copy of the Random object
- *
- * @returns A TableType representing Random instance
- */
+/** Creates the Random instance type definition with deterministic random generation methods. */
 export const createRandomInstanceType = (): LuauType => {
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const randomRef: LuauType = { 'kind': 'TypeReference', 'name': 'Random' };
@@ -872,20 +622,7 @@ export const createRandomInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the RaycastParams instance type definition.
- *
- * RaycastParams configures raycast behavior. Properties and methods include:
- * - FilterDescendantsInstances: Instances to filter
- * - FilterType: Include or exclude filter
- * - IgnoreWater: Whether to ignore Terrain water
- * - CollisionGroup: Collision group name to use
- * - RespectCanCollide: Whether to respect CanCollide property
- * - BruteForceAllSlow: Performance vs accuracy tradeoff
- * - AddToFilter: Method to add instances to the filter
- *
- * @returns A TableType representing RaycastParams instance
- */
+/** Creates the RaycastParams instance type definition with filter and collision configuration. */
 export const createRaycastParamsInstanceType = (): LuauType => {
   const instanceRef: LuauType = { 'kind': 'TypeReference', 'name': 'Instance' };
 
@@ -909,20 +646,7 @@ export const createRaycastParamsInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the OverlapParams instance type definition.
- *
- * OverlapParams configures spatial query behavior. Properties and methods include:
- * - FilterDescendantsInstances: Instances to filter
- * - FilterType: Include or exclude filter
- * - MaxParts: Maximum number of parts to return
- * - CollisionGroup: Collision group name to use
- * - RespectCanCollide: Whether to respect CanCollide property
- * - BruteForceAllSlow: Performance vs accuracy tradeoff
- * - AddToFilter: Method to add instances to the filter
- *
- * @returns A TableType representing OverlapParams instance
- */
+/** Creates the OverlapParams instance type definition with spatial query configuration. */
 export const createOverlapParamsInstanceType = (): LuauType => {
   const instanceRef: LuauType = { 'kind': 'TypeReference', 'name': 'Instance' };
 
@@ -946,18 +670,7 @@ export const createOverlapParamsInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the RaycastResult instance type definition.
- *
- * RaycastResult is returned from raycast operations. Properties include:
- * - Instance: The Instance that was hit
- * - Position: The world position where the ray hit
- * - Normal: The surface normal at the hit point
- * - Material: The material at the hit point
- * - Distance: Distance from ray origin to hit point
- *
- * @returns A TableType representing RaycastResult instance
- */
+/** Creates the RaycastResult instance type definition with hit Instance, Position, Normal, Material, and Distance. */
 export const createRaycastResultInstanceType = (): LuauType => {
   const instanceRef: LuauType = { 'kind': 'TypeReference', 'name': 'Instance' };
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
@@ -973,16 +686,7 @@ export const createRaycastResultInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the PathWaypoint instance type definition.
- *
- * PathWaypoint represents a point along a pathfinding path. Properties include:
- * - Position: The world position of the waypoint
- * - Action: The action to take at this waypoint (Walk, Jump)
- * - Label: Custom label for the waypoint
- *
- * @returns A TableType representing PathWaypoint instance
- */
+/** Creates the PathWaypoint instance type definition with Position, Action, and Label. */
 export const createPathWaypointInstanceType = (): LuauType => {
   const vector3Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
 
@@ -995,17 +699,7 @@ export const createPathWaypointInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the Font instance type definition.
- *
- * Font represents a text font configuration. Properties include:
- * - Family: The font family content ID
- * - Weight: The font weight enum
- * - Style: The font style enum
- * - Bold: Whether the font is bold
- *
- * @returns A TableType representing Font instance
- */
+/** Creates the Font instance type definition with Family, Weight, Style, and Bold. */
 export const createFontInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1016,14 +710,7 @@ export const createFontInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Faces instance type definition.
- *
- * Faces represents a set of selected faces on a part. Properties include:
- * - Top, Bottom, Left, Right, Back, Front: Boolean for each face
- *
- * @returns A TableType representing Faces instance
- */
+/** Creates the Faces instance type definition with boolean properties for each face direction. */
 export const createFacesInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1036,15 +723,7 @@ export const createFacesInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Axes instance type definition.
- *
- * Axes represents a set of selected axes. Properties include:
- * - X, Y, Z: Boolean for each primary axis
- * - Top, Bottom, Left, Right, Back, Front: Boolean for each face direction
- *
- * @returns A TableType representing Axes instance
- */
+/** Creates the Axes instance type definition with boolean properties for each axis and face direction. */
 export const createAxesInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1060,15 +739,7 @@ export const createAxesInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Vector2int16 instance type definition.
- *
- * Vector2int16 represents a 2D vector with 16-bit integer components.
- * Properties include:
- * - X, Y: Numeric components (integers)
- *
- * @returns A TableType representing Vector2int16 instance
- */
+/** Creates the Vector2int16 instance type definition with X and Y integer components. */
 export const createVector2int16InstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1077,15 +748,7 @@ export const createVector2int16InstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Vector3int16 instance type definition.
- *
- * Vector3int16 represents a 3D vector with 16-bit integer components.
- * Properties include:
- * - X, Y, Z: Numeric components (integers)
- *
- * @returns A TableType representing Vector3int16 instance
- */
+/** Creates the Vector3int16 instance type definition with X, Y, and Z integer components. */
 export const createVector3int16InstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1095,16 +758,7 @@ export const createVector3int16InstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the Region3int16 instance type definition.
- *
- * Region3int16 represents an axis-aligned 3D region with integer coordinates.
- * Properties include:
- * - Min: Minimum corner as Vector3int16
- * - Max: Maximum corner as Vector3int16
- *
- * @returns A TableType representing Region3int16 instance
- */
+/** Creates the Region3int16 instance type definition with Min and Max Vector3int16 corners. */
 export const createRegion3int16InstanceType = (): LuauType => {
   const vector3int16Ref: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3int16' };
 
@@ -1116,19 +770,7 @@ export const createRegion3int16InstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the PhysicalProperties instance type definition.
- *
- * PhysicalProperties describes physics simulation properties of a part.
- * Properties include:
- * - Density: Mass per unit volume
- * - Friction: Resistance to sliding
- * - Elasticity: Bounciness
- * - FrictionWeight: Influence of friction
- * - ElasticityWeight: Influence of elasticity
- *
- * @returns A TableType representing PhysicalProperties instance
- */
+/** Creates the PhysicalProperties instance type definition with Density, Friction, and Elasticity. */
 export const createPhysicalPropertiesInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1140,20 +782,7 @@ export const createPhysicalPropertiesInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the CatalogSearchParams instance type definition.
- *
- * CatalogSearchParams configures catalog search queries. Properties include:
- * - SearchKeyword: Text to search for
- * - MinPrice, MaxPrice: Price range filters
- * - SortType, SortAggregation: Sorting options
- * - CategoryFilter: Category to filter by
- * - AssetTypes, BundleTypes: Type filters
- * - IncludeOffSale: Whether to include off-sale items
- * - CreatorName: Filter by creator
- *
- * @returns A TableType representing CatalogSearchParams instance
- */
+/** Creates the CatalogSearchParams instance type definition with search and filter configuration. */
 export const createCatalogSearchParamsInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1170,17 +799,7 @@ export const createCatalogSearchParamsInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the RotationCurveKey instance type definition.
- *
- * RotationCurveKey represents a keyframe in a rotation animation curve.
- * Properties include:
- * - Time: Position in the animation
- * - Value: The CFrame rotation value
- * - Interpolation: How to interpolate to the next key
- *
- * @returns A TableType representing RotationCurveKey instance
- */
+/** Creates the RotationCurveKey instance type definition with Time, CFrame Value, and Interpolation. */
 export const createRotationCurveKeyInstanceType = (): LuauType => {
   const cframeRef: LuauType = { 'kind': 'TypeReference', 'name': 'CFrame' };
 
@@ -1193,18 +812,7 @@ export const createRotationCurveKeyInstanceType = (): LuauType => {
   );
 };
 
-/**
- * Creates the FloatCurveKey instance type definition.
- *
- * FloatCurveKey represents a keyframe in a float animation curve.
- * Properties include:
- * - Time: Position in the animation
- * - Value: The numeric value
- * - Interpolation: How to interpolate to the next key
- * - LeftTangent, RightTangent: Tangent values for smooth interpolation
- *
- * @returns A TableType representing FloatCurveKey instance
- */
+/** Creates the FloatCurveKey instance type definition with Time, Value, Interpolation, and tangents. */
 export const createFloatCurveKeyInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1216,17 +824,7 @@ export const createFloatCurveKeyInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the EnumItem instance type definition.
- *
- * EnumItem represents an individual value within a Roblox enum.
- * Properties include:
- * - Name: The name of the enum item
- * - Value: The numeric value
- * - EnumType: Reference to the parent Enum
- *
- * @returns A TableType representing EnumItem instance
- */
+/** Creates the EnumItem instance type definition with Name, Value, and EnumType. */
 export const createEnumItemInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1236,21 +834,7 @@ export const createEnumItemInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates the SharedTable instance type definition.
- *
- * SharedTable provides thread-safe shared data storage for Parallel Luau.
- * Methods include:
- * - clone: Creates a copy of the table
- * - cloneAndFreeze: Creates an immutable copy
- * - isFrozen: Checks if the table is frozen
- * - size: Returns the number of entries
- * - clear: Removes all entries
- *
- * SharedTable also supports indexing with string or number keys.
- *
- * @returns A TableType representing SharedTable instance
- */
+/** Creates the SharedTable instance type definition with thread-safe data storage operations. */
 export const createSharedTableInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1280,18 +864,7 @@ export const createSharedTableInstanceType = (): LuauType =>
     { 'indexer': { 'keyType': { 'kind': 'Union', 'types': [StringType, NumberType] }, 'valueType': AnyType } },
   );
 
-/**
- * Creates the DockWidgetPluginGuiInfo instance type definition.
- *
- * DockWidgetPluginGuiInfo configures a plugin dock widget. Properties include:
- * - InitialDockState: Where the widget should dock
- * - InitialEnabled: Whether the widget starts enabled
- * - InitialEnabledShouldOverrideRestore: Whether to override saved state
- * - FloatingXSize, FloatingYSize: Size when floating
- * - MinWidth, MinHeight: Minimum dimensions
- *
- * @returns A TableType representing DockWidgetPluginGuiInfo instance
- */
+/** Creates the DockWidgetPluginGuiInfo instance type definition with dock state and size configuration. */
 export const createDockWidgetPluginGuiInfoInstanceType = (): LuauType =>
   createTableType(
     new Map<string, PropertyType>([
@@ -1305,33 +878,7 @@ export const createDockWidgetPluginGuiInfoInstanceType = (): LuauType =>
     ]),
   );
 
-/**
- * Creates a map of all Roblox DataType instance types.
- *
- * This function creates type definitions for all Roblox data types and returns
- * them as a Map for easy lookup during type resolution.
- *
- * Data types included:
- * - Vectors: Vector2, Vector3, Vector2int16, Vector3int16
- * - Transforms: CFrame
- * - Colors: Color3, BrickColor
- * - UI: UDim, UDim2, Rect
- * - Animation: TweenInfo, NumberSequence, NumberSequenceKeypoint, ColorSequence, ColorSequenceKeypoint
- * - Physics: Ray, Region3, Region3int16, RaycastParams, OverlapParams, RaycastResult, PhysicalProperties
- * - Time: DateTime
- * - Randomness: Random
- * - Pathfinding: PathWaypoint
- * - Text: Font
- * - Selection: Faces, Axes
- * - Catalog: CatalogSearchParams
- * - Animation: RotationCurveKey, FloatCurveKey
- * - Enum: EnumItem
- * - Parallel Luau: SharedTable
- * - Plugin: DockWidgetPluginGuiInfo
- * - Signals: RBXScriptSignal, RBXScriptConnection
- *
- * @returns A Map of data type names to their TableType definitions
- */
+/** Creates a map of all Roblox DataType instance types for type resolution lookup. */
 export const createDataTypeInstances = (): Map<string, LuauType> =>
   new Map<string, LuauType>([
     ['Vector2', createVector2InstanceType()],
