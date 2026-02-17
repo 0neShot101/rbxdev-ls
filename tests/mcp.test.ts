@@ -1,4 +1,6 @@
+import { createLiveGameModel } from '@executor/gameTree';
 import {
+  createMcpServer,
   errorResult,
   formatGameTreeNode,
   formatLogEntry,
@@ -7,13 +9,11 @@ import {
   serializeGameTreeNode,
   textResult,
   tools,
-  createMcpServer,
 } from '@mcp/server';
-import { createLiveGameModel } from '@executor/gameTree';
 import { describe, expect, test } from 'bun:test';
 
-import type { GameTreeNode } from '@typings/protocol';
 import type { LogEntry } from '@typings/bridge';
+import type { GameTreeNode } from '@typings/protocol';
 
 describe('MCP Server - textResult / errorResult', () => {
   test('textResult wraps text in content array', () => {
@@ -458,9 +458,7 @@ describe('LiveGameModel', () => {
     const { model, update, mergeChildren } = createLiveGameModel();
     update([{ 'name': 'Workspace', 'className': 'Workspace', 'hasChildren': true }]);
 
-    mergeChildren(['Workspace'], [
-      { 'name': 'NewChild', 'className': 'Part' },
-    ]);
+    mergeChildren(['Workspace'], [{ 'name': 'NewChild', 'className': 'Part' }]);
 
     const node = model.getNode(['Workspace']);
     expect(node).toBeDefined();
