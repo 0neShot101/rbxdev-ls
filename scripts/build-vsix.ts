@@ -80,34 +80,16 @@ step('Build language server + MCP server', () => {
   run('bun build src/index.ts src/mcp.ts --outdir dist --target node');
 });
 
-step('Build VSCode extension', () => {
-  run('tsc -p ./', vscodeDir);
+step('Bundle VSCode extension', () => {
+  run('bun run bundle', vscodeDir);
 });
 
 step('Copy server files', () => {
   run('bun ./scripts/copy-server.ts', vscodeDir);
 });
 
-step('Clean stale output files', () => {
-  const outDir = join(vscodeDir, 'out');
-  if (existsSync(outDir)) {
-    const staleFiles = ['assetManagerProvider.js', 'docPreviewWebview.js'];
-    for (const file of staleFiles) {
-      const filePath = join(outDir, file);
-      if (existsSync(filePath)) {
-        unlinkSync(filePath);
-        console.log(`  Removed stale file: out/${file}`);
-      }
-      const mapPath = join(outDir, file.replace('.js', '.js.map'));
-      if (existsSync(mapPath)) {
-        unlinkSync(mapPath);
-      }
-    }
-  }
-});
-
 step('Package VSIX', () => {
-  run('npx vsce package', vscodeDir);
+  run('npx vsce package --no-dependencies', vscodeDir);
 });
 
 const vsixFiles = readdirSync(vscodeDir)

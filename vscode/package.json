@@ -711,19 +711,22 @@
   },
   "scripts": {
     "vscode:prepublish": "bun run build-all",
-    "build-all": "cd .. && bun run build:all && cd vscode && tsc -p ./ && bun run copy-server",
+    "build-all": "cd .. && bun run build:all && cd vscode && bun run bundle && bun run copy-server",
     "copy-server": "bun ./scripts/copy-server.ts",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "bundle": "bun run clean && esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap --minify",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
-    "@types/vscode": "^1.75.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "@vscode/vsce": "^2.0.0"
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.0.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.0.0"
   }
 }

@@ -4,10 +4,12 @@
 .test-userdata/**
 src/**
 scripts/**
+node_modules/**
 *.vsix
 *.ts
 !*.d.ts
 *.map
+!out/extension.js.map
 tsconfig.json
 bun.lock
 bun.lockb
