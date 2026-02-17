@@ -951,39 +951,19 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 			end
 
 			if hookfunction ~= nil then
-				local tempRE = Instance.new('RemoteEvent')
-				local tempRF = Instance.new('RemoteFunction')
-				local tempURE = Instance.new('UnreliableRemoteEvent')
-
-				local refFire = tempRE.FireServer
-				local refInvoke = tempRF.InvokeServer
-				local refUnreliableFire = tempURE.FireServer
-
-				tempRE:Destroy()
-				tempRF:Destroy()
-				tempURE:Destroy()
-
-				local origFire, origInvoke, origUnreliableFire
-
-				origFire = hookfunction(refFire, newcclosure(function(self, ...)
-					logRemoteCall(self, 'FireServer', ...)
-					return origFire(self, ...)
-				end))
-
-				origInvoke = hookfunction(refInvoke, newcclosure(function(self, ...)
-					logRemoteCall(self, 'InvokeServer', ...)
-					return origInvoke(self, ...)
-				end))
-
-				origUnreliableFire = hookfunction(refUnreliableFire, newcclosure(function(self, ...)
-					logRemoteCall(self, 'FireServer', ...)
-					return origUnreliableFire(self, ...)
+				local mt = getrawmetatable(game)
+				local ncFunc = rawget(mt, '__namecall')
+				local oldNamecall
+				oldNamecall = hookfunction(ncFunc, newcclosure(function(self, ...)
+					local method = getnamecallmethod()
+					if method == 'FireServer' or method == 'InvokeServer' then
+						logRemoteCall(self, method, ...)
+					end
+					return oldNamecall(self, ...)
 				end))
 
 				spyCleanup = function()
-					pcall(hookfunction, refFire, origFire)
-					pcall(hookfunction, refInvoke, origInvoke)
-					pcall(hookfunction, refUnreliableFire, origUnreliableFire)
+					hookfunction(ncFunc, oldNamecall)
 				end
 				print'[rbxdev-bridge] Remote spy enabled (hookfunction)'
 
