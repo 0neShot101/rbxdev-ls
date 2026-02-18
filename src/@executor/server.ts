@@ -355,6 +355,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     'cloneInstance': core.cloneInstance,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
+    'setRemoteSpyBlockList': core.setRemoteSpyBlockList,
     get 'isRemoteSpyEnabled'() {
       return core.getRemoteSpyEnabled();
     },

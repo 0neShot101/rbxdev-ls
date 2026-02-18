@@ -3,6 +3,7 @@ import type {
   ModuleInterface,
   ModuleReference,
   PropertyEntry,
+  RemoteSpyBlockEntry,
   RemoteSpyCall,
   RuntimeError,
 } from './protocol';
@@ -64,6 +65,8 @@ export interface SetRemoteSpyEnabledResult extends BridgeResult {
 
 export interface SetRemoteSpyFilterResult extends BridgeResult {}
 
+export interface SetRemoteSpyBlockListResult extends BridgeResult {}
+
 export interface ExecutorBridge {
   readonly isRunning: boolean;
   readonly isConnected: boolean;
@@ -94,6 +97,7 @@ export interface ExecutorBridge {
   cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
   setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
   setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
+  setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;
   readonly isRemoteSpyEnabled: boolean;
   readonly remoteSpyCalls: ReadonlyArray<RemoteSpyCall>;
   onStatusChange: (callback: (status: BridgeStatus) => void) => void;

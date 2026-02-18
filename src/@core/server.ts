@@ -214,6 +214,13 @@ export const startServer = (state: ServerState): void => {
     bridgeRequest((params: { filter: string }) => executorBridge.setRemoteSpyFilter(params.filter)),
   );
 
+  connection.onRequest(
+    'custom/setRemoteSpyBlockList',
+    bridgeRequest((params: { blocks: Array<{ type: 'path' | 'name'; value: string }> }) =>
+      executorBridge.setRemoteSpyBlockList(params.blocks),
+    ),
+  );
+
   connection.onRequest('custom/getRemoteSpyStatus', () => ({
     'isEnabled': executorBridge.isRemoteSpyEnabled,
     'callCount': executorBridge.remoteSpyCalls.length,

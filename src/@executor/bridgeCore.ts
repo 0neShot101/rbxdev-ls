@@ -11,11 +11,19 @@ import type {
   ReparentResult,
   ScriptSourceResult,
   SetPropertyResult,
+  SetRemoteSpyBlockListResult,
   SetRemoteSpyEnabledResult,
   SetRemoteSpyFilterResult,
   TeleportResult,
 } from '@typings/bridge';
-import type { GameTreeNode, ModuleReference, RemoteSpyCall, RuntimeError, ServerMessage } from '@typings/protocol';
+import type {
+  GameTreeNode,
+  ModuleReference,
+  RemoteSpyBlockEntry,
+  RemoteSpyCall,
+  RuntimeError,
+  ServerMessage,
+} from '@typings/protocol';
 import { createLiveGameModel } from './gameTree';
 import { parseClientMessage } from './protocol';
 
@@ -67,6 +75,7 @@ export interface BridgeCore {
   readonly cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
   readonly setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
   readonly setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
+  readonly setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;
   readonly onStatusChange: (callback: (status: BridgeStatus) => void) => void;
   readonly onRuntimeError: (callback: (error: RuntimeError) => void) => void;
   readonly onGameTreeUpdate: (callback: (nodes: GameTreeNode[]) => void) => void;
@@ -96,6 +105,7 @@ export const createBridgeCore = (
   const pendingCloneInstances = new Map<string, PendingRequest<CloneInstanceResult>>();
   const pendingSetRemoteSpyEnabled = new Map<string, PendingRequest<SetRemoteSpyEnabledResult>>();
   const pendingSetRemoteSpyFilter = new Map<string, PendingRequest<SetRemoteSpyFilterResult>>();
+  const pendingSetRemoteSpyBlockList = new Map<string, PendingRequest<SetRemoteSpyBlockListResult>>();
 
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
@@ -304,6 +314,13 @@ export const createBridgeCore = (
         });
         break;
 
+      case 'setRemoteSpyBlockListResult':
+        resolvePending(pendingSetRemoteSpyBlockList, message.id, {
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+        break;
+
       case 'remoteSpy':
         remoteSpyCallsBuffer.push(message.call);
         if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) remoteSpyCallsBuffer.shift();
@@ -454,6 +471,15 @@ export const createBridgeCore = (
       filter,
     }));
 
+  const setRemoteSpyBlockListFn = (
+    blocks: ReadonlyArray<RemoteSpyBlockEntry>,
+  ): Promise<SetRemoteSpyBlockListResult> =>
+    createRequest(pendingSetRemoteSpyBlockList, 2000, id => ({
+      'type': 'setRemoteSpyBlockList' as const,
+      id,
+      blocks,
+    }));
+
   return {
     liveGameModel,
     handleMessage,
@@ -481,6 +507,7 @@ export const createBridgeCore = (
     cloneInstance,
     'setRemoteSpyEnabled': setRemoteSpyEnabledFn,
     'setRemoteSpyFilter': setRemoteSpyFilterFn,
+    'setRemoteSpyBlockList': setRemoteSpyBlockListFn,
     'onStatusChange': (callback: (status: BridgeStatus) => void) => {
       statusCallbacks.push(callback);
     },

@@ -106,6 +106,17 @@ export interface SetRemoteSpyFilterMessage {
   readonly filter: string;
 }
 
+export interface RemoteSpyBlockEntry {
+  readonly type: 'path' | 'name';
+  readonly value: string;
+}
+
+export interface SetRemoteSpyBlockListMessage {
+  readonly type: 'setRemoteSpyBlockList';
+  readonly id: string;
+  readonly blocks: ReadonlyArray<RemoteSpyBlockEntry>;
+}
+
 export type ServerMessage =
   | ExecuteMessage
   | RequestGameTreeMessage
@@ -120,7 +131,8 @@ export type ServerMessage =
   | CreateInstanceMessage
   | CloneInstanceMessage
   | SetRemoteSpyEnabledMessage
-  | SetRemoteSpyFilterMessage;
+  | SetRemoteSpyFilterMessage
+  | SetRemoteSpyBlockListMessage;
 
 export interface ConnectedMessage {
   readonly type: 'connected';
@@ -274,6 +286,13 @@ export interface SetRemoteSpyFilterResultMessage {
   readonly error?: string;
 }
 
+export interface SetRemoteSpyBlockListResultMessage {
+  readonly type: 'setRemoteSpyBlockListResult';
+  readonly id: string;
+  readonly success: boolean;
+  readonly error?: string;
+}
+
 export interface RemoteSpyCall {
   readonly remoteName: string;
   readonly remotePath: ReadonlyArray<string>;
@@ -307,6 +326,7 @@ export type ClientMessage =
   | CloneInstanceResultMessage
   | SetRemoteSpyEnabledResultMessage
   | SetRemoteSpyFilterResultMessage
+  | SetRemoteSpyBlockListResultMessage
   | RemoteSpyMessage;
 
 export interface ProxyHandshakeMessage {

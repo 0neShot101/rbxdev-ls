@@ -167,6 +167,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     'cloneInstance': core.cloneInstance,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
+    'setRemoteSpyBlockList': core.setRemoteSpyBlockList,
     get 'isRemoteSpyEnabled'() {
       return core.getRemoteSpyEnabled();
     },

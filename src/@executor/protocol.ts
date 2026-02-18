@@ -15,6 +15,7 @@ import type {
   RuntimeErrorMessage,
   ScriptSourceResultMessage,
   SetPropertyResultMessage,
+  SetRemoteSpyBlockListResultMessage,
   SetRemoteSpyEnabledResultMessage,
   SetRemoteSpyFilterResultMessage,
   TeleportToResultMessage,
@@ -61,6 +62,8 @@ export const isSetRemoteSpyEnabledResultMessage =
   createResultGuard<SetRemoteSpyEnabledResultMessage>('setRemoteSpyEnabledResult');
 export const isSetRemoteSpyFilterResultMessage =
   createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
+export const isSetRemoteSpyBlockListResultMessage =
+  createResultGuard<SetRemoteSpyBlockListResultMessage>('setRemoteSpyBlockListResult');
 
 export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
   isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object' && msg['call'] !== null;
@@ -83,6 +86,7 @@ const clientMessageValidators: Record<string, (msg: unknown) => msg is ClientMes
   'cloneInstanceResult': isCloneInstanceResultMessage,
   'setRemoteSpyEnabledResult': isSetRemoteSpyEnabledResultMessage,
   'setRemoteSpyFilterResult': isSetRemoteSpyFilterResultMessage,
+  'setRemoteSpyBlockListResult': isSetRemoteSpyBlockListResultMessage,
   'remoteSpy': isRemoteSpyMessage,
 };
 
