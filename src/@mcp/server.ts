@@ -365,6 +365,49 @@ export const tools: Tool[] = [
       'required': ['enabled'],
     },
   },
+  {
+    'name': 'set_remote_spy_block_list',
+    'description': 'Set the list of remotes to block from firing to the server.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'blocks': {
+          'type': 'array',
+          'items': {
+            'type': 'object',
+            'properties': {
+              'type': { 'type': 'string', 'enum': ['path', 'name'], 'description': 'Match by path or name' },
+              'value': { 'type': 'string', 'description': 'The path or name to block' },
+            },
+            'required': ['type', 'value'],
+          },
+          'description': 'Array of block entries',
+        },
+      },
+      'required': ['blocks'],
+    },
+  },
+  {
+    'name': 'save_instance',
+    'description':
+      "Save the game's DataModel or a specific instance to a file on the executor's filesystem using saveinstance().",
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'path': {
+          'type': 'array',
+          'items': { 'type': 'string' },
+          'description': 'Optional path to a specific instance to save. If omitted, saves the full game.',
+        },
+        'fileName': {
+          'type': 'string',
+          'description': 'Output file name (e.g., "game.rbxl", "workspace.rbxm"). Defaults to "game.rbxl".',
+        },
+        'decompile': { 'type': 'boolean', 'description': 'Whether to decompile scripts. Defaults to true.' },
+      },
+      'required': [],
+    },
+  },
 ];
 
 /** Creates and configures the MCP server with all tools and resources. */
@@ -699,6 +742,47 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
           result => `Remote Spy ${result.enabled === true ? 'enabled' : 'disabled'}`,
           'Failed to set Remote Spy state',
         );
+      }
+
+      case 'set_remote_spy_block_list': {
+        if (bridge.isConnected === false) return NOT_CONNECTED;
+        const typedArgs = args as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
+        if (Array.isArray(typedArgs.blocks) === false)
+          return errorResult('Error: blocks parameter is required (array)');
+
+        return bridgeCall(
+          () => bridge.setRemoteSpyBlockList(typedArgs.blocks),
+          () => `Block list updated (${typedArgs.blocks.length} entries)`,
+          'Failed to set block list',
+        );
+      }
+
+      case 'save_instance': {
+        if (bridge.isConnected === false) return NOT_CONNECTED;
+        const typedArgs = args as { path?: string[]; fileName?: string; decompile?: boolean };
+        const fileName = typedArgs.fileName ?? 'game.rbxl';
+        const decompile = typedArgs.decompile !== false;
+
+        const optionParts: string[] = [];
+        optionParts.push(`FilePath = "${fileName}"`);
+        optionParts.push(`Decompile = ${decompile}`);
+
+        if (typedArgs.path !== undefined && typedArgs.path.length > 0) {
+          const serviceName = typedArgs.path[0] ?? '';
+          let lookup = `game:GetService("${serviceName}")`;
+          for (const part of typedArgs.path.slice(1)) lookup += `:FindFirstChild("${part}")`;
+          optionParts.push(`Object = ${lookup}`);
+        }
+
+        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+
+        try {
+          const result = await bridge.execute(code);
+          if (result.success) return textResult(result.result ?? `Save initiated to ${fileName}`);
+          return errorResult(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
+        } catch (err) {
+          return errorResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       default:

@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "publisher": "rbxdev",
   "license": "MIT",
   "repository": {
@@ -371,6 +371,47 @@
             }
           }
         }
+      },
+      {
+        "name": "rbxdev_set_remote_spy_block_list",
+        "toolReferenceName": "roblox-block-remotes",
+        "displayName": "Block Remotes",
+        "description": "Set the list of remotes to block from firing to the server.",
+        "modelDescription": "Block specific remotes from firing to the server. Each block entry matches either by 'path' (e.g., 'ReplicatedStorage.Events.ChatEvent') or 'name' (e.g., 'ChatEvent'). Blocked remotes are intercepted and prevented from reaching the server.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blocks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "enum": ["path", "name"] },
+                  "value": { "type": "string" }
+                },
+                "required": ["type", "value"]
+              }
+            }
+          },
+          "required": ["blocks"]
+        }
+      },
+      {
+        "name": "rbxdev_save_instance",
+        "toolReferenceName": "roblox-save",
+        "displayName": "Save Instance",
+        "description": "Save the game or a specific instance to a file using saveinstance().",
+        "modelDescription": "Save the Roblox game (full DataModel) or a specific instance to a .rbxl/.rbxm file. The file saves to the executor's workspace directory on disk. Use path to target a specific instance, or omit to save the entire game.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "array", "items": { "type": "string" }, "description": "Optional instance path" },
+            "fileName": { "type": "string", "description": "Output file name (default: game.rbxl)" },
+            "decompile": { "type": "boolean", "description": "Decompile scripts (default: true)" }
+          }
+        }
       }
     ],
     "languages": [
@@ -449,6 +490,22 @@
           "type": "string",
           "default": "",
           "description": "Custom path to luau-bundle executable. Leave empty to auto-download."
+        },
+        "rbxdev-ls.saveInstance.decompile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Decompile scripts when saving instances"
+        },
+        "rbxdev-ls.saveInstance.noscripts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude all scripts when saving instances"
+        },
+        "rbxdev-ls.saveInstance.excludeServices": {
+          "type": "array",
+          "default": ["Chat", "CoreGui", "CorePackages"],
+          "items": { "type": "string" },
+          "description": "Services to exclude from full game saves"
         }
       }
     },
@@ -572,8 +629,28 @@
       },
       {
         "command": "rbxdev-ls.showRemoteSpy",
-        "title": "Show Remote Spy Output",
+        "title": "Show Remote Spy Panel",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.openRemoteSpy",
+        "title": "Open Remote Spy",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.showRemoteSpyLog",
+        "title": "Show Remote Spy Log",
         "icon": "$(output)"
+      },
+      {
+        "command": "rbxdev-ls.saveGame",
+        "title": "Roblox: Save Game (Full DataModel)",
+        "icon": "$(save-all)"
+      },
+      {
+        "command": "rbxdev-ls.saveInstance",
+        "title": "Save Instance",
+        "icon": "$(save)"
       },
       {
         "command": "rbxdev-ls.copyLastRemoteCall",
@@ -705,6 +782,11 @@
           "command": "rbxdev-ls.cloneInstance",
           "when": "view == rbxdev-gameTree && viewItem != service",
           "group": "3_create@2"
+        },
+        {
+          "command": "rbxdev-ls.saveInstance",
+          "when": "view == rbxdev-gameTree && rbxdev-ls:bridgeConnected",
+          "group": "4_save@1"
         }
       ]
     }

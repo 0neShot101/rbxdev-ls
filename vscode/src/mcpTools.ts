@@ -636,5 +636,92 @@ export const registerMcpTools = (
     }),
   );
 
+  // Set Remote Spy Block List Tool
+  context.subscriptions.push(
+    vscode.lm.registerTool('rbxdev_set_remote_spy_block_list', {
+      async invoke(options, _token) {
+        if (getConnectionStatus() === false) {
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
+        }
+
+        const input = options.input as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
+        if (Array.isArray(input?.blocks) === false) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Error: blocks parameter is required (array)'),
+          ]);
+        }
+
+        try {
+          const result = await client.sendRequest<{ success: boolean; error?: string }>(
+            'custom/setRemoteSpyBlockList',
+            { 'blocks': input.blocks },
+          );
+
+          if (result.success) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(`Block list updated (${input.blocks.length} entries)`),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Failed: ${result.error ?? 'Unknown error'}`),
+          ]);
+        } catch (err) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
+          ]);
+        }
+      },
+    }),
+  );
+
+  // Save Instance Tool
+  context.subscriptions.push(
+    vscode.lm.registerTool('rbxdev_save_instance', {
+      async invoke(options, _token) {
+        if (getConnectionStatus() === false) {
+          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
+        }
+
+        const input = options.input as { path?: string[]; fileName?: string; decompile?: boolean };
+        const fileName = input?.fileName ?? 'game.rbxl';
+        const decompile = input?.decompile !== false;
+
+        const optionParts: string[] = [];
+        optionParts.push(`FilePath = "${fileName}"`);
+        optionParts.push(`Decompile = ${decompile}`);
+
+        if (input?.path !== undefined && input.path.length > 0) {
+          const serviceName = input.path[0] ?? '';
+          let lookup = `game:GetService("${serviceName}")`;
+          for (const part of input.path.slice(1)) lookup += `:FindFirstChild("${part}")`;
+          optionParts.push(`Object = ${lookup}`);
+        }
+
+        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+
+        try {
+          const result = await client.sendRequest<{
+            success: boolean;
+            result?: string;
+            error?: { message: string };
+          }>('custom/execute', { code });
+
+          if (result.success) {
+            return new vscode.LanguageModelToolResult([
+              new vscode.LanguageModelTextPart(result.result ?? `Save initiated to ${fileName}`),
+            ]);
+          }
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Save failed: ${result.error?.message ?? 'Unknown error'}`),
+          ]);
+        } catch (err) {
+          return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
+          ]);
+        }
+      },
+    }),
+  );
+
   console.log('[rbxdev-ls] MCP tools registered with VS Code Language Model API');
 };

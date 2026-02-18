@@ -19,6 +19,20 @@ import { GameTreeDataProvider, type GameTreeItem, type GameTreeNode } from './ga
 import { registerMcpTools } from './mcpTools';
 import { type PropertyEntry, type PropertyItem } from './propertiesProvider';
 import { PropertiesWebviewProvider } from './propertiesWebview';
+import {
+  addBlock,
+  addCall,
+  addIgnore,
+  clearBlocks,
+  clearCalls,
+  clearIgnores,
+  createRemoteSpyState,
+  isCallIgnored,
+  removeBlock,
+  removeIgnore,
+} from './remoteSpyState';
+import type { FromWebviewMessage } from './remoteSpyWebview';
+import { RemoteSpyPanel } from './remoteSpyWebview';
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;
@@ -31,15 +45,9 @@ let lastConnectedState: boolean = false;
 let lastExecutorName: string | undefined;
 let remoteSpyStatusBar: StatusBarItem;
 let bundleMode: boolean = false;
-const lastRemoteCalls: Array<{
-  remoteName: string;
-  remotePath: string[];
-  remoteType: string;
-  method: string;
-  arguments: string;
-  code: string;
-  timestamp: number;
-}> = [];
+let remoteSpyPanel: RemoteSpyPanel;
+const remoteSpyState = createRemoteSpyState();
+let remoteSpyEnabled = false;
 
 type BridgeStatus = 'stopped' | 'waiting' | 'connected' | 'error';
 
@@ -266,6 +274,142 @@ export function activate(context: ExtensionContext) {
   propertiesProvider = new PropertiesWebviewProvider(context);
   context.subscriptions.push(window.registerWebviewViewProvider('rbxdev-properties', propertiesProvider));
 
+  // Create Remote Spy WebView panel manager
+  remoteSpyPanel = new RemoteSpyPanel(context);
+  context.subscriptions.push({ 'dispose': () => remoteSpyPanel.dispose() });
+
+  const sendBlockListToExecutor = async (): Promise<void> => {
+    try {
+      await client.sendRequest('custom/setRemoteSpyBlockList', {
+        'blocks': remoteSpyState.blockList,
+      });
+    } catch {
+      // Executor may not support blocking
+    }
+  };
+
+  remoteSpyPanel.onMessage(async (message: FromWebviewMessage) => {
+    switch (message.type) {
+      case 'toggleSpy': {
+        if (lastConnectedState === false) {
+          window.showErrorMessage('No executor connected');
+          return;
+        }
+        const result = await client.sendRequest<{
+          success: boolean;
+          enabled?: boolean;
+          error?: string;
+        }>('custom/setRemoteSpyEnabled', { 'enabled': message.enabled === true });
+        if (result.success) {
+          remoteSpyEnabled = result.enabled === true;
+          if (remoteSpyEnabled) {
+            remoteSpyStatusBar.text = '$(eye) Spy ON';
+          } else {
+            remoteSpyStatusBar.text = '$(eye-closed) Spy OFF';
+          }
+          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        }
+        break;
+      }
+      case 'pause':
+        remoteSpyState.paused = true;
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        break;
+      case 'resume':
+        remoteSpyState.paused = false;
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        break;
+      case 'clear':
+        clearCalls(remoteSpyState);
+        remoteSpyPanel.clear();
+        break;
+      case 'selectCall':
+        if (message.index !== undefined) remoteSpyState.selectedIndex = message.index;
+        break;
+      case 'copyCode': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        await env.clipboard.writeText(call.code);
+        window.showInformationMessage(`Copied: ${call.remoteName}`);
+        break;
+      }
+      case 'copyPath': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        const pathStr = call.remotePath.join('.');
+        await env.clipboard.writeText(pathStr);
+        window.showInformationMessage(`Copied path: ${pathStr}`);
+        break;
+      }
+      case 'copyArgs': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        await env.clipboard.writeText(call.arguments);
+        window.showInformationMessage(`Copied arguments`);
+        break;
+      }
+      case 'ignoreByPath': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        addIgnore(remoteSpyState, { 'type': 'path', 'value': call.remotePath.join('.') });
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        break;
+      }
+      case 'ignoreByName': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        addIgnore(remoteSpyState, { 'type': 'name', 'value': call.remoteName });
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        break;
+      }
+      case 'blockByPath': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        addBlock(remoteSpyState, { 'type': 'path', 'value': call.remotePath.join('.') });
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        await sendBlockListToExecutor();
+        break;
+      }
+      case 'blockByName': {
+        if (message.index === undefined) return;
+        const call = remoteSpyState.calls[message.index];
+        if (call === undefined) return;
+        addBlock(remoteSpyState, { 'type': 'name', 'value': call.remoteName });
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        await sendBlockListToExecutor();
+        break;
+      }
+      case 'clearIgnores':
+        clearIgnores(remoteSpyState);
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        break;
+      case 'clearBlocks':
+        clearBlocks(remoteSpyState);
+        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        await sendBlockListToExecutor();
+        break;
+      case 'removeIgnore':
+        if (message.entry !== undefined) {
+          removeIgnore(remoteSpyState, message.entry);
+          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        }
+        break;
+      case 'removeBlock':
+        if (message.entry !== undefined) {
+          removeBlock(remoteSpyState, message.entry);
+          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+          await sendBlockListToExecutor();
+        }
+        break;
+    }
+  });
+
   // Handle selection changes in the game tree to show properties
   treeView.onDidChangeSelection(async e => {
     if (e.selection.length === 0) {
@@ -468,22 +612,19 @@ export function activate(context: ExtensionContext) {
         code: string;
         timestamp: number;
       }) => {
-        // Store for copy functionality (keep last 100)
-        lastRemoteCalls.push(call);
-        if (lastRemoteCalls.length > 100) {
-          lastRemoteCalls.shift();
-        }
+        if (remoteSpyState.paused) return;
+        if (isCallIgnored(call, remoteSpyState.ignoreList)) return;
+
+        addCall(remoteSpyState, call);
+        const callIndex = remoteSpyState.calls.length - 1;
+
+        remoteSpyPanel.addCall(call, callIndex);
 
         const timestamp = new Date(call.timestamp * 1000).toLocaleTimeString();
-
-        // Use pre-built copyable Lua code from the bridge
-        const luaCode = call.code;
-
-        // SimpleSpy-style output format
         remoteSpyChannel.appendLine('─'.repeat(60));
         remoteSpyChannel.appendLine(`[${timestamp}] ${call.method} → ${call.remoteName} (${call.remoteType})`);
         remoteSpyChannel.appendLine('');
-        remoteSpyChannel.appendLine(luaCode);
+        remoteSpyChannel.appendLine(call.code);
         remoteSpyChannel.appendLine('');
       },
     );
@@ -1404,7 +1545,6 @@ export function activate(context: ExtensionContext) {
       }
 
       try {
-        // Get current status
         const status = await client.sendRequest<{ isEnabled: boolean }>('custom/getRemoteSpyStatus');
         const newEnabled = status.isEnabled === false;
 
@@ -1415,15 +1555,17 @@ export function activate(context: ExtensionContext) {
         }>('custom/setRemoteSpyEnabled', { 'enabled': newEnabled });
 
         if (result.success) {
-          if (result.enabled === true) {
+          remoteSpyEnabled = result.enabled === true;
+          if (remoteSpyEnabled) {
             remoteSpyStatusBar.text = '$(eye) Spy ON';
             remoteSpyStatusBar.backgroundColor = undefined;
-            remoteSpyChannel.show(true);
+            remoteSpyPanel.show(remoteSpyState, remoteSpyEnabled);
             window.showInformationMessage('Remote Spy enabled - monitoring remote calls');
           } else {
             remoteSpyStatusBar.text = '$(eye-closed) Spy OFF';
             remoteSpyStatusBar.backgroundColor = undefined;
           }
+          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
         } else {
           window.showErrorMessage(`Failed to toggle Remote Spy: ${result.error ?? 'Unknown error'}`);
         }
@@ -1464,21 +1606,27 @@ export function activate(context: ExtensionContext) {
     }),
 
     commands.registerCommand('rbxdev-ls.showRemoteSpy', () => {
+      remoteSpyPanel.show(remoteSpyState, remoteSpyEnabled);
+    }),
+
+    commands.registerCommand('rbxdev-ls.openRemoteSpy', () => {
+      remoteSpyPanel.show(remoteSpyState, remoteSpyEnabled);
+    }),
+
+    commands.registerCommand('rbxdev-ls.showRemoteSpyLog', () => {
       remoteSpyChannel.show(true);
     }),
 
     commands.registerCommand('rbxdev-ls.copyLastRemoteCall', async () => {
-      if (lastRemoteCalls.length === 0) {
+      if (remoteSpyState.calls.length === 0) {
         window.showWarningMessage('No remote calls captured yet');
         return;
       }
 
-      // Show quick pick of recent calls
-      const items = lastRemoteCalls
+      const items = remoteSpyState.calls
         .slice(-20)
         .reverse()
         .map(call => {
-          // Show a single-line preview for the picker
           const preview = call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code;
           return {
             'label': `${call.remoteName}`,
@@ -1506,13 +1654,12 @@ export function activate(context: ExtensionContext) {
         return;
       }
 
-      if (lastRemoteCalls.length === 0) {
+      if (remoteSpyState.calls.length === 0) {
         window.showWarningMessage('No remote calls captured yet');
         return;
       }
 
-      // Show quick pick of recent calls
-      const items = lastRemoteCalls
+      const items = remoteSpyState.calls
         .slice(-20)
         .reverse()
         .map(call => {
@@ -1538,16 +1685,142 @@ export function activate(context: ExtensionContext) {
     }),
 
     commands.registerCommand('rbxdev-ls.copyQuickRemote', async () => {
-      if (lastRemoteCalls.length === 0) {
+      if (remoteSpyState.calls.length === 0) {
         window.showWarningMessage('No remote calls captured yet');
         return;
       }
 
-      const call = lastRemoteCalls[lastRemoteCalls.length - 1];
+      const call = remoteSpyState.calls[remoteSpyState.calls.length - 1];
       if (call === undefined) return;
 
       await env.clipboard.writeText(call.code);
       window.showInformationMessage(`Copied: ${call.remoteName}`);
+    }),
+
+    commands.registerCommand('rbxdev-ls.saveGame', async () => {
+      if (lastConnectedState === false) {
+        window.showErrorMessage('No executor connected');
+        return;
+      }
+
+      const fileName = await window.showInputBox({
+        'title': 'Save Game',
+        'prompt': 'Enter the file name for the saved game',
+        'value': 'game.rbxl',
+        'validateInput': v => {
+          if (v.trim() === '') return 'File name cannot be empty';
+          if (v.endsWith('.rbxl') === false && v.endsWith('.rbxlx') === false)
+            return 'File must end with .rbxl or .rbxlx';
+          return undefined;
+        },
+      });
+
+      if (fileName === undefined) return;
+
+      const config = workspace.getConfiguration('rbxdev-ls');
+      const decompile = config.get<boolean>('saveInstance.decompile', true);
+      const noscripts = config.get<boolean>('saveInstance.noscripts', false);
+      const excludeServices = config.get<string[]>('saveInstance.excludeServices', ['Chat', 'CoreGui', 'CorePackages']);
+
+      const optionParts: string[] = [];
+      optionParts.push(`FilePath = "${fileName}"`);
+      optionParts.push(`Decompile = ${decompile}`);
+      if (noscripts) optionParts.push('NilInstances = false');
+      if (excludeServices.length > 0) {
+        const classList = excludeServices.map(c => `"${c}"`).join(', ');
+        optionParts.push(`ExcludeClassNames = {${classList}}`);
+      }
+
+      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+
+      await window.withProgress(
+        { 'location': ProgressLocation.Notification, 'title': `Saving game to ${fileName}...`, 'cancellable': false },
+        async () => {
+          try {
+            const result = await client.sendRequest<{
+              success: boolean;
+              result?: string;
+              error?: { message: string };
+            }>('custom/execute', { code });
+
+            if (result.success) {
+              window.showInformationMessage(result.result ?? `Saved to ${fileName}`);
+            } else {
+              window.showErrorMessage(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
+            }
+          } catch (err) {
+            window.showErrorMessage(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        },
+      );
+    }),
+
+    commands.registerCommand('rbxdev-ls.saveInstance', async (item: GameTreeItem) => {
+      if (lastConnectedState === false) {
+        window.showErrorMessage('No executor connected');
+        return;
+      }
+      if (item === undefined) {
+        window.showErrorMessage('No instance selected');
+        return;
+      }
+
+      const defaultName = `${item.name}.rbxm`;
+      const fileName = await window.showInputBox({
+        'title': `Save ${item.name}`,
+        'prompt': 'Enter the file name',
+        'value': defaultName,
+        'validateInput': v => {
+          if (v.trim() === '') return 'File name cannot be empty';
+          if (
+            v.endsWith('.rbxm') === false &&
+            v.endsWith('.rbxmx') === false &&
+            v.endsWith('.rbxl') === false &&
+            v.endsWith('.rbxlx') === false
+          )
+            return 'File must end with .rbxm, .rbxmx, .rbxl, or .rbxlx';
+          return undefined;
+        },
+      });
+
+      if (fileName === undefined) return;
+
+      const config = workspace.getConfiguration('rbxdev-ls');
+      const decompile = config.get<boolean>('saveInstance.decompile', true);
+
+      const cleanPath = item.path.map(s => {
+        const i = s.indexOf('\0');
+        return i >= 0 ? s.substring(0, i) : s;
+      });
+
+      const serviceName = cleanPath[0] ?? '';
+      let lookup = `game:GetService("${serviceName}")`;
+      for (const part of cleanPath.slice(1)) {
+        lookup += `:FindFirstChild("${part}")`;
+      }
+
+      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal target = ${lookup}\nif target == nil then return "Error: instance not found" end\nlocal ok, err = pcall(saveinstance, {Object = target, FilePath = "${fileName}", Decompile = ${decompile}})\nif ok then return "Saved ${item.name} to ${fileName}" else return "Error: " .. tostring(err) end`;
+
+      await window.withProgress(
+        { 'location': ProgressLocation.Notification, 'title': `Saving ${item.name}...`, 'cancellable': false },
+        async () => {
+          try {
+            const result = await client.sendRequest<{
+              success: boolean;
+              result?: string;
+              error?: { message: string };
+            }>('custom/execute', { code });
+
+            if (result.success) {
+              window.showInformationMessage(result.result ?? `Saved ${item.name}`);
+            } else {
+              window.showErrorMessage(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
+            }
+          } catch (err) {
+            window.showErrorMessage(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        },
+      );
     }),
 
     commands.registerCommand('rbxdev-ls.bundleExecute', async () => {
