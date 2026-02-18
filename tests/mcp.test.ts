@@ -258,8 +258,8 @@ describe('MCP Server - formatServicesTree', () => {
 });
 
 describe('MCP Server - tools array', () => {
-  test('has 16 tools', () => {
-    expect(tools.length).toBe(16);
+  test('has 18 tools', () => {
+    expect(tools.length).toBe(18);
   });
 
   test('all tools have name, description, and inputSchema', () => {
@@ -289,6 +289,27 @@ describe('MCP Server - tools array', () => {
     expect(names).toContain('clone_instance');
     expect(names).toContain('get_remote_calls');
     expect(names).toContain('set_remote_spy_enabled');
+    expect(names).toContain('set_remote_spy_block_list');
+    expect(names).toContain('save_instance');
+  });
+
+  test('set_remote_spy_block_list requires blocks parameter', () => {
+    const tool = tools.find(t => t.name === 'set_remote_spy_block_list');
+    expect(tool).toBeDefined();
+    const schema = tool!.inputSchema as { required?: string[] };
+    expect(schema.required).toContain('blocks');
+  });
+
+  test('save_instance has optional path and fileName parameters', () => {
+    const tool = tools.find(t => t.name === 'save_instance');
+    expect(tool).toBeDefined();
+    const schema = tool!.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
+    expect(schema.properties).toBeDefined();
+    expect(schema.properties!['path']).toBeDefined();
+    expect(schema.properties!['fileName']).toBeDefined();
+    expect(schema.properties!['decompile']).toBeDefined();
+    expect(schema.required ?? []).not.toContain('path');
+    expect(schema.required ?? []).not.toContain('fileName');
   });
 
   test('all tool names are unique', () => {

@@ -921,6 +921,7 @@ describe('ProxyBridge - Standalone', () => {
     expect(typeof proxy.cloneInstance).toBe('function');
     expect(typeof proxy.setRemoteSpyEnabled).toBe('function');
     expect(typeof proxy.setRemoteSpyFilter).toBe('function');
+    expect(typeof proxy.setRemoteSpyBlockList).toBe('function');
     expect(typeof proxy.onStatusChange).toBe('function');
     expect(typeof proxy.onRuntimeError).toBe('function');
     expect(typeof proxy.onGameTreeUpdate).toBe('function');
