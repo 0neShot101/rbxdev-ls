@@ -1,6 +1,6 @@
 {
   "name": "rbxdev-ls",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/index.js",
   "bin": {
@@ -25,6 +25,7 @@
     "test": "bun test",
     "fetch-api": "bun scripts/fetch-roblox-api.ts && bun scripts/fetch-sunc-api.ts",
     "build:vsix": "bun scripts/build-vsix.ts",
+    "build:beta": "bun scripts/build-vsix.ts --beta",
     "publish:mcp": "bun scripts/publish-mcp.ts",
     "publish:mcp:dry": "bun scripts/publish-mcp.ts --dry-run"
   },
