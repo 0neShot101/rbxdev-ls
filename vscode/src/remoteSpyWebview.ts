@@ -221,7 +221,7 @@ export class RemoteSpyPanel {
       overflow: hidden;
     }
 
-    /* ── Toolbar ─────────────────────────────────── */
+    /*  Toolbar  */
     .toolbar {
       display: flex;
       align-items: center;
@@ -244,7 +244,7 @@ export class RemoteSpyPanel {
       opacity: 0.6;
     }
 
-    /* ── Buttons ─────────────────────────────────── */
+    /*  Buttons  */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -319,14 +319,14 @@ export class RemoteSpyPanel {
       font-weight: 600;
     }
 
-    /* ── Main Layout ─────────────────────────────── */
+    /*  Main Layout  */
     .main {
       flex: 1;
       display: flex;
       overflow: hidden;
     }
 
-    /* ── Call List ────────────────────────────────── */
+    /*  Call List  */
     .call-list {
       width: 38%;
       min-width: 220px;
@@ -424,7 +424,7 @@ export class RemoteSpyPanel {
     .empty-state .empty-icon { font-size: 32px; opacity: 0.3; }
     .empty-state .empty-text { font-size: 13px; opacity: 0.6; line-height: 1.5; }
 
-    /* ── Code Panel ──────────────────────────────── */
+    /*  Code Panel  */
     .code-panel {
       flex: 1;
       display: flex;
@@ -487,7 +487,7 @@ export class RemoteSpyPanel {
     }
     .code-empty .code-empty-icon { font-size: 28px; }
 
-    /* ── Luau Syntax ─────────────────────────────── */
+    /*  Luau Syntax  */
     .kw { color: #c586c0; }
     .str { color: #ce9178; }
     .num { color: #b5cea8; }
@@ -496,7 +496,7 @@ export class RemoteSpyPanel {
     .op { color: var(--vscode-foreground); }
     .gl { color: #4ec9b0; font-weight: 500; }
 
-    /* ── Lists Panel ─────────────────────────────── */
+    /*  Lists Panel  */
     .lists-panel {
       border-top: 1px solid var(--vscode-panel-border);
       max-height: 160px;
@@ -562,7 +562,7 @@ export class RemoteSpyPanel {
       background: var(--accent-danger-dim);
     }
 
-    /* ── Status Bar ──────────────────────────────── */
+    /*  Status Bar  */
     .status-bar {
       display: flex;
       align-items: center;
