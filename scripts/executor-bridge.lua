@@ -487,24 +487,23 @@ local generateRemoteCode = function(remote, method, ...)
 		return remotePath .. ':' .. method .. '()'
 	end
 
+	local argParts = {}
 	local hasComplexArgs = false
 	for i = 1, numArgs do
 		local t = typeof(args[i])
 		if t == 'table' or t == 'CFrame' or t == 'NumberSequence' or t == 'ColorSequence' or t == 'TweenInfo' then
 			hasComplexArgs = true
-			break
 		end
+		table.insert(argParts, valueToLua(args[i], hasComplexArgs and 1 or 0))
 	end
 
 	if not hasComplexArgs and numArgs <= 5 then
-		local argParts = {}
-		for i = 1, numArgs do table.insert(argParts, valueToLua(args[i])) end
 		return remotePath .. ':' .. method .. '(' .. table.concat(argParts, ', ') .. ')'
 	end
 
-	local argParts = {}
-	for i = 1, numArgs do table.insert(argParts, '    ' .. valueToLua(args[i], 1)) end
-	return 'local args = {\n' .. table.concat(argParts, ',\n') .. '\n}\n\n' .. remotePath .. ':' .. method .. '(unpack(args))'
+	local indented = {}
+	for _, part in ipairs(argParts) do table.insert(indented, '    ' .. part) end
+	return remotePath .. ':' .. method .. '(\n' .. table.concat(indented, ',\n') .. '\n)'
 end
 
 local serializeArguments = function(...)
