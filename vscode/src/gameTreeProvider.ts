@@ -88,7 +88,7 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'TrussPart': 'trusspart',
   'SkateboardPlatform': 'part',
 
-  // Services
+  // Services - Core
   'Workspace': 'workspace',
   'Terrain': 'workspace',
   'Camera': 'camera',
@@ -105,34 +105,105 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'Lighting': 'lighting',
   'SoundService': 'sound',
   'Teams': 'players',
-  'Chat': 'storage',
-  'LocalizationService': 'storage',
-  'TestService': 'storage',
-  'RunService': 'storage',
-  'TweenService': 'storage',
-  'Debris': 'storage',
-  'HttpService': 'storage',
-  'MarketplaceService': 'storage',
-  'PolicyService': 'storage',
-  'TeleportService': 'storage',
-  'DataStoreService': 'storage',
-  'MemoryStoreService': 'storage',
-  'MessagingService': 'storage',
-  'PhysicsService': 'storage',
-  'CollectionService': 'storage',
-  'ContextActionService': 'storage',
-  'UserInputService': 'storage',
-  'VRService': 'storage',
-  'PathfindingService': 'storage',
-  'InsertService': 'storage',
-  'AssetService': 'storage',
-  'BadgeService': 'storage',
-  'GamePassService': 'storage',
-  'GroupService': 'storage',
-  'SocialService': 'storage',
-  'TextService': 'storage',
-  'ProximityPromptService': 'storage',
-  'AnalyticsService': 'storage',
+
+  // Services - Timing & Runtime
+  'RunService': 'clock',
+  'TweenService': 'clock',
+  'Debris': 'clock',
+
+  // Services - Network & API
+  'HttpService': 'network',
+  'HttpRbxApiService': 'network',
+  'MarketplaceService': 'network',
+  'TeleportService': 'globe',
+  'MessagingService': 'network',
+  'DataStoreService': 'database',
+  'MemoryStoreService': 'database',
+
+  // Services - Chat & Social
+  'Chat': 'chat',
+  'TextChatService': 'chat',
+  'SocialService': 'chat',
+  'FriendService': 'chat',
+  'GroupService': 'chat',
+
+  // Services - Input
+  'UserInputService': 'gamepad',
+  'ContextActionService': 'gamepad',
+  'VRService': 'gamepad',
+  'HapticService': 'gamepad',
+  'GamepadService': 'gamepad',
+  'VirtualInputManager': 'gamepad',
+  'ControllerService': 'gamepad',
+  'TextBoxService': 'gamepad',
+
+  // Services - Security & Policy
+  'PolicyService': 'shield',
+  'PermissionsService': 'shield',
+  'UGCValidationService': 'shield',
+
+  // Services - Localization & Text
+  'LocalizationService': 'globe',
+  'TextService': 'globe',
+
+  // Services - Content & Data Providers
+  'ContentProvider': 'database',
+  'MeshContentProvider': 'database',
+  'SolidModelContentProvider': 'database',
+  'HSRDataContentProvider': 'database',
+  'KeyframeSequenceProvider': 'database',
+  'AnimationClipProvider': 'database',
+  'AssetService': 'database',
+  'InsertService': 'database',
+
+  // Services - Badge & Analytics
+  'BadgeService': 'badge',
+  'GamePassService': 'badge',
+  'PointsService': 'badge',
+  'AnalyticsService': 'badge',
+
+  // Services - Physics & Simulation
+  'PhysicsService': 'cube',
+  'CollectionService': 'cube',
+  'PathfindingService': 'cube',
+  'JointsService': 'cube',
+  'MaterialService': 'cube',
+
+  // Services - Video & Media
+  'VideoCaptureService': 'video',
+  'VideoService': 'video',
+
+  // Services - Plugins & Studio
+  'PluginManagementService': 'plugin',
+  'DraggerService': 'plugin',
+  'HeightmapImporterService': 'plugin',
+  'UIDragDetectorService': 'plugin',
+
+  // Services - System & Internal
+  'LogService': 'gear',
+  'MicroProfilerService': 'gear',
+  'TestService': 'gear',
+  'ReflectionService': 'gear',
+  'PlacesService': 'gear',
+  'UniqueIdLookupService': 'gear',
+  'InstanceExtensionsService': 'gear',
+  'SharedTableRegistry': 'gear',
+  'NotificationService': 'notification',
+  'UserService': 'players',
+  'ProximityPromptService': 'proximityprompt',
+  'InstanceFileSyncService': 'gear',
+  'FilteredSelection': 'gear',
+  'ProcessInstancePhysicsService': 'cube',
+  'NetworkClient': 'network',
+  'NetworkServer': 'network',
+  'ScriptEditorService': 'script',
+  'ScriptContext': 'script',
+  'RemoteDebuggerServer': 'network',
+  'PluginDebugService': 'plugin',
+  'PackageService': 'plugin',
+  'Visit': 'gear',
+  'GuidRegistryService': 'gear',
+  'Stats': 'gear',
 
   // Lighting
   'PointLight': 'lighting',
@@ -478,7 +549,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
         });
       }
 
-      // Recursively search children
       if (node.children !== undefined) {
         for (const child of node.children) {
           searchNode(child, [...path, child.name], false);
@@ -486,12 +556,10 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       }
     };
 
-    // Search all root nodes
     for (const node of this.rootNodes) {
       searchNode(node, [node.name], true);
     }
 
-    // Also search cached children
     for (const [pathKey, children] of this.childrenCache) {
       const basePath = pathKey.split('.');
       for (const child of children) {
@@ -516,10 +584,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   getTreeItem = (element: GameTreeItem): TreeItem => {
     const displayPath = GameTreeDataProvider.cleanPathForDisplay(element.path);
 
-    // In search mode, show flat results without expand arrows
     if (this.searchOptions !== undefined) {
       const item = new TreeItem(element.name, TreeItemCollapsibleState.None);
-      // Show full path in description during search
       item.description = `${element.className} — game.${displayPath}`;
       item.tooltip = `${element.className}\nPath: game.${displayPath}`;
 
@@ -530,7 +596,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       return item;
     }
 
-    // Normal mode: Support lazy loading: show expand arrow if hasChildren is true OR if children array has items
     const hasChildren = element.hasChildren === true || (element.children !== undefined && element.children.length > 0);
     const item = new TreeItem(
       element.name,
@@ -539,7 +604,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     item.description = element.className;
     item.tooltip = `${element.className}\nPath: game.${displayPath}`;
 
-    // Set contextValue for context menu conditions
     const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
     item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
 
@@ -556,7 +620,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     parentPath: ReadonlyArray<string>,
     isService = false,
   ): GameTreeItem[] => {
-    // Count occurrences of each name to detect duplicates
     const nameFrequency = new Map<string, number>();
     for (const child of children) {
       nameFrequency.set(child.name, (nameFrequency.get(child.name) ?? 0) + 1);
@@ -569,7 +632,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       const idx = nameIndex.get(child.name) ?? 0;
       nameIndex.set(child.name, idx + 1);
 
-      // Only add index suffix when this name appears more than once among siblings
       const pathSegment = freq > 1 ? `${child.name}\0${idx}` : child.name;
 
       return {
@@ -584,12 +646,10 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   getChildren = async (element?: GameTreeItem): Promise<GameTreeItem[]> => {
-    // In search mode, return flat search results at root level
     if (this.searchOptions !== undefined) {
       if (element === undefined) {
         return this.searchResults;
       }
-      // Search results are flat, no children
       return [];
     }
 
@@ -606,13 +666,11 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       element.children?.length ?? 'undefined',
     );
 
-    // Check if children are available in the element
     if (element.children !== undefined && element.children.length > 0) {
       console.log('[GameTree] Returning existing children:', element.children.length);
       return this.mapChildrenToItems(element.children, element.path);
     }
 
-    // Check if we have cached children for this path
     const pathKey = element.path.join('.');
     const cachedChildren = this.childrenCache.get(pathKey);
     if (cachedChildren !== undefined) {
@@ -620,7 +678,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       return this.mapChildrenToItems(cachedChildren, element.path);
     }
 
-    // If hasChildren is true but no children yet, fetch them via callback
     console.log(
       '[GameTree] Checking lazy load: hasChildren=',
       element.hasChildren,
@@ -632,7 +689,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       const fetchedChildren = await this.requestChildrenCallback(element.path);
       console.log('[GameTree] Fetched children result:', fetchedChildren?.length ?? 'undefined');
       if (fetchedChildren !== undefined && fetchedChildren.length > 0) {
-        // Cache the fetched children
         this.childrenCache.set(pathKey, fetchedChildren);
         return this.mapChildrenToItems(fetchedChildren, element.path);
       }
@@ -646,11 +702,9 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Called when starting to drag items
    */
   handleDrag = (source: readonly GameTreeItem[], dataTransfer: DataTransfer, _token: CancellationToken): void => {
-    // Only allow dragging non-service items
     const draggableItems = source.filter(item => item.isService === false);
     if (draggableItems.length === 0) return;
 
-    // Store the paths of dragged items
     const paths = draggableItems.map(item => item.path);
     dataTransfer.set(GAME_TREE_MIME_TYPE, new DataTransferItem(JSON.stringify(paths)));
   };
@@ -670,9 +724,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
 
     const paths = JSON.parse(await transferItem.asString()) as ReadonlyArray<ReadonlyArray<string>>;
 
-    // Reparent each dragged item to the target
     for (const sourcePath of paths) {
-      // Don't allow dropping onto self or parent
       if (this.isParentOrSelf(sourcePath, target.path)) continue;
 
       await this.reparentCallback(sourcePath, target.path);
@@ -683,12 +735,10 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Checks if target is a parent of or the same as source
    */
   private isParentOrSelf = (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>): boolean => {
-    // Can't drop on self
     if (sourcePath.length === targetPath.length) {
       return sourcePath.every((segment, i) => segment === targetPath[i]);
     }
 
-    // Can't drop on own child (target is longer and starts with source)
     if (targetPath.length > sourcePath.length) {
       return sourcePath.every((segment, i) => segment === targetPath[i]);
     }
@@ -706,7 +756,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   ): ReadonlyArray<GameTreeNode> => {
     if (existing.length === 0) return updated;
 
-    // Build lookup: name -> list of existing nodes (handles duplicate names)
     const existingByName = new Map<string, GameTreeNode[]>();
     for (const node of existing) {
       const list = existingByName.get(node.name) ?? [];
@@ -724,7 +773,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       const existingNode = list?.[idx];
       if (existingNode === undefined) return newNode;
 
-      // If update has full children, merge recursively to preserve deeper data
       if (newNode.children !== undefined && newNode.children.length > 0) {
         if (existingNode.children !== undefined && existingNode.children.length > 0) {
           return {
@@ -736,7 +784,6 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
         return newNode;
       }
 
-      // Update only has hasChildren flag (shallow) but existing has full children — preserve existing
       if (newNode.hasChildren === true && existingNode.children !== undefined && existingNode.children.length > 0) {
         return existingNode;
       }
@@ -746,10 +793,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   private getIconForClass = (className: string): Uri => {
-    // Check direct match first
     let iconName = CLASS_ICON_MAP[className];
 
-    // Check for partial matches if no direct match
     if (iconName === undefined) {
       if (className.includes('Value')) {
         if (className.includes('Int') || className.includes('Number') || className.includes('Double'))
@@ -813,7 +858,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
         iconName = 'highlight';
       else if (className.includes('Attachment') || className.includes('Bone')) iconName = 'attachment';
       else if (className.includes('Tool') || className.includes('Accessory')) iconName = 'tool';
-      else if (className.includes('Service')) iconName = 'storage';
+      else if (className.includes('Provider')) iconName = 'database';
+      else if (className.includes('Service')) iconName = 'gear';
       else iconName = 'default';
     }
 

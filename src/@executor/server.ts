@@ -338,6 +338,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     get 'executorName'() {
       return core.getExecutorName();
     },
+    get 'clientType'() {
+      return core.getClientType();
+    },
+    get 'clientCapabilities'() {
+      return core.getClientCapabilities();
+    },
     'liveGameModel': core.liveGameModel,
     start,
     stop,
@@ -353,6 +359,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     'requestScriptSource': core.requestScriptSource,
     'createInstance': core.createInstance,
     'cloneInstance': core.cloneInstance,
+    'setScriptSource': core.setScriptSource,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
     'setRemoteSpyBlockList': core.setRemoteSpyBlockList,

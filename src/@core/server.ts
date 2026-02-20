@@ -1,6 +1,8 @@
 import * as url from 'url';
 
 import { createExecutorBridge } from '@executor';
+import { hasCapability } from '@executor/capabilities';
+import type { BridgeCapability } from '@typings/clientType';
 import { createDocumentManager } from '@lsp/documents';
 import { setupCallHierarchyHandler } from '@lsp/handlers/callHierarchy';
 import { setupCodeLensHandler } from '@lsp/handlers/codeLens';
@@ -51,9 +53,17 @@ export const startServer = (state: ServerState): void => {
   let workspacePath: string | undefined;
 
   const bridgeRequest =
-    <P, R>(method: (params: P) => Promise<R>) =>
+    <P, R>(method: (params: P) => Promise<R>, requiredCapability?: BridgeCapability) =>
     async (params: P) => {
-      if (executorBridge.isConnected === false) return { 'success': false, 'error': 'No executor connected' };
+      if (executorBridge.isConnected === false) return { 'success': false, 'error': 'No client connected' };
+      if (
+        requiredCapability !== undefined &&
+        hasCapability(executorBridge.clientCapabilities, requiredCapability) === false
+      )
+        return {
+          'success': false,
+          'error': `Feature not available with ${executorBridge.clientType ?? 'current'} client`,
+        };
       try {
         return await method(params);
       } catch (err) {
@@ -118,11 +128,14 @@ export const startServer = (state: ServerState): void => {
     'isRunning': executorBridge.isRunning,
     'isConnected': executorBridge.isConnected,
     'executorName': executorBridge.executorName,
+    'clientType': executorBridge.clientType ?? null,
   }));
 
   connection.onRequest('custom/execute', async (params: { code: string }) => {
     if (executorBridge.isConnected === false)
-      return { 'success': false, 'error': { 'message': 'No executor connected' } };
+      return { 'success': false, 'error': { 'message': 'No client connected' } };
+    if (hasCapability(executorBridge.clientCapabilities, 'execute') === false)
+      return { 'success': false, 'error': { 'message': 'Code execution not available with current client' } };
     return executorBridge.execute(params.code);
   });
 
@@ -206,18 +219,28 @@ export const startServer = (state: ServerState): void => {
 
   connection.onRequest(
     'custom/setRemoteSpyEnabled',
-    bridgeRequest((params: { enabled: boolean }) => executorBridge.setRemoteSpyEnabled(params.enabled)),
+    bridgeRequest((params: { enabled: boolean }) => executorBridge.setRemoteSpyEnabled(params.enabled), 'remoteSpy'),
   );
 
   connection.onRequest(
     'custom/setRemoteSpyFilter',
-    bridgeRequest((params: { filter: string }) => executorBridge.setRemoteSpyFilter(params.filter)),
+    bridgeRequest((params: { filter: string }) => executorBridge.setRemoteSpyFilter(params.filter), 'remoteSpy'),
   );
 
   connection.onRequest(
     'custom/setRemoteSpyBlockList',
-    bridgeRequest((params: { blocks: Array<{ type: 'path' | 'name'; value: string }> }) =>
-      executorBridge.setRemoteSpyBlockList(params.blocks),
+    bridgeRequest(
+      (params: { blocks: Array<{ type: 'path' | 'name'; value: string }> }) =>
+        executorBridge.setRemoteSpyBlockList(params.blocks),
+      'remoteSpy',
+    ),
+  );
+
+  connection.onRequest(
+    'custom/setScriptSource',
+    bridgeRequest(
+      (params: { path: string[]; source: string }) => executorBridge.setScriptSource(params.path, params.source),
+      'scriptWrite',
     ),
   );
 

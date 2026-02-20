@@ -18,6 +18,7 @@ import type {
   SetRemoteSpyBlockListResultMessage,
   SetRemoteSpyEnabledResultMessage,
   SetRemoteSpyFilterResultMessage,
+  SetScriptSourceResultMessage,
   TeleportToResultMessage,
 } from '@typings/protocol';
 
@@ -33,7 +34,10 @@ const createResultGuard =
     isRecord(msg) && msg['type'] === typeName && hasStringField(msg, 'id') && typeof msg['success'] === 'boolean';
 
 export const isConnectedMessage = (msg: unknown): msg is ConnectedMessage =>
-  isRecord(msg) && msg['type'] === 'connected' && hasStringField(msg, 'executorName');
+  isRecord(msg) &&
+  msg['type'] === 'connected' &&
+  hasStringField(msg, 'executorName') &&
+  (msg['clientType'] === undefined || msg['clientType'] === 'executor' || msg['clientType'] === 'studio');
 
 export const isExecuteResultMessage = (msg: unknown): msg is ExecuteResultMessage =>
   isRecord(msg) && msg['type'] === 'executeResult' && hasStringField(msg, 'id');
@@ -64,6 +68,8 @@ export const isSetRemoteSpyFilterResultMessage =
   createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
 export const isSetRemoteSpyBlockListResultMessage =
   createResultGuard<SetRemoteSpyBlockListResultMessage>('setRemoteSpyBlockListResult');
+export const isSetScriptSourceResultMessage =
+  createResultGuard<SetScriptSourceResultMessage>('setScriptSourceResult');
 
 export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
   isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object' && msg['call'] !== null;
@@ -87,6 +93,7 @@ const clientMessageValidators: Record<string, (msg: unknown) => msg is ClientMes
   'setRemoteSpyEnabledResult': isSetRemoteSpyEnabledResultMessage,
   'setRemoteSpyFilterResult': isSetRemoteSpyFilterResultMessage,
   'setRemoteSpyBlockListResult': isSetRemoteSpyBlockListResultMessage,
+  'setScriptSourceResult': isSetScriptSourceResultMessage,
   'remoteSpy': isRemoteSpyMessage,
 };
 

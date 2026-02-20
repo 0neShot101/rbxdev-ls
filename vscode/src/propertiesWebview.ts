@@ -569,7 +569,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       'localResourceRoots': [this.context.extensionUri],
     };
 
-    // Handle messages from webview
     webviewView.webview.onDidReceiveMessage(async message => {
       if (message.type === 'propertyChange' && this.onChangeCallback !== undefined) {
         const success = await this.onChangeCallback(
@@ -578,7 +577,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
           message.value,
           message.valueType,
         );
-        // Send result back to webview
         webviewView.webview.postMessage({ 'type': 'changeResult', 'property': message.property, success });
       }
     });
@@ -595,7 +593,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
     const properties = this.properties;
     const instanceName = this.instanceName;
 
-    // Generate property rows
     const propertyRows = properties.map(prop => this.getPropertyRow(prop)).join('');
 
     return `<!DOCTYPE html>
@@ -727,7 +724,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       }
     });
 
-    // Color picker change handler
     function onColorChange(property, colorInput, textInput) {
       const hex = colorInput.value;
       const r = parseInt(hex.substr(1,2), 16) / 255;
@@ -738,7 +734,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       sendChange(property, rgb, 'Color3');
     }
 
-    // Text to color sync
     function syncTextToColor(textInput, colorInput) {
       const parts = textInput.value.split(',').map(s => parseFloat(s.trim()));
       if (parts.length === 3 && parts.every(n => !isNaN(n) && n >= 0 && n <= 1)) {
@@ -765,7 +760,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
         break;
 
       case 'Color3': {
-        // Convert RGB to hex for color picker
         const parts = prop.value.split(',').map(s => parseFloat(s.trim()));
         let hex = '#888888';
         if (parts.length === 3 && parts.every(n => !isNaN(n))) {
@@ -790,7 +784,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       }
 
       case 'EnumItem': {
-        // Parse enum type and create dropdown
         const enumMatch = prop.value.match(/^Enum\.(\w+)\.(\w+)$/);
         if (enumMatch !== null && enumMatch[1] !== undefined) {
           const enumType = enumMatch[1];

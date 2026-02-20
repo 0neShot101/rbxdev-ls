@@ -11,7 +11,7 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target node",
     "build:mcp": "bun build src/mcp.ts --outdir dist --target node",
-    "build:all": "bun build src/index.ts src/mcp.ts --outdir dist --target node",
+    "build:all": "bun build src/index.ts src/mcp.ts --outdir dist --target node && bun scripts/build-studio-plugin.ts",
     "start": "bun dist/index.js",
     "start:mcp": "node dist/mcp.js",
     "dev": "bun --watch src/index.ts",
@@ -23,11 +23,12 @@
     "format:check": "prettier --check .",
     "type-check": "tsc --noEmit",
     "test": "bun test",
-    "fetch-api": "bun scripts/fetch-roblox-api.ts && bun scripts/fetch-sunc-api.ts",
+    "fetch-api": "bun scripts/fetch-roblox-api.ts",
     "build:vsix": "bun scripts/build-vsix.ts",
     "build:beta": "bun scripts/build-vsix.ts --beta",
     "publish:mcp": "bun scripts/publish-mcp.ts",
-    "publish:mcp:dry": "bun scripts/publish-mcp.ts --dry-run"
+    "publish:mcp:dry": "bun scripts/publish-mcp.ts --dry-run",
+    "build:studio": "bun scripts/build-studio-plugin.ts"
   },
   "keywords": [
     "roblox",

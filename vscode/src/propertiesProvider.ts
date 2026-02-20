@@ -69,7 +69,6 @@ export class PropertiesDataProvider implements TreeDataProvider<PropertyItem> {
     item.description = element.value;
     item.tooltip = `${element.name}: ${element.value} (${element.valueType})\nClick to edit`;
     item.iconPath = this.getIconForType(element.valueType);
-    // Make clicking the item trigger edit
     item.command = {
       'command': 'rbxdev-ls.editProperty',
       'title': 'Edit Property',

@@ -150,6 +150,12 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     get 'executorName'() {
       return core.getExecutorName();
     },
+    get 'clientType'() {
+      return core.getClientType();
+    },
+    get 'clientCapabilities'() {
+      return core.getClientCapabilities();
+    },
     'liveGameModel': core.liveGameModel,
     start,
     stop,
@@ -165,6 +171,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     'requestScriptSource': core.requestScriptSource,
     'createInstance': core.createInstance,
     'cloneInstance': core.cloneInstance,
+    'setScriptSource': core.setScriptSource,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
     'setRemoteSpyBlockList': core.setRemoteSpyBlockList,

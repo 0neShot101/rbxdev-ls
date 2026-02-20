@@ -117,6 +117,13 @@ export interface SetRemoteSpyBlockListMessage {
   readonly blocks: ReadonlyArray<RemoteSpyBlockEntry>;
 }
 
+export interface SetScriptSourceMessage {
+  readonly type: 'setScriptSource';
+  readonly id: string;
+  readonly path: ReadonlyArray<string>;
+  readonly source: string;
+}
+
 export type ServerMessage =
   | ExecuteMessage
   | RequestGameTreeMessage
@@ -132,12 +139,14 @@ export type ServerMessage =
   | CloneInstanceMessage
   | SetRemoteSpyEnabledMessage
   | SetRemoteSpyFilterMessage
-  | SetRemoteSpyBlockListMessage;
+  | SetRemoteSpyBlockListMessage
+  | SetScriptSourceMessage;
 
 export interface ConnectedMessage {
   readonly type: 'connected';
   readonly executorName: string;
   readonly version: string;
+  readonly clientType?: 'executor' | 'studio';
 }
 
 export interface ExecuteResultMessage {
@@ -303,6 +312,13 @@ export interface RemoteSpyCall {
   readonly timestamp: number;
 }
 
+export interface SetScriptSourceResultMessage {
+  readonly type: 'setScriptSourceResult';
+  readonly id: string;
+  readonly success: boolean;
+  readonly error?: string;
+}
+
 export interface RemoteSpyMessage {
   readonly type: 'remoteSpy';
   readonly call: RemoteSpyCall;
@@ -327,6 +343,7 @@ export type ClientMessage =
   | SetRemoteSpyEnabledResultMessage
   | SetRemoteSpyFilterResultMessage
   | SetRemoteSpyBlockListResultMessage
+  | SetScriptSourceResultMessage
   | RemoteSpyMessage;
 
 export interface ProxyHandshakeMessage {
