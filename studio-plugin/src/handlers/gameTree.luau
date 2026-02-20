@@ -5,7 +5,7 @@ local gameTree = {}
 local CONFIG = {
 	updateTreeDepth   = 3,
 	expandedTreeDepth = 2,
-	firstConnectDepth = 999,
+	firstConnectDepth = 4,
 	gameTreeServices  = {
 		'Workspace', 'Players', 'ReplicatedStorage', 'ReplicatedFirst',
 		'StarterGui', 'StarterPack', 'StarterPlayer', 'Lighting',

@@ -44,6 +44,7 @@ export interface BridgeCore {
   readonly setStatus: (status: BridgeStatus) => void;
   readonly setConnected: (connected: boolean) => void;
   readonly setExecutorName: (name: string | undefined) => void;
+  readonly setClientType: (type: ClientType | undefined) => void;
   readonly getExecutorName: () => string | undefined;
   readonly getClientType: () => ClientType | undefined;
   readonly getClientCapabilities: () => ClientCapabilities | undefined;
@@ -179,7 +180,8 @@ export const createBridgeCore = (
         clientCapabilities = resolveCapabilities(clientType);
         setConnected(true);
         setStatus('connected');
-        log(`[bridge] ${clientType === 'studio' ? 'Studio' : 'Executor'} connected: ${message.executorName} v${message.version}`);
+        const clientLabel = clientType === 'studio' ? 'Studio' : 'Executor';
+        log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
         break;
 
       case 'executeResult':
@@ -502,6 +504,10 @@ export const createBridgeCore = (
         clientType = undefined;
         clientCapabilities = undefined;
       }
+    },
+    'setClientType': (type: ClientType | undefined) => {
+      clientType = type;
+      clientCapabilities = type !== undefined ? resolveCapabilities(type) : undefined;
     },
     'getExecutorName': () => executorName,
     'getClientType': () => clientType,

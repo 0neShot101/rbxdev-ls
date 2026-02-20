@@ -1,4 +1,3 @@
-local Players = game:GetService'Players'
 local RunService = game:GetService'RunService'
 local protocol = require(script.Parent.Parent.protocol)
 
@@ -37,13 +36,7 @@ teleport.teleportTo = function(path)
 			return
 		end
 
-		local player = Players.LocalPlayer
-		if player == nil then error'No local player' end
-		local character = player.Character
-		if character == nil then error'No character' end
-		local hrp = character:FindFirstChild'HumanoidRootPart'
-		if hrp == nil then error'No HumanoidRootPart' end
-		hrp.CFrame = CFrame.new(targetPos)
+		error'Teleport to character is not supported in Studio server context'
 	end)
 
 	if not ok then

@@ -135,7 +135,7 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'GamepadService': 'gamepad',
   'VirtualInputManager': 'gamepad',
   'ControllerService': 'gamepad',
-  'TextBoxService': 'gamepad',
+  'TextBoxService': 'textlabel',
 
   // Services - Security & Policy
   'PolicyService': 'shield',

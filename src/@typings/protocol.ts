@@ -354,10 +354,12 @@ export interface ProxyWelcomeMessage {
   readonly type: 'proxyWelcome';
   readonly isConnected: boolean;
   readonly executorName: string | undefined;
+  readonly clientType?: 'executor' | 'studio';
 }
 
 export interface ProxyStatusChangeMessage {
   readonly type: 'proxyStatusChange';
   readonly status: 'connected' | 'disconnected';
   readonly executorName?: string;
+  readonly clientType?: 'executor' | 'studio';
 }

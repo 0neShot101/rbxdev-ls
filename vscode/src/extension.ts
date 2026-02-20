@@ -109,6 +109,7 @@ const pollExecutorStatus = async (): Promise<void> => {
       commands.executeCommand('setContext', 'rbxdev-ls:clientType', undefined);
       lastClientType = undefined;
       gameTreeProvider.clear();
+      scriptDocumentPaths.clear();
     }
     lastConnectedState = response.isConnected;
 

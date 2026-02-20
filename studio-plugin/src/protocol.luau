@@ -49,7 +49,12 @@ local VALUE_SERIALIZERS = {
 	Instance   = function(v) return v:GetFullName(), 'Instance', v.ClassName end,
 	Vector3    = function(v) return string.format('%.3f, %.3f, %.3f', v.X, v.Y, v.Z), 'Vector3' end,
 	Vector2    = function(v) return string.format('%.3f, %.3f', v.X, v.Y), 'Vector2' end,
-	CFrame     = function(v) return string.format('%.3f, %.3f, %.3f', v.X, v.Y, v.Z), 'CFrame' end,
+	CFrame     = function(v)
+		local components = { v:GetComponents() }
+		local parts = {}
+		for _, c in ipairs(components) do table.insert(parts, string.format('%.5f', c)) end
+		return table.concat(parts, ', '), 'CFrame'
+	end,
 	Color3     = function(v) return string.format('%.3f, %.3f, %.3f', v.R, v.G, v.B), 'Color3' end,
 	BrickColor = function(v) return v.Name, 'BrickColor' end,
 	UDim       = function(v) return string.format('%.3f, %d', v.Scale, v.Offset), 'UDim' end,
@@ -104,7 +109,9 @@ local VALUE_PARSERS = {
 		local parts = {}
 		for part in enumPath:gmatch'[^%.]+' do table.insert(parts, part) end
 		if #parts ~= 2 then return nil end
-		return Enum[parts[1]][parts[2]]
+		local ok, result = pcall(function() return Enum[parts[1]][parts[2]] end)
+		if not ok then return nil end
+		return result
 	end,
 }
 

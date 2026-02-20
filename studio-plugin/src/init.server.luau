@@ -189,6 +189,19 @@ local handleServerMessage = function(raw)
 	end
 end
 
+local reconnecting = false
+
+local scheduleReconnect = function()
+	if reconnecting then return end
+	reconnecting = true
+	isConnected = false
+	client = nil
+	task.delay(RECONNECT_DELAY, function()
+		reconnecting = false
+		connect()
+	end)
+end
+
 local connect
 connect = function()
 	local ok, wsClient = pcall(function()
@@ -226,16 +239,12 @@ connect = function()
 
 	wsClient.Closed:Connect(function()
 		warn'[rbxdev-studio] Disconnected from bridge, reconnecting...'
-		isConnected = false
-		client = nil
-		task.delay(RECONNECT_DELAY, connect)
+		scheduleReconnect()
 	end)
 
 	wsClient.Error:Connect(function(statusCode, errorMessage)
 		warn('[rbxdev-studio] WebSocket error:', statusCode, errorMessage)
-		isConnected = false
-		client = nil
-		task.delay(RECONNECT_DELAY, connect)
+		scheduleReconnect()
 	end)
 end
 
