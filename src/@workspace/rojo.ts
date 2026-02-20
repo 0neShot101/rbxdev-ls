@@ -14,7 +14,7 @@ export const findRojoProject = (workspacePath: string): string | undefined => {
       if (file.endsWith('.project.json')) return path.join(workspacePath, file);
     }
   } catch {
-    // Ignore filesystem errors (like permissions issues) and treat as no project found
+    /* noop */
   }
 
   return undefined;
@@ -92,7 +92,7 @@ export const buildDataModelTree = (project: RojoProject, projectDir: string): Da
             }
           }
         } catch {
-          // Ignore filesystem errors (like permissions issues) and treat as empty folder
+          /* noop */
         }
       }
     }

@@ -75,9 +75,7 @@ const offsetToPosition = (content: string, offset: number): { line: number; char
     if (content[i] === '\n') {
       line++;
       character = 0;
-    } else {
-      character++;
-    }
+    } else character++;
   }
 
   return { line, character };

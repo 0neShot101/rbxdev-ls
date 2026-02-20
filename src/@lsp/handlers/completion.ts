@@ -1583,6 +1583,39 @@ const resolveTypeReference = (type: LuauType, documentManager: DocumentManager):
   return type;
 };
 
+const getLocalSymbolCompletions = (
+  document: ParsedDocument | undefined,
+  prefix: string,
+  documentManager: DocumentManager,
+): CompletionItem[] => {
+  if (document === undefined || document.typeCheckResult === undefined) return [];
+
+  const items: CompletionItem[] = [];
+  const globalNames = new Set(documentManager.globalEnv.env.globalScope.symbols.keys());
+
+  for (const [name, symbolType] of document.typeCheckResult.allSymbols) {
+    if (globalNames.has(name)) continue;
+    if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) continue;
+
+    const resolved = resolveTypeReference(symbolType, documentManager);
+    const item: CompletionItem = {
+      'label': name,
+      'kind': typeToCompletionKind(resolved),
+      'detail': resolved.kind === 'Function' ? formatFunctionDetail(resolved as FunctionType) : resolved.kind,
+      'sortText': `0${name}`,
+    };
+
+    if (resolved.kind === 'Function') {
+      item.insertText = formatFunctionSnippet(name, resolved as FunctionType);
+      item.insertTextFormat = InsertTextFormat.Snippet;
+    }
+
+    items.push(item);
+  }
+
+  return items;
+};
+
 const DEBUG_COMPLETION = false;
 
 const debugLog = (...args: unknown[]): void => {
@@ -1635,6 +1668,46 @@ const traceVarExpression = (varName: string, content: string, depth = 0): string
   return undefined;
 };
 
+const splitMemberExpression = (expr: string): string[] => {
+  const parts: string[] = [];
+  let current = '';
+  let i = 0;
+
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (ch === '.') {
+      if (current !== '') parts.push(current);
+      current = '';
+      i++;
+    } else if (ch === '[') {
+      if (current !== '') parts.push(current);
+      current = '';
+      i++;
+      const quote = expr[i];
+      if (quote === "'" || quote === '"') {
+        i++;
+        let key = '';
+        while (i < expr.length && expr[i] !== quote) {
+          key += expr[i];
+          i++;
+        }
+        if (i < expr.length) i++;
+        if (i < expr.length && expr[i] === ']') i++;
+        parts.push(key);
+      } else {
+        while (i < expr.length && expr[i] !== ']') i++;
+        if (i < expr.length) i++;
+      }
+    } else {
+      current += ch;
+      i++;
+    }
+  }
+
+  if (current !== '') parts.push(current);
+  return parts;
+};
+
 const resolveRequireModuleType = (
   requireArg: string,
   documentManager: DocumentManager,
@@ -1656,18 +1729,16 @@ const resolveRequireModuleType = (
     return undefined;
   }
 
-  const gamePrefix = requireArg.match(/^game\s*\.\s*/);
-  if (gamePrefix === null) return undefined;
+  const gamePrefix = requireArg.match(/^game\s*[.[]/);
+  const rawExpr = gamePrefix !== null ? requireArg.slice(gamePrefix[0].length - (gamePrefix[0].endsWith('[') ? 1 : 0)) : requireArg;
 
-  const pathParts = requireArg
-    .slice(gamePrefix[0].length)
-    .split('.')
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
+  const pathParts = splitMemberExpression(rawExpr).filter(p => p.length > 0);
 
   if (pathParts.length === 0) return undefined;
 
   const moduleIndex = documentManager.getModuleIndex();
+
+  const stripScriptSuffix = (name: string): string => name.replace(/\.(client|server)$/, '');
 
   for (const [, moduleInfo] of moduleIndex) {
     const dmPath = moduleInfo.dataModelPath;
@@ -1676,7 +1747,9 @@ const resolveRequireModuleType = (
     const offset = dmPath.length - pathParts.length;
     let matches = true;
     for (let i = 0; i < pathParts.length; i++) {
-      if (dmPath[offset + i] !== pathParts[i]) {
+      const expected = pathParts[i] ?? '';
+      const actual = dmPath[offset + i] ?? '';
+      if (actual !== expected && actual !== stripScriptSuffix(expected) && stripScriptSuffix(actual) !== stripScriptSuffix(expected)) {
         matches = false;
         break;
       }
@@ -1874,19 +1947,37 @@ const resolveExpressionType = (
         args = expression.slice(startArgs, i);
       }
       if (methodName !== '') parts.push({ 'kind': 'method', 'name': methodName, args });
-    } else if (char === '(' || char === '[') {
+    } else if (char === '[') {
       if (current !== '') {
         parts.push({ 'kind': 'property', 'name': current });
         current = '';
       }
-      const open = char;
-      const close = char === '(' ? ')' : ']';
+      const startBracket = i;
+      let depth = 1;
+      i++;
+      while (i < expression.length && depth > 0) {
+        if (expression[i] === '[') depth++;
+        else if (expression[i] === ']') depth--;
+        i++;
+      }
+      const bracketContent = expression.slice(startBracket + 1, i - 1).trim();
+      const stringKeyMatch = bracketContent.match(/^['"](.+)['"]$/);
+      if (stringKeyMatch !== null && stringKeyMatch[1] !== undefined) {
+        parts.push({ 'kind': 'property', 'name': stringKeyMatch[1] });
+      } else {
+        parts.push({ 'kind': 'call', 'args': expression.slice(startBracket, i) });
+      }
+    } else if (char === '(') {
+      if (current !== '') {
+        parts.push({ 'kind': 'property', 'name': current });
+        current = '';
+      }
       const startArgs = i;
       let depth = 1;
       i++;
       while (i < expression.length && depth > 0) {
-        if (expression[i] === open) depth++;
-        else if (expression[i] === close) depth--;
+        if (expression[i] === '(') depth++;
+        else if (expression[i] === ')') depth--;
         i++;
       }
       parts.push({ 'kind': 'call', 'args': expression.slice(startArgs, i) });
@@ -2206,9 +2297,7 @@ const getAutoImportCompletions = (
           filePath = filePath.slice(1);
         }
       }
-    } catch {
-      // Use as-is
-    }
+    } catch { /* noop */ }
 
     const dataModelPath = getDataModelPath(rojoState.dataModel, filePath);
     if (dataModelPath !== undefined) currentDataModelPath = dataModelPath;
@@ -2323,6 +2412,39 @@ const getLiveGameTreeCompletions = (path: string[], prefix: string, liveGameMode
   return items;
 };
 
+const CHILD_ACCESS_METHODS = new Set(['WaitForChild', 'FindFirstChild']);
+
+const extractStringArg = (expr: string, startIdx: number): { value: string; endIdx: number } | undefined => {
+  let i = startIdx;
+  while (i < expr.length && /\s/.test(expr[i] ?? '')) i++;
+
+  const opener = expr[i];
+  if (opener === '(' || opener === "'" || opener === '"') {
+    const isParenWrapped = opener === '(';
+    if (isParenWrapped) {
+      i++;
+      while (i < expr.length && /\s/.test(expr[i] ?? '')) i++;
+    }
+
+    const quote = expr[i];
+    if (quote === "'" || quote === '"') {
+      i++;
+      let value = '';
+      while (i < expr.length && expr[i] !== quote) {
+        value += expr[i];
+        i++;
+      }
+      if (i < expr.length) i++;
+      if (isParenWrapped) {
+        while (i < expr.length && expr[i] !== ')') i++;
+        if (i < expr.length) i++;
+      }
+      if (value !== '') return { value, 'endIdx': i };
+    }
+  }
+  return undefined;
+};
+
 const splitPathExpression = (expr: string): string[] => {
   const parts: string[] = [];
   let current = '';
@@ -2362,6 +2484,15 @@ const splitPathExpression = (expr: string): string[] => {
       }
     } else if (char === ':') {
       if (current !== '') {
+        if (CHILD_ACCESS_METHODS.has(current)) {
+          const arg = extractStringArg(expr, i + 1);
+          if (arg !== undefined) {
+            parts.push(arg.value);
+            current = '';
+            i = arg.endIdx;
+            continue;
+          }
+        }
         parts.push(current);
         current = '';
       }
@@ -2369,15 +2500,51 @@ const splitPathExpression = (expr: string): string[] => {
     } else if (/\w/.test(char ?? '')) {
       current += char;
       i++;
+    } else if ((char === "'" || char === '"') && CHILD_ACCESS_METHODS.has(current)) {
+      const arg = extractStringArg(expr, i);
+      if (arg !== undefined) {
+        parts.push(arg.value);
+        current = '';
+        i = arg.endIdx;
+        continue;
+      }
+      i++;
+    } else if (char === '(') {
+      if (CHILD_ACCESS_METHODS.has(current)) {
+        const arg = extractStringArg(expr, i);
+        if (arg !== undefined) {
+          parts.push(arg.value);
+          current = '';
+          i = arg.endIdx;
+          continue;
+        }
+      }
+      if (current !== '') {
+        current = '';
+      }
+      let depth = 1;
+      i++;
+      while (i < expr.length && depth > 0) {
+        if (expr[i] === '(') depth++;
+        else if (expr[i] === ')') depth--;
+        i++;
+      }
     } else {
       i++;
     }
   }
 
-  if (current !== '') parts.push(current);
+  if (current !== '' && CHILD_ACCESS_METHODS.has(current) === false) parts.push(current);
 
   return parts;
 };
+
+const GAME_SERVICE_NAMES = new Set([
+  'Workspace', 'Players', 'ReplicatedStorage', 'ReplicatedFirst',
+  'ServerStorage', 'ServerScriptService', 'StarterGui', 'StarterPack',
+  'StarterPlayer', 'Lighting', 'SoundService', 'Chat', 'Teams',
+  'CoreGui', 'StarterPlayerScripts', 'StarterCharacterScripts',
+]);
 
 const parseGameTreePath = (expression: string): string[] | undefined => {
   const expr = expression.trim();
@@ -2410,20 +2577,26 @@ const parseGameTreePath = (expression: string): string[] | undefined => {
 
   if (expr === 'workspace') return ['Workspace'];
 
+  const firstIdent = expr.match(/^(\w+)/);
+  if (firstIdent !== null && firstIdent[1] !== undefined && GAME_SERVICE_NAMES.has(firstIdent[1])) {
+    const serviceName = firstIdent[1];
+    const rest = expr.slice(serviceName.length);
+    if (rest === '') return [serviceName];
+    const parts = splitPathExpression(rest);
+    return [serviceName, ...parts];
+  }
+
   return undefined;
 };
 
 const extractRequireExpression = (beforeCursor: string): ModuleReference | undefined => {
-  const requireMatch = beforeCursor.match(/require\s*\(\s*game\.([^)]+)\s*\)[.:]\s*$/);
+  const requireMatch = beforeCursor.match(/require\s*\(\s*game[.[\]]([^)]+)\s*\)[.:]\s*$/);
   if (requireMatch === null) return undefined;
 
-  const pathStr = requireMatch[1];
-  if (pathStr === undefined) return undefined;
+  const rawPath = requireMatch[1];
+  if (rawPath === undefined) return undefined;
 
-  const pathParts = pathStr
-    .split('.')
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
+  const pathParts = splitMemberExpression(rawPath).filter(p => p.length > 0);
   if (pathParts.length === 0) return undefined;
 
   return { 'kind': 'path', 'path': pathParts };
@@ -2592,6 +2765,36 @@ export const setupCompletionHandler = (
     const enumCompletions = getEnumCompletions(beforeCursor, documentManager);
     if (enumCompletions !== undefined) return { 'isIncomplete': true, 'items': enumCompletions };
 
+    const typeAnnotMatch = beforeCursor.match(/\w\s*:\s+(\w*)$/) ?? beforeCursor.match(/\)\s*:\s*(\w*)$/);
+    if (typeAnnotMatch !== null) {
+      const prefix = typeAnnotMatch[1] ?? '';
+      const items: CompletionItem[] = [];
+      const addedNames = new Set<string>();
+
+      const addType = (name: string, detail: string, sortPrefix: string): void => {
+        if (addedNames.has(name)) return;
+        if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) return;
+        addedNames.add(name);
+        items.push({ 'label': name, 'kind': CompletionItemKind.TypeParameter, 'detail': detail, 'sortText': `${sortPrefix}${name}` });
+      };
+
+      if (document?.typeCheckResult !== undefined) {
+        const walkScope = (scope: typeof document.typeCheckResult.environment.globalScope): void => {
+          for (const [name] of scope.types) addType(name, 'type alias', '0_');
+          if (scope.parent !== undefined) walkScope(scope.parent);
+        };
+        walkScope(document.typeCheckResult.environment.globalScope);
+      }
+
+      for (const [name] of documentManager.globalEnv.robloxClasses) addType(name, 'Roblox class', '1_');
+      for (const [name] of documentManager.globalEnv.robloxDataTypes) addType(name, 'Roblox type', '1_');
+
+      const builtinTypes = ['string', 'number', 'boolean', 'nil', 'any', 'never', 'unknown', 'thread', 'buffer'];
+      for (const name of builtinTypes) addType(name, 'primitive', '2_');
+
+      if (items.length > 0) return { 'isIncomplete': true, items };
+    }
+
     const requireModuleCompletions = await getRequireModuleCompletions(beforeCursor, executorBridge);
     if (requireModuleCompletions !== undefined) return { 'isIncomplete': true, 'items': requireModuleCompletions };
 
@@ -2691,13 +2894,30 @@ export const setupCompletionHandler = (
           const assignExpr = traceVarExpression(firstName, content);
           log(`Traced '${firstName}' to: ${assignExpr ?? 'undefined'}`);
 
-          const reqExprMatch = assignExpr?.match(/^require\s*\(\s*(game\.[^)]+)\s*\)(.*)/);
+          const reqExprMatch = assignExpr?.match(/^require\s*\(\s*([^)]+)\s*\)(.*)/);
           if (reqExprMatch !== null && reqExprMatch !== undefined && reqExprMatch[1] !== undefined) {
-            const modulePath = reqExprMatch[1].trim();
-            const chainedCall = (reqExprMatch[2] ?? '').trim();
-            log(`Trying executor bridge for require: ${modulePath}${chainedCall}`);
+            const rawModulePath = reqExprMatch[1].trim();
+            const rawChain = (reqExprMatch[2] ?? '').trim();
+            const parenIdx = rawChain.indexOf('(');
+            const chainedCall = parenIdx >= 0 ? rawChain.slice(0, parenIdx) + '()' : rawChain;
+            log(`Trying executor bridge for require: ${rawModulePath}${chainedCall}`);
             try {
+              const serviceNames = [
+                'ReplicatedStorage', 'ReplicatedFirst', 'ServerStorage', 'ServerScriptService',
+                'StarterGui', 'StarterPack', 'StarterPlayer', 'Lighting', 'SoundService',
+                'Workspace', 'Players', 'Chat', 'Teams',
+              ];
+              const preamble: string[] = [];
+              for (const svc of serviceNames) {
+                if (rawModulePath.startsWith(svc)) {
+                  preamble.push(`local ${svc} = game:GetService("${svc}")`);
+                  break;
+                }
+              }
+              const modulePath = rawModulePath;
+
               const inspectScript = [
+                ...preamble,
                 `local mod = require(${modulePath})`,
                 chainedCall.length > 0 ? `mod = mod${chainedCall}` : '',
                 'local result = {}',
@@ -2720,6 +2940,7 @@ export const setupCompletionHandler = (
                 .join('\n');
 
               const execResult = await executorBridge.execute(inspectScript);
+              log(`Bridge exec result: success=${execResult.success}, result=${execResult.result ?? 'undefined'}, error=${execResult.error?.message ?? 'none'}`);
               if (execResult.success && execResult.result !== undefined) {
                 const members: Record<string, string> = JSON.parse(execResult.result);
                 const items: CompletionItem[] = [];
@@ -2835,19 +3056,19 @@ export const setupCompletionHandler = (
       if (objectName === undefined) return { 'isIncomplete': false, 'items': [] };
 
       if (document?.typeCheckResult !== undefined) {
-        const env = document.typeCheckResult.environment;
-        const localSymbol = env.globalScope.symbols.get(objectName);
-        if (localSymbol !== undefined) {
-          if (localSymbol.type.kind === 'Table') {
+        const localType = document.typeCheckResult.allSymbols.get(objectName);
+        if (localType !== undefined) {
+          const resolved = resolveTypeReference(localType, documentManager);
+          if (resolved.kind === 'Table') {
             return {
               'isIncomplete': true,
-              'items': getTableCompletions(localSymbol.type, prefix ?? ''),
+              'items': getTableCompletions(resolved, prefix ?? ''),
             };
           }
-          if (localSymbol.type.kind === 'Class') {
+          if (resolved.kind === 'Class') {
             return {
               'isIncomplete': true,
-              'items': getClassCompletions(localSymbol.type, prefix ?? '', false, documentManager),
+              'items': getClassCompletions(resolved, prefix ?? '', false, documentManager),
             };
           }
         }
@@ -2894,19 +3115,21 @@ export const setupCompletionHandler = (
       if (objectName === undefined) return { 'isIncomplete': false, 'items': [] };
 
       if (document?.typeCheckResult !== undefined) {
-        const env = document.typeCheckResult.environment;
-        const localSymbol = env.globalScope.symbols.get(objectName);
-        if (localSymbol !== undefined && localSymbol.type.kind === 'Class') {
-          return {
-            'isIncomplete': true,
-            'items': getClassCompletions(localSymbol.type, prefix ?? '', true, documentManager),
-          };
-        }
-        if (localSymbol !== undefined && localSymbol.type.kind === 'Table') {
-          return {
-            'isIncomplete': true,
-            'items': getTableCompletions(localSymbol.type, prefix ?? ''),
-          };
+        const localType = document.typeCheckResult.allSymbols.get(objectName);
+        if (localType !== undefined) {
+          const resolved = resolveTypeReference(localType, documentManager);
+          if (resolved.kind === 'Class') {
+            return {
+              'isIncomplete': true,
+              'items': getClassCompletions(resolved, prefix ?? '', true, documentManager),
+            };
+          }
+          if (resolved.kind === 'Table') {
+            return {
+              'isIncomplete': true,
+              'items': getTableCompletions(resolved, prefix ?? ''),
+            };
+          }
         }
       }
 
@@ -2941,13 +3164,14 @@ export const setupCompletionHandler = (
     const wordMatch = beforeCursor.match(/(\w*)$/);
     const prefix = wordMatch?.[1] ?? '';
 
+    const localItems = getLocalSymbolCompletions(document, prefix, documentManager);
     const globalItems = getGlobalCompletions(documentManager, prefix);
     const snippetItems = getSnippetCompletions(prefix);
     const autoImportItems = getAutoImportCompletions(prefix, documentManager, params.textDocument.uri, content);
 
     return {
       'isIncomplete': true,
-      'items': [...globalItems, ...snippetItems, ...autoImportItems],
+      'items': [...localItems, ...globalItems, ...snippetItems, ...autoImportItems],
     };
   });
 
