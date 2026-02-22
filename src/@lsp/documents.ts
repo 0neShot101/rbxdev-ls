@@ -1,7 +1,9 @@
 import { buildGlobalEnvironment } from '@definitions/globals';
 import { parse } from '@parser/parser';
-import { checkProgram, type TypeCheckResult, type TypeDiagnostic } from '@typings/checker';
+import { checkProgram, type RequireResolver, type TypeCheckResult, type TypeDiagnostic } from '@typings/checker';
 import { isLineIgnored, parseIgnoreDirectives } from '@typings/ignoreDirectives';
+import type { LuauType, PropertyType } from '@typings/types';
+import { AnyType, createFunctionType, createTableType } from '@typings/types';
 import { buildModuleIndex, searchExports } from '@workspace/moduleIndex';
 import { loadRojoState } from '@workspace/rojo';
 
@@ -75,10 +77,47 @@ export const createDocumentManager = (): DocumentManager => {
     const mode = detectTypeCheckMode(ast.comments);
 
     if (mode !== 'nocheck') {
+      const requireResolver: RequireResolver = (pathParts: ReadonlyArray<string>): LuauType | undefined => {
+        const stripSuffix = (name: string): string => name.replace(/\.(client|server)$/, '');
+
+        for (const [, info] of moduleIndex) {
+          const dmPath = info.dataModelPath;
+          if (dmPath.length < pathParts.length) continue;
+
+          const offset = dmPath.length - pathParts.length;
+          let matches = true;
+          for (let i = 0; i < pathParts.length; i++) {
+            const expected = pathParts[i] ?? '';
+            const actual = dmPath[offset + i] ?? '';
+            if (
+              actual !== expected &&
+              actual !== stripSuffix(expected) &&
+              stripSuffix(actual) !== stripSuffix(expected)
+            ) {
+              matches = false;
+              break;
+            }
+          }
+
+          if (matches && info.exports.length > 0) {
+            const properties = new Map<string, PropertyType>();
+            for (const exp of info.exports) {
+              let propType: LuauType = AnyType;
+              if (exp.kind === 'function') propType = createFunctionType([], AnyType);
+              else if (exp.kind === 'table') propType = createTableType(new Map());
+              properties.set(exp.name, { 'type': propType, 'readonly': true, 'optional': false });
+            }
+            return createTableType(properties);
+          }
+        }
+        return undefined;
+      };
+
       typeCheckResult = checkProgram(ast, {
         'classes': getClassMap(),
         'dataTypes': globalEnv.robloxDataTypes,
         'mode': mode,
+        requireResolver,
       });
 
       if (parseErrors.length === 0) {

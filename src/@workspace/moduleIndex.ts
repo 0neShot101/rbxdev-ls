@@ -148,9 +148,8 @@ const scanDirectory = (dirPath: string, dataModelPath: string[], modules: Map<st
         }
       } else if (entry.name.endsWith('.lua') || entry.name.endsWith('.luau')) {
         if (entry.name === 'init.lua' || entry.name === 'init.luau') continue;
-        if (entry.name.includes('.server.') || entry.name.includes('.client.')) continue;
 
-        const baseName = entry.name.replace(/\.(lua|luau)$/, '');
+        const baseName = entry.name.replace(/\.(lua|luau)$/, '').replace(/\.(server|client)$/, '');
         const newDataModelPath = [...dataModelPath, baseName];
 
         try {

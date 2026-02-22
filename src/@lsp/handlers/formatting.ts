@@ -119,9 +119,7 @@ export const basicFormat = (code: string): string => {
       indent++;
     }
 
-    if (trimmed.endsWith('end') && trimmed.includes('function')) {
-      // one-liner function, no indent change
-    }
+    if (trimmed.endsWith('end') && trimmed.includes('function')) { /* noop */ }
   }
 
   return result.join('\n');

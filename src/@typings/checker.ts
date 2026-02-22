@@ -103,6 +103,8 @@ interface TypeNarrowing {
   readonly narrowedType: LuauType;
 }
 
+export type RequireResolver = (pathParts: ReadonlyArray<string>) => LuauType | undefined;
+
 interface CheckerState {
   readonly env: TypeEnvironment;
   readonly diagnostics: TypeDiagnostic[];
@@ -111,6 +113,7 @@ interface CheckerState {
   isVariadic: boolean;
   readonly narrowings: Map<string, LuauType>;
   readonly allSymbols: Map<string, LuauType>;
+  readonly requireResolver: RequireResolver | undefined;
 }
 
 interface CheckerOptions {
@@ -118,6 +121,7 @@ interface CheckerOptions {
   readonly classes?: Map<string, ClassType>;
   readonly dataTypes?: Map<string, LuauType>;
   readonly ignoreState?: IgnoreState;
+  readonly requireResolver?: RequireResolver;
 }
 
 const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
@@ -151,6 +155,7 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
     'isVariadic': false,
     'narrowings': new Map(),
     'allSymbols': new Map(),
+    'requireResolver': options.requireResolver,
   };
 };
 
@@ -343,7 +348,7 @@ const lookupClassProperty = (classType: ClassType, propertyName: string): ClassP
 /** Checks a Luau program for type errors and produces diagnostics. */
 export const checkProgram = (
   chunk: Chunk,
-  options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType>; dataTypes?: Map<string, LuauType> },
+  options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType>; dataTypes?: Map<string, LuauType>; requireResolver?: RequireResolver },
 ): TypeCheckResult => {
   const lastStatement = chunk.body[chunk.body.length - 1];
   const totalLines = lastStatement !== undefined ? lastStatement.range.end.line : 1;
@@ -576,9 +581,7 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
     } else if (docComment !== undefined && docComment.type !== undefined) {
       const docType = resolveDocTypeAnnotation(state, docComment.type);
       declaredType = docType !== undefined ? docType : widenTypeForMutableVariable(valueType);
-    } else {
-      declaredType = widenTypeForMutableVariable(valueType);
-    }
+    } else declaredType = widenTypeForMutableVariable(valueType);
 
     defineSymbol(state.env, name.name, declaredType, 'Variable', true, docComment);
     trackSymbol(state, name.name, declaredType);
@@ -697,9 +700,7 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
     if (target.kind === 'Identifier') {
       const symbol = lookupSymbol(state.env, target.name);
       targetType = symbol !== undefined ? symbol.type : inferExpression(state, target);
-    } else {
-      targetType = inferExpression(state, target);
-    }
+    } else targetType = inferExpression(state, target);
 
     if (
       targetType.kind !== 'Any' &&
@@ -1235,6 +1236,9 @@ const inferCallExpression = (state: CheckerState, expr: CallExpression): LuauTyp
   const instanceNewType = inferInstanceNewCall(state, expr);
   if (instanceNewType !== undefined) return instanceNewType;
 
+  const requireType = inferRequireCall(state, expr);
+  if (requireType !== undefined) return requireType;
+
   if (calleeType.kind === 'Function') return resolveType(calleeType.returnType, state.env.classes);
 
   if (calleeType.kind === 'Any') return AnyType;
@@ -1250,6 +1254,42 @@ const inferCallExpression = (state: CheckerState, expr: CallExpression): LuauTyp
 const extractStringLiteral = (expr: Expression): string | undefined => {
   if (expr.kind === 'StringLiteral') return expr.value;
   return undefined;
+};
+
+const extractRequirePath = (expr: Expression): string[] | undefined => {
+  if (expr.kind === 'Identifier') return [expr.name];
+
+  if (expr.kind === 'MemberExpression') {
+    const objectPath = extractRequirePath(expr.object);
+    if (objectPath === undefined) return undefined;
+    return [...objectPath, expr.property.name];
+  }
+
+  if (expr.kind === 'IndexExpression') {
+    const objectPath = extractRequirePath(expr.object);
+    if (objectPath === undefined) return undefined;
+    if (expr.index.kind === 'StringLiteral') return [...objectPath, expr.index.value];
+    return undefined;
+  }
+
+  return undefined;
+};
+
+const inferRequireCall = (state: CheckerState, expr: CallExpression): LuauType | undefined => {
+  if (state.requireResolver === undefined) return undefined;
+  if (expr.callee.kind !== 'Identifier' || expr.callee.name !== 'require') return undefined;
+  if (expr.args.length === 0) return undefined;
+
+  const firstArg = expr.args[0];
+  if (firstArg === undefined) return undefined;
+
+  const pathParts = extractRequirePath(firstArg);
+  if (pathParts === undefined || pathParts.length === 0) return undefined;
+
+  const filtered = pathParts[0] === 'game' ? pathParts.slice(1) : pathParts;
+  if (filtered.length === 0) return undefined;
+
+  return state.requireResolver(filtered);
 };
 
 const inferSpecialMethodReturnType = (
@@ -1507,10 +1547,26 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
 
 const inferIndexExpression = (state: CheckerState, expr: IndexExpression): LuauType => {
   const objectType = resolveType(inferExpression(state, expr.object), state.env.classes);
-  inferExpression(state, expr.index);
+  const indexType = inferExpression(state, expr.index);
 
   if (objectType.kind === 'Table' && objectType.indexer !== undefined)
     return resolveType(objectType.indexer.valueType, state.env.classes);
+
+  if (objectType.kind === 'Table' && indexType.kind === 'Literal' && indexType.baseType === 'string' && typeof indexType.value === 'string') {
+    const prop = objectType.properties.get(indexType.value);
+    if (prop !== undefined) return resolveType(prop.type, state.env.classes);
+  }
+
+  if (objectType.kind === 'Class') {
+    if (indexType.kind === 'Literal' && indexType.baseType === 'string' && typeof indexType.value === 'string') {
+      const prop = lookupClassProperty(objectType, indexType.value);
+      if (prop !== undefined) return resolveType(prop.type, state.env.classes);
+    }
+    if (isInstanceDerived(objectType)) {
+      const instanceClass = state.env.classes.get('Instance');
+      if (instanceClass !== undefined) return instanceClass;
+    }
+  }
 
   if (objectType.kind === 'Any') return AnyType;
 
