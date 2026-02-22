@@ -258,8 +258,8 @@ describe('MCP Server - formatServicesTree', () => {
 });
 
 describe('MCP Server - tools array', () => {
-  test('has 18 tools', () => {
-    expect(tools.length).toBe(18);
+  test('has 19 tools', () => {
+    expect(tools.length).toBe(19);
   });
 
   test('all tools have name, description, and inputSchema', () => {

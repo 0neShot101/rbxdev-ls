@@ -43,7 +43,6 @@ export const registerMcpTools = (
   client: LanguageClient,
   getConnectionStatus: () => boolean,
 ): void => {
-  // Get Bridge Status Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_bridge_status', {
       async invoke(_options, _token) {
@@ -76,7 +75,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Execute Code Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_execute_code', {
       async invoke(options, _token) {
@@ -87,11 +85,10 @@ export const registerMcpTools = (
           ]);
         }
 
-        if (getConnectionStatus() === false) {
+        if (getConnectionStatus() === false)
           return new vscode.LanguageModelToolResult([
             new vscode.LanguageModelTextPart('Error: No executor connected. Connect an executor first.'),
           ]);
-        }
 
         try {
           const result = await client.sendRequest<{
@@ -100,11 +97,11 @@ export const registerMcpTools = (
             error?: { message: string; stack?: string };
           }>('custom/execute', { code });
 
-          if (result.success) {
+          if (result.success === true)
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(result.result ?? '(no output)'),
             ]);
-          }
+
           return new vscode.LanguageModelToolResult([
             new vscode.LanguageModelTextPart(
               `Execution error: ${result.error?.message ?? 'Unknown error'}${result.error?.stack ? `\n\nStack trace:\n${result.error.stack}` : ''}`,
@@ -119,7 +116,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Get Game Tree Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_game_tree', {
       async invoke(options, _token) {
@@ -167,7 +163,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Get Properties Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_properties', {
       async invoke(options, _token) {
@@ -211,7 +206,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Set Property Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_property', {
       async invoke(options, _token) {
@@ -255,7 +249,7 @@ export const registerMcpTools = (
             'valueType': input.valueType,
           });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(`Successfully set ${input.property} to ${input.value}`),
             ]);
@@ -272,7 +266,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Teleport Player Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_teleport_player', {
       async invoke(options, _token) {
@@ -294,7 +287,7 @@ export const registerMcpTools = (
             error?: string;
           }>('custom/teleportTo', { 'path': input!.path });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(`Successfully teleported to ${input!.path!.join('.')}`),
             ]);
@@ -311,7 +304,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Delete Instance Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_delete_instance', {
       async invoke(options, _token) {
@@ -333,7 +325,7 @@ export const registerMcpTools = (
             error?: string;
           }>('custom/deleteInstance', { 'path': input!.path });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(`Successfully deleted ${input!.path!.join('.')}`),
             ]);
@@ -350,7 +342,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Reparent Instance Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_reparent_instance', {
       async invoke(options, _token) {
@@ -381,7 +372,7 @@ export const registerMcpTools = (
             'targetPath': input!.targetPath,
           });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(
                 `Successfully moved ${input!.sourcePath!.join('.')} to ${input!.targetPath!.join('.')}`,
@@ -400,7 +391,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Get Children Tool (lazy loading)
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_children', {
       async invoke(options, _token) {
@@ -444,7 +434,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Get Script Source Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_script_source', {
       async invoke(options, _token) {
@@ -485,7 +474,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Create Instance Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_create_instance', {
       async invoke(options, _token) {
@@ -524,7 +512,7 @@ export const registerMcpTools = (
             'name': input.name,
           });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(
                 `Successfully created ${result.instanceName} (${input.className}) in ${input.parentPath!.join('.')}`,
@@ -543,7 +531,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Clone Instance Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_clone_instance', {
       async invoke(options, _token) {
@@ -566,7 +553,7 @@ export const registerMcpTools = (
             error?: string;
           }>('custom/cloneInstance', { 'path': input!.path });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(`Successfully cloned ${input!.path!.join('.')} as ${result.cloneName}`),
             ]);
@@ -583,7 +570,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Get Remote Spy Calls Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_remote_calls', {
       async invoke(options, _token) {
@@ -636,7 +622,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Set Remote Spy Block List Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_remote_spy_block_list', {
       async invoke(options, _token) {
@@ -657,7 +642,7 @@ export const registerMcpTools = (
             { 'blocks': input.blocks },
           );
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(`Block list updated (${input.blocks.length} entries)`),
             ]);
@@ -674,7 +659,6 @@ export const registerMcpTools = (
     }),
   );
 
-  // Save Instance Tool
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_save_instance', {
       async invoke(options, _token) {
@@ -706,7 +690,7 @@ export const registerMcpTools = (
             error?: { message: string };
           }>('custom/execute', { code });
 
-          if (result.success) {
+          if (result.success === true) {
             return new vscode.LanguageModelToolResult([
               new vscode.LanguageModelTextPart(result.result ?? `Save initiated to ${fileName}`),
             ]);

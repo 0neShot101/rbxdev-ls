@@ -34,6 +34,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     if (message.type === 'proxyWelcome') {
       if (message.isConnected) {
         core.setExecutorName(message.executorName);
+        if (message.clientType !== undefined) core.setClientType(message.clientType);
         core.setConnected(true);
         core.setStatus('connected');
         log(`[proxy] Executor already connected: ${message.executorName ?? 'unknown'}`);
@@ -47,12 +48,14 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
 
     if (message.status === 'connected') {
       core.setExecutorName(message.executorName);
+      if (message.clientType !== undefined) core.setClientType(message.clientType);
       core.setConnected(true);
       core.setStatus('connected');
       log(`[proxy] Executor connected: ${message.executorName ?? 'unknown'}`);
       core.requestGameTree();
     } else {
       core.setExecutorName(undefined);
+      core.setClientType(undefined);
       core.setConnected(false);
       core.setStatus('waiting');
       core.rejectAllPending('Executor disconnected');
@@ -150,6 +153,12 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     get 'executorName'() {
       return core.getExecutorName();
     },
+    get 'clientType'() {
+      return core.getClientType();
+    },
+    get 'clientCapabilities'() {
+      return core.getClientCapabilities();
+    },
     'liveGameModel': core.liveGameModel,
     start,
     stop,
@@ -165,6 +174,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     'requestScriptSource': core.requestScriptSource,
     'createInstance': core.createInstance,
     'cloneInstance': core.cloneInstance,
+    'setScriptSource': core.setScriptSource,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
     'setRemoteSpyBlockList': core.setRemoteSpyBlockList,

@@ -11,6 +11,7 @@ import {
   ReadResourceRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
+import { hasCapability } from '@executor/capabilities';
 import type { ExecutorBridge, LogEntry } from '@typings/bridge';
 
 import type { GameTreeNode } from '@typings/protocol';
@@ -388,6 +389,19 @@ export const tools: Tool[] = [
     },
   },
   {
+    'name': 'set_script_source',
+    'description':
+      'Set the source code of a Script, LocalScript, or ModuleScript. Only available when connected to Roblox Studio.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'path': { 'type': 'array', 'items': { 'type': 'string' }, 'description': 'Path to the script instance' },
+        'source': { 'type': 'string', 'description': 'The new source code to set on the script' },
+      },
+      'required': ['path', 'source'],
+    },
+  },
+  {
     'name': 'save_instance',
     'description':
       "Save the game's DataModel or a specific instance to a file on the executor's filesystem using saveinstance().",
@@ -511,6 +525,7 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
               'isRunning': bridge.isRunning,
               'isConnected': bridge.isConnected,
               'executorName': bridge.executorName ?? null,
+              'clientType': bridge.clientType ?? null,
               'lastUpdate': bridge.liveGameModel.lastUpdate,
               'servicesCount': bridge.liveGameModel.services.size,
             },
@@ -521,6 +536,8 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
 
       case 'execute_code': {
         if (bridge.isConnected === false) return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, 'execute') === false)
+          return errorResult('Error: Code execution is not available with the current client');
         const code = (args as { code: string }).code;
         if (typeof code !== 'string' || code.trim() === '') return errorResult('Error: code parameter is required');
 
@@ -733,6 +750,8 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
 
       case 'set_remote_spy_enabled': {
         if (bridge.isConnected === false) return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, 'remoteSpy') === false)
+          return errorResult('Error: Remote Spy is not available with the current client');
         const typedArgs = args as { enabled: boolean };
         if (typeof typedArgs.enabled !== 'boolean')
           return errorResult('Error: enabled parameter is required (boolean)');
@@ -746,6 +765,8 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
 
       case 'set_remote_spy_block_list': {
         if (bridge.isConnected === false) return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, 'remoteSpy') === false)
+          return errorResult('Error: Remote Spy is not available with the current client');
         const typedArgs = args as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
         if (Array.isArray(typedArgs.blocks) === false)
           return errorResult('Error: blocks parameter is required (array)');
@@ -757,8 +778,26 @@ export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: Serv
         );
       }
 
+      case 'set_script_source': {
+        if (bridge.isConnected === false) return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, 'scriptWrite') === false)
+          return errorResult('Error: Script writing is only available when connected to Roblox Studio');
+        const typedArgs = args as { path: string[]; source: string };
+        const pathError = requirePath(typedArgs.path);
+        if (pathError !== undefined) return pathError;
+        if (typeof typedArgs.source !== 'string') return errorResult('Error: source parameter is required');
+
+        return bridgeCall(
+          () => bridge.setScriptSource(typedArgs.path, typedArgs.source),
+          () => `Successfully updated script source at ${typedArgs.path.join('.')}`,
+          'Failed to set script source',
+        );
+      }
+
       case 'save_instance': {
         if (bridge.isConnected === false) return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, 'saveInstance') === false)
+          return errorResult('Error: Save instance is not available with the current client');
         const typedArgs = args as { path?: string[]; fileName?: string; decompile?: boolean };
         const fileName = typedArgs.fileName ?? 'game.rbxl';
         const decompile = typedArgs.decompile !== false;

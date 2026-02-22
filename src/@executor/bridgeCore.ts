@@ -14,8 +14,10 @@ import type {
   SetRemoteSpyBlockListResult,
   SetRemoteSpyEnabledResult,
   SetRemoteSpyFilterResult,
+  SetScriptSourceResult,
   TeleportResult,
 } from '@typings/bridge';
+import type { ClientCapabilities, ClientType } from '@typings/clientType';
 import type {
   GameTreeNode,
   ModuleReference,
@@ -24,6 +26,7 @@ import type {
   RuntimeError,
   ServerMessage,
 } from '@typings/protocol';
+import { resolveCapabilities } from './capabilities';
 import { createLiveGameModel } from './gameTree';
 import { parseClientMessage } from './protocol';
 
@@ -41,7 +44,10 @@ export interface BridgeCore {
   readonly setStatus: (status: BridgeStatus) => void;
   readonly setConnected: (connected: boolean) => void;
   readonly setExecutorName: (name: string | undefined) => void;
+  readonly setClientType: (type: ClientType | undefined) => void;
   readonly getExecutorName: () => string | undefined;
+  readonly getClientType: () => ClientType | undefined;
+  readonly getClientCapabilities: () => ClientCapabilities | undefined;
   readonly getStatus: () => BridgeStatus;
   readonly getRemoteSpyEnabled: () => boolean;
   readonly getRemoteSpyCalls: () => ReadonlyArray<RemoteSpyCall>;
@@ -73,6 +79,7 @@ export interface BridgeCore {
     name?: string,
   ) => Promise<CreateInstanceResult>;
   readonly cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
+  readonly setScriptSource: (path: ReadonlyArray<string>, source: string) => Promise<SetScriptSourceResult>;
   readonly setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
   readonly setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
   readonly setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;
@@ -89,6 +96,8 @@ export const createBridgeCore = (
   log: (message: string) => void,
 ): BridgeCore => {
   let executorName: string | undefined;
+  let clientType: ClientType | undefined;
+  let clientCapabilities: ClientCapabilities | undefined;
   let status: BridgeStatus = 'stopped';
   let remoteSpyEnabled = false;
 
@@ -106,6 +115,7 @@ export const createBridgeCore = (
   const pendingSetRemoteSpyEnabled = new Map<string, PendingRequest<SetRemoteSpyEnabledResult>>();
   const pendingSetRemoteSpyFilter = new Map<string, PendingRequest<SetRemoteSpyFilterResult>>();
   const pendingSetRemoteSpyBlockList = new Map<string, PendingRequest<SetRemoteSpyBlockListResult>>();
+  const pendingSetScriptSources = new Map<string, PendingRequest<SetScriptSourceResult>>();
 
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
@@ -148,14 +158,8 @@ export const createBridgeCore = (
     extra?: Record<string, unknown>,
   ): Promise<T> =>
     new Promise((resolve, reject) => {
-      if (isReady() === false) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+      if (isReady() === false) return reject(new Error('No executor connected'));
+      if (executorName === undefined) return reject(new Error('Executor connected but handshake not completed'));
       const id = generateId();
       const timeout = setTimeout(() => {
         pendingMap.delete(id);
@@ -167,17 +171,17 @@ export const createBridgeCore = (
 
   const handleMessage = (data: string): void => {
     const message = parseClientMessage(data);
-    if (message === undefined) {
-      log('[bridge] Received invalid message');
-      return;
-    }
+    if (message === undefined) return log('[bridge] Received invalid message');
 
     switch (message.type) {
       case 'connected':
         executorName = message.executorName;
+        clientType = message.clientType ?? 'executor';
+        clientCapabilities = resolveCapabilities(clientType);
         setConnected(true);
         setStatus('connected');
-        log(`[bridge] Executor connected: ${message.executorName} v${message.version}`);
+        const clientLabel = clientType === 'studio' ? 'Studio' : 'Executor';
+        log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
         break;
 
       case 'executeResult':
@@ -321,6 +325,13 @@ export const createBridgeCore = (
         });
         break;
 
+      case 'setScriptSourceResult':
+        resolvePending(pendingSetScriptSources, message.id, {
+          'success': message.success,
+          'error': message.error ?? undefined,
+        });
+        break;
+
       case 'remoteSpy':
         remoteSpyCallsBuffer.push(message.call);
         if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) remoteSpyCallsBuffer.shift();
@@ -339,14 +350,8 @@ export const createBridgeCore = (
 
   const execute = (code: string): Promise<ExecuteResult> =>
     new Promise((resolve, reject) => {
-      if (isReady() === false) {
-        reject(new Error('No executor connected'));
-        return;
-      }
-      if (executorName === undefined) {
-        reject(new Error('Executor connected but handshake not completed'));
-        return;
-      }
+      if (isReady() === false) return reject(new Error('No executor connected'));
+      if (executorName === undefined) return reject(new Error('Executor connected but handshake not completed'));
       const id = generateId();
       const timeout = setTimeout(() => {
         pendingExecutions.delete(id);
@@ -480,6 +485,14 @@ export const createBridgeCore = (
       blocks,
     }));
 
+  const setScriptSourceFn = (path: ReadonlyArray<string>, source: string): Promise<SetScriptSourceResult> =>
+    createRequest(pendingSetScriptSources, 10000, id => ({
+      'type': 'setScriptSource' as const,
+      id,
+      'path': [...path],
+      source,
+    }));
+
   return {
     liveGameModel,
     handleMessage,
@@ -487,8 +500,18 @@ export const createBridgeCore = (
     'setConnected': (connected: boolean) => setConnected(connected),
     'setExecutorName': (name: string | undefined) => {
       executorName = name;
+      if (name === undefined) {
+        clientType = undefined;
+        clientCapabilities = undefined;
+      }
+    },
+    'setClientType': (type: ClientType | undefined) => {
+      clientType = type;
+      clientCapabilities = type !== undefined ? resolveCapabilities(type) : undefined;
     },
     'getExecutorName': () => executorName,
+    'getClientType': () => clientType,
+    'getClientCapabilities': () => clientCapabilities,
     'getStatus': () => status,
     'getRemoteSpyEnabled': () => remoteSpyEnabled,
     'getRemoteSpyCalls': () => remoteSpyCallsBuffer,
@@ -505,6 +528,7 @@ export const createBridgeCore = (
     requestScriptSource,
     'createInstance': createInstanceFn,
     cloneInstance,
+    'setScriptSource': setScriptSourceFn,
     'setRemoteSpyEnabled': setRemoteSpyEnabledFn,
     'setRemoteSpyFilter': setRemoteSpyFilterFn,
     'setRemoteSpyBlockList': setRemoteSpyBlockListFn,

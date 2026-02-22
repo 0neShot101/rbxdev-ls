@@ -1,3 +1,4 @@
+import type { ClientCapabilities } from './clientType';
 import type {
   GameTreeNode,
   ModuleInterface,
@@ -67,10 +68,14 @@ export interface SetRemoteSpyFilterResult extends BridgeResult {}
 
 export interface SetRemoteSpyBlockListResult extends BridgeResult {}
 
+export interface SetScriptSourceResult extends BridgeResult {}
+
 export interface ExecutorBridge {
   readonly isRunning: boolean;
   readonly isConnected: boolean;
   readonly executorName: string | undefined;
+  readonly clientType: 'executor' | 'studio' | undefined;
+  readonly clientCapabilities: ClientCapabilities | undefined;
   readonly liveGameModel: LiveGameModel;
   start: (port: number) => void;
   stop: () => void;
@@ -95,6 +100,7 @@ export interface ExecutorBridge {
     name?: string,
   ) => Promise<CreateInstanceResult>;
   cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
+  setScriptSource: (path: ReadonlyArray<string>, source: string) => Promise<SetScriptSourceResult>;
   setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
   setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
   setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;

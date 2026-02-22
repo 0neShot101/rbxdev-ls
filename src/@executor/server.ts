@@ -71,6 +71,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         'type': 'proxyStatusChange',
         'status': 'connected',
         ...(name !== undefined ? { 'executorName': name } : {}),
+        ...(core.getClientType() !== undefined ? { 'clientType': core.getClientType() } : {}),
       });
     }
   });
@@ -83,6 +84,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       'type': 'proxyWelcome',
       'isConnected': core.getStatus() === 'connected',
       'executorName': core.getExecutorName(),
+      ...(core.getClientType() !== undefined ? { 'clientType': core.getClientType() } : {}),
     };
     ws.send(JSON.stringify(welcome));
 
@@ -338,6 +340,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     get 'executorName'() {
       return core.getExecutorName();
     },
+    get 'clientType'() {
+      return core.getClientType();
+    },
+    get 'clientCapabilities'() {
+      return core.getClientCapabilities();
+    },
     'liveGameModel': core.liveGameModel,
     start,
     stop,
@@ -353,6 +361,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     'requestScriptSource': core.requestScriptSource,
     'createInstance': core.createInstance,
     'cloneInstance': core.cloneInstance,
+    'setScriptSource': core.setScriptSource,
     'setRemoteSpyEnabled': core.setRemoteSpyEnabled,
     'setRemoteSpyFilter': core.setRemoteSpyFilter,
     'setRemoteSpyBlockList': core.setRemoteSpyBlockList,
