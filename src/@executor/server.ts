@@ -67,11 +67,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         handshakeTimeout = undefined;
       }
       const name = core.getExecutorName();
+      const clientType = core.getClientType();
       sendProxyMessage({
         'type': 'proxyStatusChange',
         'status': 'connected',
         ...(name !== undefined ? { 'executorName': name } : {}),
-        ...(core.getClientType() !== undefined ? { 'clientType': core.getClientType() } : {}),
+        ...(clientType !== undefined ? { 'clientType': clientType } : {}),
       });
     }
   });
@@ -80,11 +81,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     proxyClients.add(ws);
     log(`[bridge] Proxy client connected (total: ${proxyClients.size})`);
 
+    const clientType = core.getClientType();
     const welcome: ProxyWelcomeMessage = {
       'type': 'proxyWelcome',
       'isConnected': core.getStatus() === 'connected',
       'executorName': core.getExecutorName(),
-      ...(core.getClientType() !== undefined ? { 'clientType': core.getClientType() } : {}),
+      ...(clientType !== undefined ? { 'clientType': clientType } : {}),
     };
     ws.send(JSON.stringify(welcome));
 
