@@ -3,6 +3,8 @@
  * Advanced remote spy UI with call list, code view, ignore/block management
  */
 
+import { randomBytes } from 'crypto';
+
 import { Disposable, ExtensionContext, ViewColumn, WebviewPanel, window } from 'vscode';
 
 import type { BlockEntry, IgnoreEntry, RemoteSpyCallEntry, RemoteSpyState } from './remoteSpyState';
@@ -199,7 +201,8 @@ export class RemoteSpyPanel {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+
   <style>
     :root {
       --accent-event: #f0c340;
@@ -1015,10 +1018,5 @@ export class RemoteSpyPanel {
 </html>`;
   };
 
-  private getNonce = (): string => {
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let nonce = '';
-    for (let i = 0; i < 32; i += 1) nonce += possible.charAt(Math.floor(Math.random() * possible.length));
-    return nonce;
-  };
+  private getNonce = (): string => randomBytes(16).toString('base64url');
 }
