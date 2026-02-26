@@ -19,12 +19,12 @@ Add this to your MCP configuration:
 
 **Where to put this config:**
 
-| Tool | Config location |
-|------|----------------|
-| Claude Code | `~/.claude/mcp_config.json` |
-| Claude Desktop | Settings > MCP Servers |
-| Cursor | `.cursor/mcp.json` in your project |
-| Windsurf | Cascade > MCP > Add Server |
+| Tool           | Config location                    |
+| -------------- | ---------------------------------- |
+| Claude Code    | `~/.claude/mcp_config.json`        |
+| Claude Desktop | Settings > MCP Servers             |
+| Cursor         | `.cursor/mcp.json` in your project |
+| Windsurf       | Cascade > MCP > Add Server         |
 
 ### Requirements
 
@@ -54,24 +54,24 @@ To use a custom port:
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `get_bridge_status` | Check if the bridge is running and connected |
-| `execute_code` | Run Luau code in the game with full Roblox API access |
-| `get_game_tree` | Browse the game hierarchy (services, instances, children) |
-| `get_properties` | Read property values from any instance |
-| `set_property` | Set properties on instances (supports Vector3, Color3, etc.) |
-| `get_children` | List children of an instance |
-| `create_instance` | Create new instances in the game |
-| `clone_instance` | Clone existing instances |
-| `delete_instance` | Remove instances from the game |
-| `reparent_instance` | Move instances to a new parent |
-| `teleport_player` | Teleport the local player to an instance |
-| `get_script_source` | Decompile and read script source code |
-| `get_console_output` | Read recent print/warn/error output |
-| `refresh_game_tree` | Request a fresh snapshot of the game tree |
-| `get_remote_calls` | View captured RemoteEvent/RemoteFunction calls |
-| `set_remote_spy_enabled` | Toggle the Remote Spy |
+| Tool                     | Description                                                  |
+| ------------------------ | ------------------------------------------------------------ |
+| `get_bridge_status`      | Check if the bridge is running and connected                 |
+| `execute_code`           | Run Luau code in the game with full Roblox API access        |
+| `get_game_tree`          | Browse the game hierarchy (services, instances, children)    |
+| `get_properties`         | Read property values from any instance                       |
+| `set_property`           | Set properties on instances (supports Vector3, Color3, etc.) |
+| `get_children`           | List children of an instance                                 |
+| `create_instance`        | Create new instances in the game                             |
+| `clone_instance`         | Clone existing instances                                     |
+| `delete_instance`        | Remove instances from the game                               |
+| `reparent_instance`      | Move instances to a new parent                               |
+| `teleport_player`        | Teleport the local player to an instance                     |
+| `get_script_source`      | Decompile and read script source code                        |
+| `get_console_output`     | Read recent print/warn/error output                          |
+| `refresh_game_tree`      | Request a fresh snapshot of the game tree                    |
+| `get_remote_calls`       | View captured RemoteEvent/RemoteFunction calls               |
+| `set_remote_spy_enabled` | Toggle the Remote Spy                                        |
 
 ## Resources
 
