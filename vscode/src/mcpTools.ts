@@ -22,7 +22,7 @@ interface PropertyEntry {
 }
 
 const escapeLuaString = (value: string): string =>
-  value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/\"/g, '\\"');
+  value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"');
 
 const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
   const serviceName = segments[0];
