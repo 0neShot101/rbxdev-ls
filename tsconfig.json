@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-// Language and Environment
+    // Language and Environment
     "target": "ES2022",
     "lib": ["ES2022"],
     "types": ["bun-types"],
@@ -18,8 +18,6 @@
     "outDir": "./dist",
     "rootDir": ".",
     "removeComments": false,
-    "importHelpers": true,
-    "downlevelIteration": true,
     "sourceMap": true,
     "inlineSources": false,
     "emitDecoratorMetadata": true,
@@ -50,18 +48,18 @@
 
     // Modules
     "paths": {
-      "@core/*": ["./src/@core/*"],
-      "@parser/*": ["./src/@parser/*"],
-      "@typings/*": ["./src/@typings/*"],
-      "@analyzer/*": ["./src/@analyzer/*"],
-      "@definitions/*": ["./src/@definitions/*"],
-      "@lsp/*": ["./src/@lsp/*"],
-      "@utils/*": ["./src/@utils/*"],
-      "@workspace/*": ["./src/@workspace/*"],
-      "@executor": ["./src/@executor/index.ts"],
-      "@executor/*": ["./src/@executor/*"],
-      "@mcp": ["./src/@mcp/index.ts"],
-      "@mcp/*": ["./src/@mcp/*"]
+      "@core/*": ["./src/core/*"],
+      "@parser/*": ["./src/parser/*"],
+      "@typings/*": ["./src/typings/*"],
+      "@analyzer/*": ["./src/analyzer/*"],
+      "@definitions/*": ["./src/definitions/*"],
+      "@lsp/*": ["./src/lsp/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@workspace/*": ["./src/workspace/*"],
+      "@executor": ["./src/executor/index.ts"],
+      "@executor/*": ["./src/executor/*"],
+      "@mcp": ["./src/mcp/index.ts"],
+      "@mcp/*": ["./src/mcp/*"]
     },
 
     // Emit Rules
