@@ -592,6 +592,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   private getHtml = (): string => {
     const properties = this.properties;
     const instanceName = this.instanceName;
+    const nonce = this.getNonce();
 
     const propertyRows = properties.map(prop => this.getPropertyRow(prop)).join('');
 
@@ -600,6 +601,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.webviewView?.webview.cspSource ?? ''} data:; style-src ${this.webviewView?.webview.cspSource ?? ''} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';">
   <style>
     * {
       box-sizing: border-box;
@@ -701,7 +703,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   <div id="properties">
     ${propertyRows}
   </div>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     function sendChange(property, value, valueType) {
@@ -744,6 +746,13 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   </script>
 </body>
 </html>`;
+  };
+
+  private getNonce = (): string => {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let nonce = '';
+    for (let i = 0; i < 32; i += 1) nonce += possible.charAt(Math.floor(Math.random() * possible.length));
+    return nonce;
   };
 
   private getPropertyRow = (prop: PropertyEntry): string => {

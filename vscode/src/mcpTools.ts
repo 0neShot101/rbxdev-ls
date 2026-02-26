@@ -21,6 +21,18 @@ interface PropertyEntry {
   className?: string;
 }
 
+const escapeLuaString = (value: string): string =>
+  value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/\"/g, '\\"');
+
+const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
+  const serviceName = segments[0];
+  if (serviceName === undefined) return 'nil';
+
+  let lookup = `game:GetService("${escapeLuaString(serviceName)}")`;
+  for (const segment of segments.slice(1)) lookup += `:FindFirstChild("${escapeLuaString(segment)}")`;
+  return lookup;
+};
+
 const formatGameTreeNode = (node: GameTreeNode, indent: number = 0): string => {
   const prefix = '  '.repeat(indent);
   let result = `${prefix}${node.name} (${node.className})`;
@@ -320,6 +332,14 @@ export const registerMcpTools = (
         }
 
         try {
+          const confirmed = await vscode.window.showWarningMessage(
+            `Delete ${input!.path!.join('.')}? This cannot be undone.`,
+            { 'modal': true },
+            'Delete',
+          );
+          if (confirmed !== 'Delete')
+            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Delete cancelled by user')]);
+
           const result = await client.sendRequest<{
             success: boolean;
             error?: string;
@@ -671,17 +691,15 @@ export const registerMcpTools = (
         const decompile = input?.decompile !== false;
 
         const optionParts: string[] = [];
-        optionParts.push(`FilePath = "${fileName}"`);
+        optionParts.push(`FilePath = "${escapeLuaString(fileName)}"`);
         optionParts.push(`Decompile = ${decompile}`);
 
         if (input?.path !== undefined && input.path.length > 0) {
-          const serviceName = input.path[0] ?? '';
-          let lookup = `game:GetService("${serviceName}")`;
-          for (const part of input.path.slice(1)) lookup += `:FindFirstChild("${part}")`;
+          const lookup = createLuaLookupFromPath(input.path);
           optionParts.push(`Object = ${lookup}`);
         }
 
-        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
 
         try {
           const result = await client.sendRequest<{
@@ -707,5 +725,6 @@ export const registerMcpTools = (
     }),
   );
 
-  console.log('[rbxdev-ls] MCP tools registered with VS Code Language Model API');
+  if (vscode.workspace.getConfiguration('rbxdev-ls').get<boolean>('debugLogs', false))
+    console.log('[rbxdev-ls] MCP tools registered with VS Code Language Model API');
 };

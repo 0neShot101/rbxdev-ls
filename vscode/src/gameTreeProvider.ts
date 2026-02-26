@@ -434,8 +434,9 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   private reparentCallback: ReparentCallback | undefined;
   private requestChildrenCallback: RequestChildrenCallback | undefined;
   private extensionPath: string;
-  /** Cache of fetched children by path (joined with '.') */
+  /** Cache of fetched children by JSON-serialized path */
   private childrenCache: Map<string, ReadonlyArray<GameTreeNode>> = new Map();
+  private readonly searchVisitedPaths = new Set<string>();
 
   /** Search state */
   private searchOptions: SearchOptions | undefined;
@@ -526,6 +527,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Performs the search across the cached tree
    */
   private performSearch = (): void => {
+    this.searchVisitedPaths.clear();
     if (this.searchOptions === undefined) {
       this.searchResults = [];
       return;
@@ -535,6 +537,9 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     const query = this.searchOptions.query;
 
     const searchNode = (node: GameTreeNode, path: ReadonlyArray<string>, isService: boolean): void => {
+      const pathKey = JSON.stringify(path);
+      if (this.searchVisitedPaths.has(pathKey)) return;
+      this.searchVisitedPaths.add(pathKey);
       const matchesName = this.searchOptions!.searchByName && node.name.toLowerCase().includes(query);
       const matchesClass = this.searchOptions!.searchByClass && node.className.toLowerCase().includes(query);
 
@@ -561,7 +566,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     }
 
     for (const [pathKey, children] of this.childrenCache) {
-      const basePath = pathKey.split('.');
+      const basePath = JSON.parse(pathKey) as string[];
       for (const child of children) {
         searchNode(child, [...basePath, child.name], false);
       }
@@ -657,44 +662,24 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       return this.mapChildrenToItems(this.rootNodes, [], true);
     }
 
-    console.log(
-      '[GameTree] getChildren called for:',
-      element.name,
-      'hasChildren:',
-      element.hasChildren,
-      'children:',
-      element.children?.length ?? 'undefined',
-    );
-
     if (element.children !== undefined && element.children.length > 0) {
-      console.log('[GameTree] Returning existing children:', element.children.length);
       return this.mapChildrenToItems(element.children, element.path);
     }
 
-    const pathKey = element.path.join('.');
+    const pathKey = JSON.stringify(element.path);
     const cachedChildren = this.childrenCache.get(pathKey);
     if (cachedChildren !== undefined) {
-      console.log('[GameTree] Returning cached children:', cachedChildren.length);
       return this.mapChildrenToItems(cachedChildren, element.path);
     }
 
-    console.log(
-      '[GameTree] Checking lazy load: hasChildren=',
-      element.hasChildren,
-      'callback=',
-      this.requestChildrenCallback !== undefined,
-    );
     if (element.hasChildren === true && this.requestChildrenCallback !== undefined) {
-      console.log('[GameTree] Fetching children for path:', element.path);
       const fetchedChildren = await this.requestChildrenCallback(element.path);
-      console.log('[GameTree] Fetched children result:', fetchedChildren?.length ?? 'undefined');
       if (fetchedChildren !== undefined && fetchedChildren.length > 0) {
         this.childrenCache.set(pathKey, fetchedChildren);
         return this.mapChildrenToItems(fetchedChildren, element.path);
       }
     }
 
-    console.log('[GameTree] Returning empty array');
     return [];
   };
 
