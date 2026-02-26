@@ -3,7 +3,8 @@
  * Shows properties with inline editing like Roblox Studio
  */
 
-import * as crypto from 'crypto';
+import { randomBytes } from 'crypto';
+
 import {
   CancellationToken,
   ExtensionContext,
@@ -602,7 +603,8 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.webviewView?.webview.cspSource ?? ''} data:; style-src ${this.webviewView?.webview.cspSource ?? ''} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.webviewView?.webview.cspSource ?? ''} data:; style-src ${this.webviewView?.webview.cspSource ?? ''} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+
   <style>
     * {
       box-sizing: border-box;
@@ -749,9 +751,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
 </html>`;
   };
 
-  private getNonce = (): string => {
-    return crypto.randomBytes(16).toString('hex');
-  };
+  private getNonce = (): string => randomBytes(16).toString('base64url');
 
   private getPropertyRow = (prop: PropertyEntry): string => {
     const name = this.escapeHtml(prop.name);

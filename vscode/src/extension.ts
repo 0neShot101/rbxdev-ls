@@ -822,8 +822,13 @@ export const activate = (context: ExtensionContext): void => {
       if (editor === undefined) return window.showErrorMessage('No active editor');
       const serviceName = item.path[0];
       if (serviceName === undefined) return;
-      const safeServiceName = escapeLuaString(serviceName);
-      const code = `local ${safeServiceName.replace(/[^A-Za-z0-9_]/g, '_')} = game:GetService("${safeServiceName}")\n`;
+      const escapedServiceName = escapeLuaString(serviceName);
+      let serviceIdentifier = serviceName;
+      if (!/^[A-Za-z_]/.test(serviceIdentifier)) {
+        serviceIdentifier = 'service_' + serviceIdentifier;
+      }
+      serviceIdentifier = serviceIdentifier.replace(/[^A-Za-z0-9_]/g, '_');
+      const code = `local ${serviceIdentifier} = game:GetService("${escapedServiceName}")\n`;
       await editor.edit(editBuilder => {
         editBuilder.insert(editor.selection.active, code);
       });
