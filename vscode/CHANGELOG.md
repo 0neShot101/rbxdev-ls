@@ -2,6 +2,30 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.3.4] - 2026-02-25
+
+### Added
+
+- Content Security Policy and nonce-based script loading for Properties and Remote Spy webviews
+- Runtime confirmation dialog for MCP `rbxdev_delete_instance` before destructive execution
+
+### Changed
+
+- Bridge status polling is now single-flight to prevent overlapping async polls
+- Bridge failure handling now consistently clears connection context and UI state
+- Multi-root workspace resolution now prefers the active editor workspace and falls back safely
+- Roblox path-to-file resolution now searches all workspace roots instead of assuming one root
+- Game tree cache/search keying now uses lossless JSON path keys, avoiding delimiter collisions
+- Search traversal now de-duplicates by visited path keys across root and cached nodes
+- Selection command `when` clauses now use explicit parentheses for correct precedence
+- Production logging noise reduced by gating debug logs behind configuration
+
+### Fixed
+
+- Escaped user/runtime strings before embedding in generated Lua snippets to prevent malformed Lua and injection risks
+- Follow-up security hardening for nonce generation and CSP tightening
+- Proxy client type retrieval updated for stricter TypeScript exact-optional typing compatibility
+
 ## [0.2.9] - 2026-02-16
 
 ### Added
