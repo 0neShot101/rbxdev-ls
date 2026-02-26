@@ -50,6 +50,42 @@ const remoteSpyState = createRemoteSpyState();
 let remoteSpyEnabled = false;
 let lastClientType: string | undefined;
 const scriptDocumentPaths = new Map<string, string[]>();
+let isPollingExecutorStatus = false;
+let debugLoggingEnabled = false;
+
+const logDebug = (...args: unknown[]): void => {
+  if (debugLoggingEnabled === false) return;
+  console.log(...args);
+};
+
+const escapeLuaString = (value: string): string =>
+  value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/\"/g, '\\"');
+
+const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
+  const serviceName = segments[0];
+  if (serviceName === undefined) return 'nil';
+
+  let lookup = `game:GetService("${escapeLuaString(serviceName)}")`;
+  for (const segment of segments.slice(1)) lookup += `:FindFirstChild("${escapeLuaString(segment)}")`;
+  return lookup;
+};
+
+const getWorkspaceFolderPath = (): string | undefined => {
+  const folders = workspace.workspaceFolders;
+  if (folders === undefined || folders.length === 0) return undefined;
+  const activeUri = window.activeTextEditor?.document.uri;
+  if (activeUri !== undefined) return workspace.getWorkspaceFolder(activeUri)?.uri.fsPath ?? folders[0]?.uri.fsPath;
+  return folders[0]?.uri.fsPath;
+};
+
+const resetBridgeUiState = (): void => {
+  commands.executeCommand('setContext', 'rbxdev-ls:bridgeConnected', false);
+  commands.executeCommand('setContext', 'rbxdev-ls:clientType', undefined);
+  gameTreeProvider.clear();
+  propertiesProvider.clear();
+  scriptDocumentPaths.clear();
+  lastClientType = undefined;
+};
 
 type BridgeStatus = 'stopped' | 'waiting' | 'connected' | 'error';
 
@@ -89,6 +125,9 @@ const updateStatusBar = (status: BridgeStatus, executorName?: string, clientType
 
 const pollExecutorStatus = async (): Promise<void> => {
   if (client === undefined) return;
+  if (isPollingExecutorStatus === true) return;
+
+  isPollingExecutorStatus = true;
 
   try {
     const response = await client.sendRequest<ExecutorStatusResponse>('custom/executorStatus');
@@ -105,11 +144,7 @@ const pollExecutorStatus = async (): Promise<void> => {
     } else if (response.isConnected === false && lastConnectedState) {
       const label = lastClientType === 'studio' ? 'Roblox Studio' : (lastExecutorName ?? 'Client');
       window.showWarningMessage(`Roblox: ${label} disconnected`);
-      commands.executeCommand('setContext', 'rbxdev-ls:bridgeConnected', false);
-      commands.executeCommand('setContext', 'rbxdev-ls:clientType', undefined);
-      lastClientType = undefined;
-      gameTreeProvider.clear();
-      scriptDocumentPaths.clear();
+      resetBridgeUiState();
     }
     lastConnectedState = response.isConnected;
 
@@ -125,6 +160,9 @@ const pollExecutorStatus = async (): Promise<void> => {
       lastConnectedState = false;
     }
     updateStatusBar('stopped');
+    resetBridgeUiState();
+  } finally {
+    isPollingExecutorStatus = false;
   }
 };
 
@@ -203,7 +241,9 @@ export const activate = (context: ExtensionContext): void => {
   remoteSpyChannel = window.createOutputChannel('Roblox Remote Spy');
   context.subscriptions.push(remoteSpyChannel);
 
-  console.log('[rbxdev-ls] Creating Game Tree view...');
+  debugLoggingEnabled = workspace.getConfiguration('rbxdev-ls').get<boolean>('debugLogs', false);
+
+  logDebug('[rbxdev-ls] Creating Game Tree view...');
   gameTreeProvider = new GameTreeDataProvider(context.extensionPath);
   const treeView = window.createTreeView('rbxdev-gameTree', {
     'treeDataProvider': gameTreeProvider,
@@ -232,7 +272,7 @@ export const activate = (context: ExtensionContext): void => {
   });
 
   gameTreeProvider.onRequestChildren(async path => {
-    console.log('[rbxdev-ls] Requesting children for path:', path);
+    logDebug('[rbxdev-ls] Requesting children for path:', path);
     try {
       const result = await client.sendRequest<{
         success: boolean;
@@ -240,7 +280,7 @@ export const activate = (context: ExtensionContext): void => {
         error?: string;
       }>('custom/requestChildren', { 'path': path });
 
-      console.log(
+      logDebug(
         '[rbxdev-ls] Children request result:',
         result.success,
         'children:',
@@ -251,12 +291,12 @@ export const activate = (context: ExtensionContext): void => {
       if (result.success && result.children !== undefined) return result.children;
       return undefined;
     } catch (err) {
-      console.log('[rbxdev-ls] Children request error:', err);
+      logDebug('[rbxdev-ls] Children request error:', err);
       return undefined;
     }
   });
 
-  console.log('[rbxdev-ls] Game Tree view created');
+  logDebug('[rbxdev-ls] Game Tree view created');
 
   propertiesProvider = new PropertiesWebviewProvider(context);
   context.subscriptions.push(window.registerWebviewViewProvider('rbxdev-properties', propertiesProvider));
@@ -449,8 +489,7 @@ export const activate = (context: ExtensionContext): void => {
     if (workspaceFolders === undefined || workspaceFolders.length === 0)
       return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
 
-    const workspaceRoot = workspaceFolders[0]?.uri.fsPath;
-    if (workspaceRoot === undefined) return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    const workspaceRoots = workspaceFolders.map(folder => folder.uri.fsPath);
 
     const pathParts = robloxPath.replace(/^game\./, '').split('.');
 
@@ -473,22 +512,24 @@ export const activate = (context: ExtensionContext): void => {
     if (basePath === undefined) return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
 
     const scriptPath = pathParts.slice(1).join('/');
-    const possiblePaths = [
-      path.join(workspaceRoot, basePath, `${scriptPath}.server.luau`),
-      path.join(workspaceRoot, basePath, `${scriptPath}.client.luau`),
-      path.join(workspaceRoot, basePath, `${scriptPath}.luau`),
-      path.join(workspaceRoot, basePath, `${scriptPath}.lua`),
-      path.join(workspaceRoot, basePath, scriptPath, 'init.server.luau'),
-      path.join(workspaceRoot, basePath, scriptPath, 'init.client.luau'),
-      path.join(workspaceRoot, basePath, scriptPath, 'init.luau'),
-      path.join(workspaceRoot, basePath, scriptPath, 'init.lua'),
-    ];
+    for (const workspaceRoot of workspaceRoots) {
+      const possiblePaths = [
+        path.join(workspaceRoot, basePath, `${scriptPath}.server.luau`),
+        path.join(workspaceRoot, basePath, `${scriptPath}.client.luau`),
+        path.join(workspaceRoot, basePath, `${scriptPath}.luau`),
+        path.join(workspaceRoot, basePath, `${scriptPath}.lua`),
+        path.join(workspaceRoot, basePath, scriptPath, 'init.server.luau'),
+        path.join(workspaceRoot, basePath, scriptPath, 'init.client.luau'),
+        path.join(workspaceRoot, basePath, scriptPath, 'init.luau'),
+        path.join(workspaceRoot, basePath, scriptPath, 'init.lua'),
+      ];
 
-    for (const filePath of possiblePaths) {
-      try {
-        if (fs.existsSync(filePath)) return line !== undefined ? `${filePath}:${line}` : filePath;
-      } catch {
-        /* noop */
+      for (const filePath of possiblePaths) {
+        try {
+          if (fs.existsSync(filePath)) return line !== undefined ? `${filePath}:${line}` : filePath;
+        } catch {
+          /* noop */
+        }
       }
     }
 
@@ -534,11 +575,11 @@ export const activate = (context: ExtensionContext): void => {
     );
 
     client.onNotification('custom/gameTreeUpdate', (nodes: GameTreeNode[]) => {
-      console.log('[rbxdev-ls] Game tree update received:', nodes.length, 'services');
+      logDebug('[rbxdev-ls] Game tree update received:', nodes.length, 'services');
 
       if (nodes.length > 0 && nodes[0]?.children && nodes[0].children.length > 0) {
         const firstChild = nodes[0].children[0];
-        console.log('[rbxdev-ls] First child sample:', firstChild?.name, 'hasChildren:', firstChild?.hasChildren);
+        logDebug('[rbxdev-ls] First child sample:', firstChild?.name, 'hasChildren:', firstChild?.hasChildren);
       }
       gameTreeProvider.refresh(nodes);
     });
@@ -623,11 +664,8 @@ export const activate = (context: ExtensionContext): void => {
   context.subscriptions.push(remoteSpyStatusBar);
 
   const doBundleExecute = async (): Promise<void> => {
-    const workspaceFolders = workspace.workspaceFolders;
-    if (workspaceFolders === undefined || workspaceFolders.length === 0)
-      return void window.showErrorMessage('No workspace folder open');
-
-    const workspaceRoot = workspaceFolders[0]!.uri.fsPath;
+    const workspaceRoot = getWorkspaceFolderPath();
+    if (workspaceRoot === undefined) return void window.showErrorMessage('No workspace folder open');
     const configPath = path.join(workspaceRoot, 'luau-bundle.config.json');
 
     if (fs.existsSync(configPath) === false)
@@ -784,7 +822,8 @@ export const activate = (context: ExtensionContext): void => {
       if (editor === undefined) return window.showErrorMessage('No active editor');
       const serviceName = item.path[0];
       if (serviceName === undefined) return;
-      const code = `local ${serviceName} = game:GetService("${serviceName}")\n`;
+      const safeServiceName = escapeLuaString(serviceName);
+      const code = `local ${safeServiceName.replace(/[^A-Za-z0-9_]/g, '_')} = game:GetService("${safeServiceName}")\n`;
       await editor.edit(editBuilder => {
         editBuilder.insert(editor.selection.active, code);
       });
@@ -1137,13 +1176,13 @@ export const activate = (context: ExtensionContext): void => {
       };
 
       if (selected.action === 'workspace') {
-        const workspaceFolders = workspace.workspaceFolders;
-        if (workspaceFolders === undefined || workspaceFolders.length === 0) {
+        const workspaceRoot = getWorkspaceFolderPath();
+        if (workspaceRoot === undefined) {
           window.showErrorMessage('No workspace folder open');
           return;
         }
 
-        const vscodeDir = path.join(workspaceFolders[0]!.uri.fsPath, '.vscode');
+        const vscodeDir = path.join(workspaceRoot, '.vscode');
         const mcpJsonPath = path.join(vscodeDir, 'mcp.json');
 
         try {
@@ -1220,7 +1259,7 @@ export const activate = (context: ExtensionContext): void => {
     }),
 
     commands.registerCommand('rbxdev-ls.viewScript', async (item: GameTreeItem) => {
-      console.log('[rbxdev-ls] viewScript called with:', item);
+      logDebug('[rbxdev-ls] viewScript called with:', item);
 
       if (item === undefined) return window.showErrorMessage('No script selected');
 
@@ -1235,7 +1274,7 @@ export const activate = (context: ExtensionContext): void => {
             'title': 'Fetching script source...',
           },
           async () => {
-            console.log('[rbxdev-ls] Requesting script source for:', item.path);
+            logDebug('[rbxdev-ls] Requesting script source for:', item.path);
             const result = await client.sendRequest<{
               success: boolean;
               source?: string;
@@ -1243,7 +1282,7 @@ export const activate = (context: ExtensionContext): void => {
               error?: string;
             }>('custom/getScriptSource', { 'path': item.path });
 
-            console.log('[rbxdev-ls] Script source result:', result.success, result.error);
+            logDebug('[rbxdev-ls] Script source result:', result.success, result.error);
 
             if (result.success && result.source !== undefined) {
               const cleanPath = item.path.map(s => {
@@ -1580,15 +1619,15 @@ export const activate = (context: ExtensionContext): void => {
       const excludeServices = config.get<string[]>('saveInstance.excludeServices', ['Chat', 'CoreGui', 'CorePackages']);
 
       const optionParts: string[] = [];
-      optionParts.push(`FilePath = "${fileName}"`);
+      optionParts.push(`FilePath = "${escapeLuaString(fileName)}"`);
       optionParts.push(`Decompile = ${decompile}`);
       if (noscripts === true) optionParts.push('NilInstances = false');
       if (excludeServices.length > 0) {
-        const classList = excludeServices.map(c => `"${c}"`).join(', ');
+        const classList = excludeServices.map(c => `"${escapeLuaString(c)}"`).join(', ');
         optionParts.push(`ExcludeClassNames = {${classList}}`);
       }
 
-      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
 
       await window.withProgress(
         { 'location': ProgressLocation.Notification, 'title': `Saving game to ${fileName}...`, 'cancellable': false },
@@ -1641,13 +1680,11 @@ export const activate = (context: ExtensionContext): void => {
         return i >= 0 ? s.substring(0, i) : s;
       });
 
-      const serviceName = cleanPath[0] ?? '';
-      let lookup = `game:GetService("${serviceName}")`;
-      for (const part of cleanPath.slice(1)) {
-        lookup += `:FindFirstChild("${part}")`;
-      }
+      const lookup = createLuaLookupFromPath(cleanPath);
+      const safeFileName = escapeLuaString(fileName);
+      const safeItemName = escapeLuaString(item.name);
 
-      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal target = ${lookup}\nif target == nil then return "Error: instance not found" end\nlocal ok, err = pcall(saveinstance, {Object = target, FilePath = "${fileName}", Decompile = ${decompile}})\nif ok then return "Saved ${item.name} to ${fileName}" else return "Error: " .. tostring(err) end`;
+      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal target = ${lookup}\nif target == nil then return "Error: instance not found" end\nlocal ok, err = pcall(saveinstance, {Object = target, FilePath = "${safeFileName}", Decompile = ${decompile}})\nif ok then return "Saved ${safeItemName} to ${safeFileName}" else return "Error: " .. tostring(err) end`;
 
       await window.withProgress(
         { 'location': ProgressLocation.Notification, 'title': `Saving ${item.name}...`, 'cancellable': false },
@@ -1707,7 +1744,7 @@ export const activate = (context: ExtensionContext): void => {
 
   setTimeout(() => pollExecutorStatus(), 1000);
 
-  console.log('rbxdev-ls extension activated');
+  logDebug('rbxdev-ls extension activated');
 };
 
 export const deactivate = async (): Promise<void> => {

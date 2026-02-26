@@ -387,14 +387,27 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "type": { "type": "string", "enum": ["path", "name"] },
-                  "value": { "type": "string" }
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "path",
+                      "name"
+                    ]
+                  },
+                  "value": {
+                    "type": "string"
+                  }
                 },
-                "required": ["type", "value"]
+                "required": [
+                  "type",
+                  "value"
+                ]
               }
             }
           },
-          "required": ["blocks"]
+          "required": [
+            "blocks"
+          ]
         }
       },
       {
@@ -407,9 +420,21 @@
         "inputSchema": {
           "type": "object",
           "properties": {
-            "path": { "type": "array", "items": { "type": "string" }, "description": "Optional instance path" },
-            "fileName": { "type": "string", "description": "Output file name (default: game.rbxl)" },
-            "decompile": { "type": "boolean", "description": "Decompile scripts (default: true)" }
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional instance path"
+            },
+            "fileName": {
+              "type": "string",
+              "description": "Output file name (default: game.rbxl)"
+            },
+            "decompile": {
+              "type": "boolean",
+              "description": "Decompile scripts (default: true)"
+            }
           }
         }
       }
@@ -503,9 +528,20 @@
         },
         "rbxdev-ls.saveInstance.excludeServices": {
           "type": "array",
-          "default": ["Chat", "CoreGui", "CorePackages"],
-          "items": { "type": "string" },
+          "default": [
+            "Chat",
+            "CoreGui",
+            "CorePackages"
+          ],
+          "items": {
+            "type": "string"
+          },
           "description": "Services to exclude from full game saves"
+        },
+        "rbxdev-ls.debugLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose debug logging in the extension output/devtools console"
         }
       }
     },
@@ -682,7 +718,7 @@
       {
         "command": "rbxdev-ls.executeSelection",
         "key": "ctrl+shift+alt+e",
-        "when": "editorLangId == lua || editorLangId == luau && editorHasSelection"
+        "when": "(editorLangId == lua || editorLangId == luau) && editorHasSelection"
       },
       {
         "command": "rbxdev-ls.copyLastRemoteCall",
@@ -721,7 +757,7 @@
       "editor/context": [
         {
           "command": "rbxdev-ls.executeSelection",
-          "when": "editorLangId == lua || editorLangId == luau && editorHasSelection",
+          "when": "(editorLangId == lua || editorLangId == luau) && editorHasSelection",
           "group": "1_modification"
         }
       ],

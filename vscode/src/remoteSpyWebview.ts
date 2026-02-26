@@ -190,11 +190,16 @@ export class RemoteSpyPanel {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
 
-  private getHtml = (): string => `<!DOCTYPE html>
+  private getHtml = (): string => {
+    const nonce = this.getNonce();
+    const cspSource = this.panel?.webview.cspSource ?? '';
+
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' 'unsafe-inline';">
   <style>
     :root {
       --accent-event: #f0c340;
@@ -648,7 +653,7 @@ export class RemoteSpyPanel {
     <span id="call-count">0 calls</span>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     let state = {
@@ -1008,4 +1013,12 @@ export class RemoteSpyPanel {
   </script>
 </body>
 </html>`;
+  };
+
+  private getNonce = (): string => {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let nonce = '';
+    for (let i = 0; i < 32; i += 1) nonce += possible.charAt(Math.floor(Math.random() * possible.length));
+    return nonce;
+  };
 }
