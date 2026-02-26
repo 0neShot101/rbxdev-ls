@@ -14801,6 +14801,40 @@ var import_sender = __toESM(require_sender(), 1);
 var import_websocket = __toESM(require_websocket(), 1);
 var import_websocket_server = __toESM(require_websocket_server(), 1);
 
+// src/@executor/capabilities.ts
+var EXECUTOR_CAPABILITIES = new Set([
+  "execute",
+  "scriptSource",
+  "remoteSpy",
+  "saveInstance",
+  "gameTree",
+  "properties",
+  "instanceManipulation",
+  "teleport",
+  "console",
+  "moduleInterface"
+]);
+var STUDIO_CAPABILITIES = new Set([
+  "execute",
+  "scriptSource",
+  "scriptWrite",
+  "gameTree",
+  "properties",
+  "instanceManipulation",
+  "teleport",
+  "console",
+  "moduleInterface"
+]);
+var resolveCapabilities = (clientType) => ({
+  clientType,
+  capabilities: clientType === "studio" ? STUDIO_CAPABILITIES : EXECUTOR_CAPABILITIES
+});
+var hasCapability = (caps, cap) => {
+  if (caps === undefined)
+    return false;
+  return caps.capabilities.has(cap);
+};
+
 // src/@executor/gameTree.ts
 var findNode = (root, path) => {
   if (path.length === 0)
@@ -14909,7 +14943,7 @@ var createLiveGameModel = () => {
 var isRecord = (value) => typeof value === "object" && value !== null;
 var hasStringField = (obj, field) => typeof obj[field] === "string";
 var createResultGuard = (typeName) => (msg) => isRecord(msg) && msg["type"] === typeName && hasStringField(msg, "id") && typeof msg["success"] === "boolean";
-var isConnectedMessage = (msg) => isRecord(msg) && msg["type"] === "connected" && hasStringField(msg, "executorName");
+var isConnectedMessage = (msg) => isRecord(msg) && msg["type"] === "connected" && hasStringField(msg, "executorName") && (msg["clientType"] === undefined || msg["clientType"] === "executor" || msg["clientType"] === "studio");
 var isExecuteResultMessage = (msg) => isRecord(msg) && msg["type"] === "executeResult" && hasStringField(msg, "id");
 var isGameTreeMessage = (msg) => isRecord(msg) && msg["type"] === "gameTree" && Array.isArray(msg["data"]);
 var isRuntimeErrorMessage = (msg) => isRecord(msg) && msg["type"] === "runtimeError" && typeof msg["error"] === "object" && msg["error"] !== null;
@@ -14926,6 +14960,8 @@ var isCreateInstanceResultMessage = createResultGuard("createInstanceResult");
 var isCloneInstanceResultMessage = createResultGuard("cloneInstanceResult");
 var isSetRemoteSpyEnabledResultMessage = createResultGuard("setRemoteSpyEnabledResult");
 var isSetRemoteSpyFilterResultMessage = createResultGuard("setRemoteSpyFilterResult");
+var isSetRemoteSpyBlockListResultMessage = createResultGuard("setRemoteSpyBlockListResult");
+var isSetScriptSourceResultMessage = createResultGuard("setScriptSourceResult");
 var isRemoteSpyMessage = (msg) => isRecord(msg) && msg["type"] === "remoteSpy" && typeof msg["call"] === "object" && msg["call"] !== null;
 var clientMessageValidators = {
   connected: isConnectedMessage,
@@ -14945,6 +14981,8 @@ var clientMessageValidators = {
   cloneInstanceResult: isCloneInstanceResultMessage,
   setRemoteSpyEnabledResult: isSetRemoteSpyEnabledResultMessage,
   setRemoteSpyFilterResult: isSetRemoteSpyFilterResultMessage,
+  setRemoteSpyBlockListResult: isSetRemoteSpyBlockListResultMessage,
+  setScriptSourceResult: isSetScriptSourceResultMessage,
   remoteSpy: isRemoteSpyMessage
 };
 var parseClientMessage = (data) => {
@@ -14968,6 +15006,8 @@ var parseClientMessage = (data) => {
 var MAX_REMOTE_SPY_BUFFER = 500;
 var createBridgeCore = (sendFn, isReady, log) => {
   let executorName;
+  let clientType;
+  let clientCapabilities;
   let status = "stopped";
   let remoteSpyEnabled = false;
   const pendingExecutions = new Map;
@@ -14983,6 +15023,8 @@ var createBridgeCore = (sendFn, isReady, log) => {
   const pendingCloneInstances = new Map;
   const pendingSetRemoteSpyEnabled = new Map;
   const pendingSetRemoteSpyFilter = new Map;
+  const pendingSetRemoteSpyBlockList = new Map;
+  const pendingSetScriptSources = new Map;
   const statusCallbacks = [];
   const errorCallbacks = [];
   const gameTreeCallbacks = [];
@@ -15016,14 +15058,10 @@ var createBridgeCore = (sendFn, isReady, log) => {
       callback(value);
   };
   const createRequest = (pendingMap, timeoutMs, buildMessage, extra) => new Promise((resolve, reject) => {
-    if (isReady() === false) {
-      reject(new Error("No executor connected"));
-      return;
-    }
-    if (executorName === undefined) {
-      reject(new Error("Executor connected but handshake not completed"));
-      return;
-    }
+    if (isReady() === false)
+      return reject(new Error("No executor connected"));
+    if (executorName === undefined)
+      return reject(new Error("Executor connected but handshake not completed"));
     const id = generateId();
     const timeout = setTimeout(() => {
       pendingMap.delete(id);
@@ -15034,16 +15072,17 @@ var createBridgeCore = (sendFn, isReady, log) => {
   });
   const handleMessage = (data) => {
     const message = parseClientMessage(data);
-    if (message === undefined) {
-      log("[bridge] Received invalid message");
-      return;
-    }
+    if (message === undefined)
+      return log("[bridge] Received invalid message");
     switch (message.type) {
       case "connected":
         executorName = message.executorName;
+        clientType = message.clientType ?? "executor";
+        clientCapabilities = resolveCapabilities(clientType);
         setConnected(true);
         setStatus("connected");
-        log(`[bridge] Executor connected: ${message.executorName} v${message.version}`);
+        const clientLabel = clientType === "studio" ? "Studio" : "Executor";
+        log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
         break;
       case "executeResult":
         resolvePending(pendingExecutions, message.id, {
@@ -15165,6 +15204,18 @@ var createBridgeCore = (sendFn, isReady, log) => {
           error: message.error ?? undefined
         });
         break;
+      case "setRemoteSpyBlockListResult":
+        resolvePending(pendingSetRemoteSpyBlockList, message.id, {
+          success: message.success,
+          error: message.error ?? undefined
+        });
+        break;
+      case "setScriptSourceResult":
+        resolvePending(pendingSetScriptSources, message.id, {
+          success: message.success,
+          error: message.error ?? undefined
+        });
+        break;
       case "remoteSpy":
         remoteSpyCallsBuffer.push(message.call);
         if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER)
@@ -15181,14 +15232,10 @@ var createBridgeCore = (sendFn, isReady, log) => {
     }
   };
   const execute = (code) => new Promise((resolve, reject) => {
-    if (isReady() === false) {
-      reject(new Error("No executor connected"));
-      return;
-    }
-    if (executorName === undefined) {
-      reject(new Error("Executor connected but handshake not completed"));
-      return;
-    }
+    if (isReady() === false)
+      return reject(new Error("No executor connected"));
+    if (executorName === undefined)
+      return reject(new Error("Executor connected but handshake not completed"));
     const id = generateId();
     const timeout = setTimeout(() => {
       pendingExecutions.delete(id);
@@ -15267,6 +15314,17 @@ var createBridgeCore = (sendFn, isReady, log) => {
     id,
     filter
   }));
+  const setRemoteSpyBlockListFn = (blocks) => createRequest(pendingSetRemoteSpyBlockList, 2000, (id) => ({
+    type: "setRemoteSpyBlockList",
+    id,
+    blocks
+  }));
+  const setScriptSourceFn = (path, source) => createRequest(pendingSetScriptSources, 1e4, (id) => ({
+    type: "setScriptSource",
+    id,
+    path: [...path],
+    source
+  }));
   return {
     liveGameModel,
     handleMessage,
@@ -15274,8 +15332,18 @@ var createBridgeCore = (sendFn, isReady, log) => {
     setConnected: (connected) => setConnected(connected),
     setExecutorName: (name) => {
       executorName = name;
+      if (name === undefined) {
+        clientType = undefined;
+        clientCapabilities = undefined;
+      }
+    },
+    setClientType: (type) => {
+      clientType = type;
+      clientCapabilities = type !== undefined ? resolveCapabilities(type) : undefined;
     },
     getExecutorName: () => executorName,
+    getClientType: () => clientType,
+    getClientCapabilities: () => clientCapabilities,
     getStatus: () => status,
     getRemoteSpyEnabled: () => remoteSpyEnabled,
     getRemoteSpyCalls: () => remoteSpyCallsBuffer,
@@ -15292,8 +15360,10 @@ var createBridgeCore = (sendFn, isReady, log) => {
     requestScriptSource,
     createInstance: createInstanceFn,
     cloneInstance,
+    setScriptSource: setScriptSourceFn,
     setRemoteSpyEnabled: setRemoteSpyEnabledFn,
     setRemoteSpyFilter: setRemoteSpyFilterFn,
+    setRemoteSpyBlockList: setRemoteSpyBlockListFn,
     onStatusChange: (callback) => {
       statusCallbacks.push(callback);
     },
@@ -15331,6 +15401,8 @@ var createProxyBridge = (log) => {
     if (message.type === "proxyWelcome") {
       if (message.isConnected) {
         core.setExecutorName(message.executorName);
+        if (message.clientType !== undefined)
+          core.setClientType(message.clientType);
         core.setConnected(true);
         core.setStatus("connected");
         log(`[proxy] Executor already connected: ${message.executorName ?? "unknown"}`);
@@ -15343,12 +15415,15 @@ var createProxyBridge = (log) => {
     }
     if (message.status === "connected") {
       core.setExecutorName(message.executorName);
+      if (message.clientType !== undefined)
+        core.setClientType(message.clientType);
       core.setConnected(true);
       core.setStatus("connected");
       log(`[proxy] Executor connected: ${message.executorName ?? "unknown"}`);
       core.requestGameTree();
     } else {
       core.setExecutorName(undefined);
+      core.setClientType(undefined);
       core.setConnected(false);
       core.setStatus("waiting");
       core.rejectAllPending("Executor disconnected");
@@ -15435,6 +15510,12 @@ var createProxyBridge = (log) => {
     get executorName() {
       return core.getExecutorName();
     },
+    get clientType() {
+      return core.getClientType();
+    },
+    get clientCapabilities() {
+      return core.getClientCapabilities();
+    },
     liveGameModel: core.liveGameModel,
     start,
     stop,
@@ -15450,8 +15531,10 @@ var createProxyBridge = (log) => {
     requestScriptSource: core.requestScriptSource,
     createInstance: core.createInstance,
     cloneInstance: core.cloneInstance,
+    setScriptSource: core.setScriptSource,
     setRemoteSpyEnabled: core.setRemoteSpyEnabled,
     setRemoteSpyFilter: core.setRemoteSpyFilter,
+    setRemoteSpyBlockList: core.setRemoteSpyBlockList,
     get isRemoteSpyEnabled() {
       return core.getRemoteSpyEnabled();
     },
@@ -15513,20 +15596,24 @@ var createExecutorBridge = (log) => {
         handshakeTimeout = undefined;
       }
       const name = core.getExecutorName();
+      const clientType = core.getClientType();
       sendProxyMessage({
         type: "proxyStatusChange",
         status: "connected",
-        ...name !== undefined ? { executorName: name } : {}
+        ...name !== undefined ? { executorName: name } : {},
+        ...clientType !== undefined ? { clientType } : {}
       });
     }
   });
   const handleProxyConnection = (ws) => {
     proxyClients.add(ws);
     log(`[bridge] Proxy client connected (total: ${proxyClients.size})`);
+    const clientType = core.getClientType();
     const welcome = {
       type: "proxyWelcome",
       isConnected: core.getStatus() === "connected",
-      executorName: core.getExecutorName()
+      executorName: core.getExecutorName(),
+      ...clientType !== undefined ? { clientType } : {}
     };
     ws.send(JSON.stringify(welcome));
     ws.on("message", (data) => {
@@ -15741,6 +15828,12 @@ var createExecutorBridge = (log) => {
     get executorName() {
       return core.getExecutorName();
     },
+    get clientType() {
+      return core.getClientType();
+    },
+    get clientCapabilities() {
+      return core.getClientCapabilities();
+    },
     liveGameModel: core.liveGameModel,
     start,
     stop,
@@ -15756,8 +15849,10 @@ var createExecutorBridge = (log) => {
     requestScriptSource: core.requestScriptSource,
     createInstance: core.createInstance,
     cloneInstance: core.cloneInstance,
+    setScriptSource: core.setScriptSource,
     setRemoteSpyEnabled: core.setRemoteSpyEnabled,
     setRemoteSpyFilter: core.setRemoteSpyFilter,
+    setRemoteSpyBlockList: core.setRemoteSpyBlockList,
     get isRemoteSpyEnabled() {
       return core.getRemoteSpyEnabled();
     },
@@ -23170,6 +23265,60 @@ var tools = [
       properties: { enabled: { type: "boolean", description: "Whether to enable or disable Remote Spy" } },
       required: ["enabled"]
     }
+  },
+  {
+    name: "set_remote_spy_block_list",
+    description: "Set the list of remotes to block from firing to the server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        blocks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["path", "name"], description: "Match by path or name" },
+              value: { type: "string", description: "The path or name to block" }
+            },
+            required: ["type", "value"]
+          },
+          description: "Array of block entries"
+        }
+      },
+      required: ["blocks"]
+    }
+  },
+  {
+    name: "set_script_source",
+    description: "Set the source code of a Script, LocalScript, or ModuleScript. Only available when connected to Roblox Studio.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "array", items: { type: "string" }, description: "Path to the script instance" },
+        source: { type: "string", description: "The new source code to set on the script" }
+      },
+      required: ["path", "source"]
+    }
+  },
+  {
+    name: "save_instance",
+    description: "Save the game's DataModel or a specific instance to a file on the executor's filesystem using saveinstance().",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional path to a specific instance to save. If omitted, saves the full game."
+        },
+        fileName: {
+          type: "string",
+          description: 'Output file name (e.g., "game.rbxl", "workspace.rbxm"). Defaults to "game.rbxl".'
+        },
+        decompile: { type: "boolean", description: "Whether to decompile scripts. Defaults to true." }
+      },
+      required: []
+    }
   }
 ];
 var createMcpServer = (injectedBridge) => {
@@ -23251,12 +23400,15 @@ var createMcpServer = (injectedBridge) => {
           isRunning: bridge.isRunning,
           isConnected: bridge.isConnected,
           executorName: bridge.executorName ?? null,
+          clientType: bridge.clientType ?? null,
           lastUpdate: bridge.liveGameModel.lastUpdate,
           servicesCount: bridge.liveGameModel.services.size
         }, null, 2));
       case "execute_code": {
         if (bridge.isConnected === false)
           return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, "execute") === false)
+          return errorResult("Error: Code execution is not available with the current client");
         const code = args.code;
         if (typeof code !== "string" || code.trim() === "")
           return errorResult("Error: code parameter is required");
@@ -23446,10 +23598,65 @@ ${formatted}`);
       case "set_remote_spy_enabled": {
         if (bridge.isConnected === false)
           return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, "remoteSpy") === false)
+          return errorResult("Error: Remote Spy is not available with the current client");
         const typedArgs = args;
         if (typeof typedArgs.enabled !== "boolean")
           return errorResult("Error: enabled parameter is required (boolean)");
         return bridgeCall(() => bridge.setRemoteSpyEnabled(typedArgs.enabled), (result) => `Remote Spy ${result.enabled === true ? "enabled" : "disabled"}`, "Failed to set Remote Spy state");
+      }
+      case "set_remote_spy_block_list": {
+        if (bridge.isConnected === false)
+          return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, "remoteSpy") === false)
+          return errorResult("Error: Remote Spy is not available with the current client");
+        const typedArgs = args;
+        if (Array.isArray(typedArgs.blocks) === false)
+          return errorResult("Error: blocks parameter is required (array)");
+        return bridgeCall(() => bridge.setRemoteSpyBlockList(typedArgs.blocks), () => `Block list updated (${typedArgs.blocks.length} entries)`, "Failed to set block list");
+      }
+      case "set_script_source": {
+        if (bridge.isConnected === false)
+          return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, "scriptWrite") === false)
+          return errorResult("Error: Script writing is only available when connected to Roblox Studio");
+        const typedArgs = args;
+        const pathError = requirePath(typedArgs.path);
+        if (pathError !== undefined)
+          return pathError;
+        if (typeof typedArgs.source !== "string")
+          return errorResult("Error: source parameter is required");
+        return bridgeCall(() => bridge.setScriptSource(typedArgs.path, typedArgs.source), () => `Successfully updated script source at ${typedArgs.path.join(".")}`, "Failed to set script source");
+      }
+      case "save_instance": {
+        if (bridge.isConnected === false)
+          return NOT_CONNECTED;
+        if (hasCapability(bridge.clientCapabilities, "saveInstance") === false)
+          return errorResult("Error: Save instance is not available with the current client");
+        const typedArgs = args;
+        const fileName = typedArgs.fileName ?? "game.rbxl";
+        const decompile = typedArgs.decompile !== false;
+        const optionParts = [];
+        optionParts.push(`FilePath = "${fileName}"`);
+        optionParts.push(`Decompile = ${decompile}`);
+        if (typedArgs.path !== undefined && typedArgs.path.length > 0) {
+          const serviceName = typedArgs.path[0] ?? "";
+          let lookup = `game:GetService("${serviceName}")`;
+          for (const part of typedArgs.path.slice(1))
+            lookup += `:FindFirstChild("${part}")`;
+          optionParts.push(`Object = ${lookup}`);
+        }
+        const code = `if saveinstance == nil then return "Error: saveinstance not available" end
+local ok, err = pcall(saveinstance, {${optionParts.join(", ")}})
+if ok then return "Saved to ${fileName}" else return "Error: " .. tostring(err) end`;
+        try {
+          const result = await bridge.execute(code);
+          if (result.success)
+            return textResult(result.result ?? `Save initiated to ${fileName}`);
+          return errorResult(`Save failed: ${result.error?.message ?? "Unknown error"}`);
+        } catch (err) {
+          return errorResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
       default:
         return errorResult(`Unknown tool: ${name}`);
