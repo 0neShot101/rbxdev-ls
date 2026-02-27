@@ -1,0 +1,86 @@
+name: Publish GitHub Package
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-github-package-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-gpr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: "@0neshot101"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type check
+        run: bun run type-check
+
+      - name: Build MCP bundle
+        run: bun build src/mcp.ts --outdir dist --target node
+
+      - name: Prepare GitHub package payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .tmp-gpr
+          mkdir -p .tmp-gpr
+
+          cp packages/rbxdev-mcp/README.md .tmp-gpr/README.md
+          cp dist/mcp.js .tmp-gpr/mcp.js
+
+          node -e "
+            const fs = require('fs');
+            const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const src = JSON.parse(fs.readFileSync('packages/rbxdev-mcp/package.json', 'utf8'));
+            const out = {
+              ...src,
+              name: '@0neshot101/rbxdev-mcp',
+              version: root.version,
+              publishConfig: { registry: 'https://npm.pkg.github.com' }
+            };
+            fs.writeFileSync('.tmp-gpr/package.json', JSON.stringify(out, null, 2) + '\n');
+          "
+
+      - name: Check if version already exists
+        id: exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./.tmp-gpr/package.json').version")"
+          if npm view "@0neshot101/rbxdev-mcp@${version}" version --registry https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Package version ${version} already exists on GitHub Packages; skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to GitHub Packages
+        if: steps.exists.outputs.exists == 'false'
+        working-directory: .tmp-gpr
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
