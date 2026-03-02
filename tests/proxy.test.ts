@@ -1,3 +1,4 @@
+import { createServer as createHttpServer, get as httpGet } from 'node:http';
 import { WebSocket } from 'ws';
 
 import { createBridgeCore } from '@executor/bridgeCore';
@@ -12,6 +13,81 @@ const getPort = (): number => nextPort++;
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
 const noop = (): void => {};
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void> => {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) return;
+    await wait(25);
+  }
+
+  throw new Error('Condition was not met before timeout');
+};
+
+const getAvailablePort = async (): Promise<number> =>
+  await new Promise((resolve, reject) => {
+    const server = createHttpServer();
+    const cleanup = (): void => {
+      server.off('error', onError);
+      server.off('listening', onListening);
+    };
+
+    const onError = (error: Error): void => {
+      cleanup();
+      if (server.listening) {
+        server.close(() => reject(error));
+        return;
+      }
+      reject(error);
+    };
+
+    const onListening = (): void => {
+      const address = server.address();
+      if (address === null || typeof address === 'string') {
+        cleanup();
+        server.close();
+        reject(new Error('Failed to resolve ephemeral port'));
+        return;
+      }
+
+      const port = address.port;
+      server.close(error => {
+        cleanup();
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(0, '127.0.0.1');
+  });
+
+const getJson = async (port: number, path: string): Promise<{ statusCode: number; body: string }> =>
+  await new Promise((resolve, reject) => {
+    const req = httpGet(
+      {
+        'host': '127.0.0.1',
+        port,
+        path,
+      },
+      res => {
+        const chunks: Buffer[] = [];
+        res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          resolve({
+            'statusCode': res.statusCode ?? 0,
+            'body': Buffer.concat(chunks).toString('utf-8'),
+          });
+        });
+      },
+    );
+
+    req.on('error', reject);
+  });
 
 describe('BridgeCore', () => {
   test('initial status is stopped', () => {
@@ -275,6 +351,40 @@ describe('ExecutorBridge - Proxy Support', () => {
   test('bridge starts in waiting state', () => {
     expect(bridge.isRunning).toBe(true);
     expect(bridge.isConnected).toBe(false);
+  });
+
+  test('bridge serves health endpoint on the bridge port', async () => {
+    const healthPort = await getAvailablePort();
+    const healthLogs: string[] = [];
+    const healthBridge = createExecutorBridge(msg => healthLogs.push(msg));
+    healthBridge.start(healthPort);
+
+    try {
+      await waitFor(() => healthLogs.some(log => log.includes(`WebSocket server started on port ${healthPort}`)));
+      const response = await getJson(healthPort, '/health');
+      const payload = JSON.parse(response.body) as {
+        ok: boolean;
+        connected: boolean;
+        executorName?: string;
+        clientType?: string;
+      };
+
+      expect(response.statusCode).toBe(200);
+      expect(payload.ok).toBe(true);
+      expect(payload.connected).toBe(false);
+      expect(payload.executorName).toBeUndefined();
+      expect(payload.clientType).toBeUndefined();
+    } finally {
+      healthBridge.stop();
+    }
+  });
+
+  test('bridge can restart quickly on the same port', async () => {
+    bridge.stop();
+    bridge.start(port);
+    await waitFor(() => bridge.isRunning === true);
+
+    expect(bridge.isRunning).toBe(true);
   });
 
   test('bridge accepts executor connection', async () => {
