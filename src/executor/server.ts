@@ -1,3 +1,4 @@
+import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import type { ExecutorBridge } from '@typings/bridge';
@@ -16,6 +17,7 @@ const isProxyStatusChange = (msg: unknown): msg is ProxyStatusChangeMessage =>
 
 /** Creates a new executor bridge instance for managing WebSocket connections with Roblox executors. */
 export const createExecutorBridge = (log: (message: string) => void): ExecutorBridge => {
+  let httpServer: HttpServer | undefined;
   let server: WebSocketServer | undefined;
   let executorClient: WebSocket | undefined;
   let handshakeTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -245,14 +247,45 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   };
 
   const start = (port: number): void => {
-    if (server !== undefined || isProxyMode) return;
+    if (httpServer !== undefined || server !== undefined || isProxyMode) return;
 
     setServerTransport();
 
     try {
-      server = new WebSocketServer({ 'host': '127.0.0.1', port });
+      httpServer = createServer((req, res) => {
+        if (req.method === 'GET' && req.url === '/health') {
+          const payload = JSON.stringify({
+            'ok': true,
+            'connected': core.getStatus() === 'connected',
+            'executorName': core.getExecutorName(),
+            'clientType': core.getClientType(),
+          });
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            'Cache-Control': 'no-store',
+          });
+          res.end(payload);
+          return;
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
+      });
+
+      server = new WebSocketServer({ 'noServer': true });
       core.setStatus('waiting');
-      log(`[bridge] WebSocket server started on port ${port}`);
+
+      httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
+        if (server === undefined) {
+          socket.destroy();
+          return;
+        }
+
+        server.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+          server?.emit('connection', ws, req);
+        });
+      });
 
       server.on('connection', (ws: WebSocket) => {
         ws.once('message', (data: Buffer | string) => {
@@ -285,6 +318,30 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         }
         log(`[bridge] Server error: ${err.message}`);
         core.setStatus('error');
+      });
+
+      httpServer.on('error', (err: Error & { code?: string }) => {
+        if (err.code === 'EADDRINUSE' && isProxyMode === false) {
+          try {
+            server?.close();
+          } catch {
+            /* noop */
+          }
+          try {
+            httpServer?.close();
+          } catch {
+            /* noop */
+          }
+          server = undefined;
+          httpServer = undefined;
+          startAsProxy(port);
+          return;
+        }
+        log(`[bridge] HTTP server error: ${err.message}`);
+        core.setStatus('error');
+      });
+      httpServer.listen(port, '127.0.0.1', () => {
+        log(`[bridge] WebSocket server started on port ${port}`);
       });
     } catch (err) {
       log(`[bridge] Failed to start server: ${err instanceof Error ? err.message : String(err)}`);
@@ -320,6 +377,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       server.close();
       server = undefined;
     }
+    if (httpServer !== undefined) {
+      httpServer.close();
+      httpServer = undefined;
+    }
     core.setExecutorName(undefined);
     core.setConnected(false);
     core.setStatus('stopped');
@@ -328,7 +389,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
   return {
     get 'isRunning'() {
-      return server !== undefined || isProxyMode;
+      return httpServer !== undefined || server !== undefined || isProxyMode;
     },
     get 'isConnected'() {
       if (isProxyMode)

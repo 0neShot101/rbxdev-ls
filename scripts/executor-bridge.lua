@@ -15,6 +15,8 @@ local userConfig = (...) or {}
 local CONFIG = {
 	host              = 'ws://127.0.0.1:21324',
 	reconnectDelay    = 5,
+	reconnectDelayMax = 60,
+	enableHealthProbe = true,
 	firstConnectDepth = 999,
 	updateTreeDepth   = 3,
 	expandedTreeDepth = 2,
@@ -202,6 +204,12 @@ local WebSocket = WebSocket
 	or (Xeno and Xeno.websocket)
 	or websocket
 
+local HttpRequest = request
+	or http_request
+	or syn_request
+	or (syn and syn.request)
+	or (http and http.request)
+
 if WebSocket == nil then
 	warn'[rbxdev-bridge] No WebSocket implementation found!'
 	return
@@ -219,6 +227,9 @@ local connection = nil
 local connected = false
 local refreshConnections = {}
 local bridgeAlive = true
+local reconnectScheduled = false
+local reconnectAttemptDelay = CONFIG.reconnectDelay
+local healthProbeFailures = 0
 
 local remoteSpyEnabled = false
 local remoteSpyFilter = ''
@@ -253,6 +264,50 @@ local jsonDecode = function(data)
 	local success, result = pcall(HttpService.JSONDecode, HttpService, data)
 	if not success then return nil end
 	return result
+end
+
+local getHealthUrl = function()
+	if type(CONFIG.healthUrl) == 'string' and CONFIG.healthUrl ~= '' then
+		return CONFIG.healthUrl
+	end
+
+	local base = CONFIG.host:gsub('^wss://', 'https://'):gsub('^ws://', 'http://')
+	local origin = base:match'^(https?://[^/]+)'
+	if origin == nil then return nil end
+	return origin .. '/health'
+end
+
+local canAttemptConnect = function()
+	if CONFIG.enableHealthProbe == false or HttpRequest == nil then
+		return true
+	end
+
+	local healthUrl = getHealthUrl()
+	if healthUrl == nil then
+		return true
+	end
+
+	local ok, response = pcall(HttpRequest, {
+		Url = healthUrl,
+		Method = 'GET',
+		Headers = {
+			['Cache-Control'] = 'no-cache',
+		},
+	})
+
+	if not ok or type(response) ~= 'table' then
+		healthProbeFailures = healthProbeFailures + 1
+		return healthProbeFailures % 3 == 0
+	end
+
+	local statusCode = response.StatusCode or response.Status or response.status_code
+	if statusCode == 200 then
+		healthProbeFailures = 0
+		return true
+	end
+
+	healthProbeFailures = healthProbeFailures + 1
+	return healthProbeFailures % 3 == 0
 end
 
 local send = function(data)
@@ -1134,20 +1189,60 @@ end
 
 
 local connect
-connect = function()
+local scheduleReconnect
+
+scheduleReconnect = function()
+	if reconnectScheduled or connected or not isBridgeAlive() then return end
+
+	reconnectScheduled = true
+	local delay = math.max(0, reconnectAttemptDelay or CONFIG.reconnectDelay or 0)
+
+	task.delay(delay, function()
+		reconnectScheduled = false
+
+		if connected or not isBridgeAlive() then return end
+
+		local didConnect = connect(false)
+		if didConnect then
+			reconnectAttemptDelay = CONFIG.reconnectDelay
+			return
+		end
+
+		local nextDelay = reconnectAttemptDelay
+		if nextDelay == nil or nextDelay <= 0 then
+			nextDelay = CONFIG.reconnectDelay
+		elseif nextDelay < CONFIG.reconnectDelayMax then
+			nextDelay = math.min(nextDelay * 2, CONFIG.reconnectDelayMax)
+		end
+
+		reconnectAttemptDelay = nextDelay
+		scheduleReconnect()
+	end)
+end
+
+connect = function(scheduleOnFailure)
 	if not isBridgeAlive() then return false end
+	if scheduleOnFailure == nil then scheduleOnFailure = true end
+	if not canAttemptConnect() then
+		if scheduleOnFailure then
+			scheduleReconnect()
+		end
+		return false
+	end
 
 	local ok, ws = pcall(WebSocket.connect, CONFIG.host)
 	if not ok or ws == nil then
-		-- Retry after delay (handles VS Code restart where server isn't ready yet)
-		task.delay(CONFIG.reconnectDelay, function()
-			if not connected and isBridgeAlive() then connect() end
-		end)
+		if scheduleOnFailure then
+			scheduleReconnect()
+		end
 		return false
 	end
 
 	connection = ws
 	connected = true
+	reconnectScheduled = false
+	reconnectAttemptDelay = CONFIG.reconnectDelay
+	healthProbeFailures = 0
 
 	if getgenv and getgenv()._RBXDEV_BRIDGE then
 		getgenv()._RBXDEV_BRIDGE.connection = ws
@@ -1161,13 +1256,11 @@ connect = function()
 	ws.OnClose:Connect(function()
 		connected = false
 		connection = nil
-		task.delay(CONFIG.reconnectDelay, function()
-			if not connected and isBridgeAlive() then connect() end
-		end)
+		scheduleReconnect()
 	end)
 
 	return true
 end
 
-connect()
+task.defer(connect)
 setupLogHooks()
