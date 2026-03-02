@@ -2,6 +2,25 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.3.5] - 2026-03-02
+
+### Added
+
+- Dedicated Remote Spy webview action helpers plus regression coverage for bridge-side remote spy handling and webview behavior
+- Local bridge health endpoint coverage and restart-path tests for executor bridge lifecycle changes
+
+### Changed
+
+- Internal lint and formatting cleanup across definitions, checker, completion, formatting, hover, and linked-editing paths
+- Removed unused Snyk instruction metadata from the repository
+- Executor bridge server now exposes a lightweight localhost `/health` endpoint and coordinates HTTP/WebSocket shutdown more safely
+
+### Fixed
+
+- Remote Spy blocking now works end-to-end, including the related VS Code UI actions
+- Executor bridge reconnects no longer stall the Roblox client while VS Code is offline by using single-flight retries, health-gated reconnect attempts, and backoff
+- Executor bridge shutdown/restart handling now avoids stale running state and rapid restart races
+
 ## [0.3.4] - 2026-02-25
 
 ### Added
