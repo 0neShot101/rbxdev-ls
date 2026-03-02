@@ -817,7 +817,7 @@ export class RemoteSpyPanel {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
             + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" data-action="removeIgnore" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
+            + '<button class="entry-remove" aria-label="Remove ignored remote ' + escHtml(entry.value) + '" title="Remove ignored remote" data-action="removeIgnore" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
             + '</div>';
         }
         html += '<div style="padding:4px 10px;"><button class="btn" data-action="clearIgnores" style="width:100%;">Clear All Ignores</button></div>';
@@ -830,7 +830,7 @@ export class RemoteSpyPanel {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
             + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" data-action="removeBlock" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
+            + '<button class="entry-remove" aria-label="Remove blocked remote ' + escHtml(entry.value) + '" title="Remove blocked remote" data-action="removeBlock" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
             + '</div>';
         }
         html += '<div style="padding:4px 10px;"><button class="btn danger" data-action="clearBlocks" style="width:100%;">Clear All Blocks</button></div>';

@@ -10,11 +10,11 @@ describe('Remote Spy Webview - Markup Regression', () => {
     const filePath = path.join(process.cwd(), 'vscode', 'src', 'remoteSpyWebview.ts');
     const source = readFileSync(filePath, 'utf8');
 
-    expect(source.includes('onclick=')).toBe(false);
-    expect(source.includes('oninput=')).toBe(false);
-    expect(source.includes('data-action="copyCode"')).toBe(true);
-    expect(source.includes('data-action="copyPath"')).toBe(true);
-    expect(source.includes('data-action="copyArgs"')).toBe(true);
+    expect(/\bonclick\s*=/i.test(source)).toBe(false);
+    expect(/\boninput\s*=/i.test(source)).toBe(false);
+    expect(/<button[^>]*\bdata-action\s*=\s*"copyCode"/i.test(source)).toBe(true);
+    expect(/<button[^>]*\bdata-action\s*=\s*"copyPath"/i.test(source)).toBe(true);
+    expect(/<button[^>]*\bdata-action\s*=\s*"copyArgs"/i.test(source)).toBe(true);
   });
 });
 

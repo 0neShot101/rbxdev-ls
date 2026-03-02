@@ -317,15 +317,13 @@ export const activate = (context: ExtensionContext): void => {
   };
 
   syncRemoteSpyStateToExecutor = async (): Promise<void> => {
-    if (remoteSpyEnabled) {
-      try {
-        await client.sendRequest('custom/setRemoteSpyEnabled', { 'enabled': true });
-      } catch {
-        /* noop */
-      }
+    try {
+      await client.sendRequest('custom/setRemoteSpyEnabled', { 'enabled': remoteSpyEnabled });
+    } catch {
+      /* noop */
     }
 
-    if (remoteSpyState.blockList.length > 0) await sendBlockListToExecutor();
+    await sendBlockListToExecutor();
   };
 
   remoteSpyPanel.onMessage(async (message: FromWebviewMessage) => {
