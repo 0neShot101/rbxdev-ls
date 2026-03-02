@@ -174,7 +174,7 @@ export const createBridgeCore = (
     if (message === undefined) return log('[bridge] Received invalid message');
 
     switch (message.type) {
-      case 'connected':
+      case 'connected': {
         executorName = message.executorName;
         clientType = message.clientType ?? 'executor';
         clientCapabilities = resolveCapabilities(clientType);
@@ -183,6 +183,7 @@ export const createBridgeCore = (
         const clientLabel = clientType === 'studio' ? 'Studio' : 'Executor';
         log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
         break;
+      }
 
       case 'executeResult':
         resolvePending(pendingExecutions, message.id, {
@@ -476,9 +477,7 @@ export const createBridgeCore = (
       filter,
     }));
 
-  const setRemoteSpyBlockListFn = (
-    blocks: ReadonlyArray<RemoteSpyBlockEntry>,
-  ): Promise<SetRemoteSpyBlockListResult> =>
+  const setRemoteSpyBlockListFn = (blocks: ReadonlyArray<RemoteSpyBlockEntry>): Promise<SetRemoteSpyBlockListResult> =>
     createRequest(pendingSetRemoteSpyBlockList, 2000, id => ({
       'type': 'setRemoteSpyBlockList' as const,
       id,

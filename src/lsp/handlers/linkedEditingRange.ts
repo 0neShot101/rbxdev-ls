@@ -73,7 +73,9 @@ export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
         case 'LocalFunction':
           declare(stmt.name);
           pushScope();
-          stmt.func.params.forEach(p => { if (p.name !== undefined) declare(p.name); });
+          stmt.func.params.forEach(p => {
+            if (p.name !== undefined) declare(p.name);
+          });
           walkBody(stmt.func.body);
           popScope();
           break;
@@ -82,7 +84,9 @@ export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
           const existing = resolve(stmt.name.base.name);
           if (existing !== undefined) existing.references.push(toRef(stmt.name.base));
           pushScope();
-          stmt.func.params.forEach(p => { if (p.name !== undefined) declare(p.name); });
+          stmt.func.params.forEach(p => {
+            if (p.name !== undefined) declare(p.name);
+          });
           walkBody(stmt.func.body);
           popScope();
           break;

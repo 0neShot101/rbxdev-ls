@@ -348,7 +348,12 @@ const lookupClassProperty = (classType: ClassType, propertyName: string): ClassP
 /** Checks a Luau program for type errors and produces diagnostics. */
 export const checkProgram = (
   chunk: Chunk,
-  options?: { mode?: TypeCheckMode; classes?: Map<string, ClassType>; dataTypes?: Map<string, LuauType>; requireResolver?: RequireResolver },
+  options?: {
+    mode?: TypeCheckMode;
+    classes?: Map<string, ClassType>;
+    dataTypes?: Map<string, LuauType>;
+    requireResolver?: RequireResolver;
+  },
 ): TypeCheckResult => {
   const lastStatement = chunk.body[chunk.body.length - 1];
   const totalLines = lastStatement !== undefined ? lastStatement.range.end.line : 1;
@@ -1552,7 +1557,12 @@ const inferIndexExpression = (state: CheckerState, expr: IndexExpression): LuauT
   if (objectType.kind === 'Table' && objectType.indexer !== undefined)
     return resolveType(objectType.indexer.valueType, state.env.classes);
 
-  if (objectType.kind === 'Table' && indexType.kind === 'Literal' && indexType.baseType === 'string' && typeof indexType.value === 'string') {
+  if (
+    objectType.kind === 'Table' &&
+    indexType.kind === 'Literal' &&
+    indexType.baseType === 'string' &&
+    typeof indexType.value === 'string'
+  ) {
     const prop = objectType.properties.get(indexType.value);
     if (prop !== undefined) return resolveType(prop.type, state.env.classes);
   }

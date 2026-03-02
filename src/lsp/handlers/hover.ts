@@ -378,7 +378,9 @@ export const setupHoverHandler = (
                   liveValueMarkdown = `\n\n**Live Value:** \`${liveValue.value}\``;
                 }
               }
-            } catch { /* noop */ }
+            } catch {
+              /* noop */
+            }
           }
         }
       }

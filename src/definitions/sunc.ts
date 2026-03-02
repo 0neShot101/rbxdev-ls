@@ -952,11 +952,9 @@ export const convertSuncApiToTypes = (
           [
             'unhook',
             {
-              'type': createFunctionType(
-                [{ 'name': 'target', 'type': AnyType, 'optional': false }],
-                NilType,
-                { 'description': 'Removes a hook previously set with oth.hook, restoring the original function.' },
-              ),
+              'type': createFunctionType([{ 'name': 'target', 'type': AnyType, 'optional': false }], NilType, {
+                'description': 'Removes a hook previously set with oth.hook, restoring the original function.',
+              }),
               'readonly': true,
               'optional': false,
             },
@@ -1071,12 +1069,30 @@ export const convertSuncApiToTypes = (
     { 'name': 'isgameactive', 'type': createFunctionType([], BooleanType) },
     { 'name': 'iswindowactive', 'type': createFunctionType([], BooleanType) },
 
-    { 'name': 'newlclosure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'isfunctionhooked', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType) },
-    { 'name': 'iscustomcclosure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType) },
-    { 'name': 'isnewcclosure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType) },
-    { 'name': 'isourclosure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType) },
-    { 'name': 'checkclosure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType) },
+    {
+      'name': 'newlclosure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'isfunctionhooked',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'iscustomcclosure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'isnewcclosure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'isourclosure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'checkclosure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], BooleanType),
+    },
     {
       'name': 'setstackhidden',
       'type': createFunctionType(
@@ -1087,26 +1103,86 @@ export const convertSuncApiToTypes = (
         NilType,
       ),
     },
-    { 'name': 'hookfunc', 'type': createFunctionType([{ 'name': 'target', 'type': AnyType, 'optional': false }, { 'name': 'hook', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'replaceclosure', 'type': createFunctionType([{ 'name': 'target', 'type': AnyType, 'optional': false }, { 'name': 'hook', 'type': AnyType, 'optional': false }], AnyType) },
+    {
+      'name': 'hookfunc',
+      'type': createFunctionType(
+        [
+          { 'name': 'target', 'type': AnyType, 'optional': false },
+          { 'name': 'hook', 'type': AnyType, 'optional': false },
+        ],
+        AnyType,
+      ),
+    },
+    {
+      'name': 'replaceclosure',
+      'type': createFunctionType(
+        [
+          { 'name': 'target', 'type': AnyType, 'optional': false },
+          { 'name': 'hook', 'type': AnyType, 'optional': false },
+        ],
+        AnyType,
+      ),
+    },
 
-    { 'name': 'decompile', 'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], StringType) },
-    { 'name': 'dumpstring', 'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], StringType) },
-    { 'name': 'getscriptfromthread', 'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'getscriptfunction', 'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'getcallstack', 'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': true }], createTableType(new Map())) },
-    { 'name': 'getfunctionhash', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], StringType) },
+    {
+      'name': 'decompile',
+      'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], StringType),
+    },
+    {
+      'name': 'dumpstring',
+      'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], StringType),
+    },
+    {
+      'name': 'getscriptfromthread',
+      'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'getscriptfunction',
+      'type': createFunctionType([{ 'name': 'script', 'type': AnyType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'getcallstack',
+      'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': true }], createTableType(new Map())),
+    },
+    {
+      'name': 'getfunctionhash',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], StringType),
+    },
     { 'name': 'getluastate', 'type': createFunctionType([], AnyType) },
-    { 'name': 'runfile', 'type': createFunctionType([{ 'name': 'path', 'type': StringType, 'optional': false }], AnyType) },
+    {
+      'name': 'runfile',
+      'type': createFunctionType([{ 'name': 'path', 'type': StringType, 'optional': false }], AnyType),
+    },
 
     { 'name': 'getinstancecache', 'type': createFunctionType([], createTableType(new Map())) },
-    { 'name': 'getproperties', 'type': createFunctionType([{ 'name': 'instance', 'type': AnyType, 'optional': false }], createTableType(new Map())) },
-    { 'name': 'gethiddenproperties', 'type': createFunctionType([{ 'name': 'instance', 'type': AnyType, 'optional': false }], createTableType(new Map())) },
+    {
+      'name': 'getproperties',
+      'type': createFunctionType(
+        [{ 'name': 'instance', 'type': AnyType, 'optional': false }],
+        createTableType(new Map()),
+      ),
+    },
+    {
+      'name': 'gethiddenproperties',
+      'type': createFunctionType(
+        [{ 'name': 'instance', 'type': AnyType, 'optional': false }],
+        createTableType(new Map()),
+      ),
+    },
     { 'name': 'getmodules', 'type': createFunctionType([], createTableType(new Map())) },
-    { 'name': 'isnetworkowner', 'type': createFunctionType([{ 'name': 'part', 'type': AnyType, 'optional': false }], BooleanType) },
+    {
+      'name': 'isnetworkowner',
+      'type': createFunctionType([{ 'name': 'part', 'type': AnyType, 'optional': false }], BooleanType),
+    },
     { 'name': 'getgamestate', 'type': createFunctionType([], AnyType) },
-    { 'name': 'saveinstance', 'type': createFunctionType([{ 'name': 'options', 'type': AnyType, 'optional': true }], NilType) },
-    { 'name': 'saveplace', 'type': createFunctionType([{ 'name': 'options', 'type': AnyType, 'optional': true }], NilType) },
+    {
+      'name': 'saveinstance',
+      'type': createFunctionType([{ 'name': 'options', 'type': AnyType, 'optional': true }], NilType),
+    },
+    {
+      'name': 'saveplace',
+      'type': createFunctionType([{ 'name': 'options', 'type': AnyType, 'optional': true }], NilType),
+    },
     { 'name': 'get_hidden_gui', 'type': createFunctionType([], AnyType) },
 
     { 'name': 'getactors', 'type': createFunctionType([], createTableType(new Map())) },
@@ -1122,24 +1198,57 @@ export const convertSuncApiToTypes = (
         { 'isVariadic': true },
       ),
     },
-    { 'name': 'create_comm_channel', 'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType) },
-    { 'name': 'get_comm_channel', 'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType) },
+    {
+      'name': 'create_comm_channel',
+      'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'get_comm_channel',
+      'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType),
+    },
     { 'name': 'get_current_actor', 'type': createFunctionType([], AnyType) },
     { 'name': 'isparallel', 'type': createFunctionType([], BooleanType) },
 
-    { 'name': 'cansignalreplicate', 'type': createFunctionType([{ 'name': 'signal', 'type': AnyType, 'optional': false }], BooleanType) },
-    { 'name': 'getsignalarguments', 'type': createFunctionType([{ 'name': 'signal', 'type': AnyType, 'optional': false }], createTableType(new Map())) },
-    { 'name': 'getsignalargumentsinfo', 'type': createFunctionType([{ 'name': 'signal', 'type': AnyType, 'optional': false }], createTableType(new Map())) },
+    {
+      'name': 'cansignalreplicate',
+      'type': createFunctionType([{ 'name': 'signal', 'type': AnyType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'getsignalarguments',
+      'type': createFunctionType(
+        [{ 'name': 'signal', 'type': AnyType, 'optional': false }],
+        createTableType(new Map()),
+      ),
+    },
+    {
+      'name': 'getsignalargumentsinfo',
+      'type': createFunctionType(
+        [{ 'name': 'signal', 'type': AnyType, 'optional': false }],
+        createTableType(new Map()),
+      ),
+    },
     { 'name': 'getsignalwhitelist', 'type': createFunctionType([], createTableType(new Map())) },
 
     { 'name': 'get_thread_identity', 'type': createFunctionType([], NumberType) },
-    { 'name': 'set_thread_identity', 'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType) },
+    {
+      'name': 'set_thread_identity',
+      'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType),
+    },
     { 'name': 'getidentity', 'type': createFunctionType([], NumberType) },
-    { 'name': 'setidentity', 'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType) },
+    {
+      'name': 'setidentity',
+      'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType),
+    },
     { 'name': 'getthreadcontext', 'type': createFunctionType([], NumberType) },
-    { 'name': 'setthreadcontext', 'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType) },
+    {
+      'name': 'setthreadcontext',
+      'type': createFunctionType([{ 'name': 'identity', 'type': NumberType, 'optional': false }], NilType),
+    },
 
-    { 'name': 'getfflag', 'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType) },
+    {
+      'name': 'getfflag',
+      'type': createFunctionType([{ 'name': 'name', 'type': StringType, 'optional': false }], AnyType),
+    },
     {
       'name': 'setfflag',
       'type': createFunctionType(
@@ -1151,13 +1260,25 @@ export const convertSuncApiToTypes = (
       ),
     },
     { 'name': 'getfpscap', 'type': createFunctionType([], NumberType) },
-    { 'name': 'setfpscap', 'type': createFunctionType([{ 'name': 'cap', 'type': NumberType, 'optional': false }], NilType) },
+    {
+      'name': 'setfpscap',
+      'type': createFunctionType([{ 'name': 'cap', 'type': NumberType, 'optional': false }], NilType),
+    },
 
     { 'name': 'rconsolecreate', 'type': createFunctionType([], NilType) },
     { 'name': 'rconsoledestroy', 'type': createFunctionType([], NilType) },
-    { 'name': 'rconsoleerr', 'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'rconsoleinfo', 'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'rconsolewarn', 'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType) },
+    {
+      'name': 'rconsoleerr',
+      'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'rconsoleinfo',
+      'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'rconsolewarn',
+      'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
+    },
     { 'name': 'rconsoleshow', 'type': createFunctionType([], NilType) },
     { 'name': 'rconsolehide', 'type': createFunctionType([], NilType) },
     { 'name': 'rconsoletoggle', 'type': createFunctionType([], NilType) },
@@ -1167,11 +1288,23 @@ export const convertSuncApiToTypes = (
     { 'name': 'consolecreate', 'type': createFunctionType([], NilType) },
     { 'name': 'consoledestroy', 'type': createFunctionType([], NilType) },
     { 'name': 'consoleinput', 'type': createFunctionType([], StringType) },
-    { 'name': 'consoleprint', 'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'consolesettitle', 'type': createFunctionType([{ 'name': 'title', 'type': StringType, 'optional': false }], NilType) },
+    {
+      'name': 'consoleprint',
+      'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'consolesettitle',
+      'type': createFunctionType([{ 'name': 'title', 'type': StringType, 'optional': false }], NilType),
+    },
 
-    { 'name': 'keyclick', 'type': createFunctionType([{ 'name': 'keycode', 'type': NumberType, 'optional': false }], NilType) },
-    { 'name': 'keytap', 'type': createFunctionType([{ 'name': 'keycode', 'type': NumberType, 'optional': false }], NilType) },
+    {
+      'name': 'keyclick',
+      'type': createFunctionType([{ 'name': 'keycode', 'type': NumberType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'keytap',
+      'type': createFunctionType([{ 'name': 'keycode', 'type': NumberType, 'optional': false }], NilType),
+    },
 
     {
       'name': 'messagebox',
@@ -1187,22 +1320,73 @@ export const convertSuncApiToTypes = (
     { 'name': 'gethwid', 'type': createFunctionType([], StringType) },
     { 'name': 'getexecutorname', 'type': createFunctionType([], StringType) },
     { 'name': 'get_process_identifier', 'type': createFunctionType([], StringType) },
-    { 'name': 'isvalidlevel', 'type': createFunctionType([{ 'name': 'level', 'type': NumberType, 'optional': false }], BooleanType) },
-    { 'name': 'validlevel', 'type': createFunctionType([{ 'name': 'level', 'type': NumberType, 'optional': false }], BooleanType) },
+    {
+      'name': 'isvalidlevel',
+      'type': createFunctionType([{ 'name': 'level', 'type': NumberType, 'optional': false }], BooleanType),
+    },
+    {
+      'name': 'validlevel',
+      'type': createFunctionType([{ 'name': 'level', 'type': NumberType, 'optional': false }], BooleanType),
+    },
     { 'name': 'clear_teleport_queue', 'type': createFunctionType([], NilType) },
     { 'name': 'clearteleportqueue', 'type': createFunctionType([], NilType) },
-    { 'name': 'queueteleport', 'type': createFunctionType([{ 'name': 'script', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'setrbxclipboard', 'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'setnamecallmethod', 'type': createFunctionType([{ 'name': 'method', 'type': StringType, 'optional': false }], NilType) },
-    { 'name': 'setinfo', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }, { 'name': 'info', 'type': AnyType, 'optional': false }], NilType) },
-    { 'name': 'getinfo', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], createTableType(new Map())) },
-    { 'name': 'getcallbackmember', 'type': createFunctionType([{ 'name': 'instance', 'type': AnyType, 'optional': false }, { 'name': 'name', 'type': StringType, 'optional': false }], AnyType) },
-    { 'name': 'makereadonly', 'type': createFunctionType([{ 'name': 'tbl', 'type': AnyType, 'optional': false }], NilType) },
-    { 'name': 'makewritable', 'type': createFunctionType([{ 'name': 'tbl', 'type': AnyType, 'optional': false }], NilType) },
+    {
+      'name': 'queueteleport',
+      'type': createFunctionType([{ 'name': 'script', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'setrbxclipboard',
+      'type': createFunctionType([{ 'name': 'text', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'setnamecallmethod',
+      'type': createFunctionType([{ 'name': 'method', 'type': StringType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'setinfo',
+      'type': createFunctionType(
+        [
+          { 'name': 'func', 'type': AnyType, 'optional': false },
+          { 'name': 'info', 'type': AnyType, 'optional': false },
+        ],
+        NilType,
+      ),
+    },
+    {
+      'name': 'getinfo',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], createTableType(new Map())),
+    },
+    {
+      'name': 'getcallbackmember',
+      'type': createFunctionType(
+        [
+          { 'name': 'instance', 'type': AnyType, 'optional': false },
+          { 'name': 'name', 'type': StringType, 'optional': false },
+        ],
+        AnyType,
+      ),
+    },
+    {
+      'name': 'makereadonly',
+      'type': createFunctionType([{ 'name': 'tbl', 'type': AnyType, 'optional': false }], NilType),
+    },
+    {
+      'name': 'makewritable',
+      'type': createFunctionType([{ 'name': 'tbl', 'type': AnyType, 'optional': false }], NilType),
+    },
     { 'name': 'getrendersteppedlist', 'type': createFunctionType([], createTableType(new Map())) },
-    { 'name': 'lift_closure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'lift_and_load_closure', 'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType) },
-    { 'name': 'gettenv', 'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': true }], createTableType(new Map())) },
+    {
+      'name': 'lift_closure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'lift_and_load_closure',
+      'type': createFunctionType([{ 'name': 'func', 'type': AnyType, 'optional': false }], AnyType),
+    },
+    {
+      'name': 'gettenv',
+      'type': createFunctionType([{ 'name': 'thread', 'type': AnyType, 'optional': true }], createTableType(new Map())),
+    },
   ];
 
   for (const g of additionalGlobals) {
@@ -1326,16 +1510,44 @@ export const convertSuncApiToTypes = (
 
   const base64Namespace = createTableType(
     new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>([
-      ['encode', { 'type': createFunctionType([{ 'name': 'data', 'type': StringType, 'optional': false }], StringType), 'readonly': true, 'optional': false }],
-      ['decode', { 'type': createFunctionType([{ 'name': 'data', 'type': StringType, 'optional': false }], StringType), 'readonly': true, 'optional': false }],
+      [
+        'encode',
+        {
+          'type': createFunctionType([{ 'name': 'data', 'type': StringType, 'optional': false }], StringType),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
+      [
+        'decode',
+        {
+          'type': createFunctionType([{ 'name': 'data', 'type': StringType, 'optional': false }], StringType),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
     ]),
   );
   namespaces.set('base64', base64Namespace);
 
   const cacheNamespace = createTableType(
     new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>([
-      ['invalidate', { 'type': createFunctionType([{ 'name': 'obj', 'type': AnyType, 'optional': false }], NilType), 'readonly': true, 'optional': false }],
-      ['iscached', { 'type': createFunctionType([{ 'name': 'obj', 'type': AnyType, 'optional': false }], BooleanType), 'readonly': true, 'optional': false }],
+      [
+        'invalidate',
+        {
+          'type': createFunctionType([{ 'name': 'obj', 'type': AnyType, 'optional': false }], NilType),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
+      [
+        'iscached',
+        {
+          'type': createFunctionType([{ 'name': 'obj', 'type': AnyType, 'optional': false }], BooleanType),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
       [
         'replace',
         {
@@ -1373,7 +1585,14 @@ export const convertSuncApiToTypes = (
 
   const webSocketNamespace = createTableType(
     new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>([
-      ['connect', { 'type': createFunctionType([{ 'name': 'url', 'type': StringType, 'optional': false }], AnyType), 'readonly': true, 'optional': false }],
+      [
+        'connect',
+        {
+          'type': createFunctionType([{ 'name': 'url', 'type': StringType, 'optional': false }], AnyType),
+          'readonly': true,
+          'optional': false,
+        },
+      ],
     ]),
   );
   namespaces.set('WebSocket', webSocketNamespace);
