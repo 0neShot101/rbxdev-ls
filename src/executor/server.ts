@@ -66,7 +66,6 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
   const closeHttpServer = (callback?: () => void): void => {
     if (httpServer === undefined) {
-      isStoppingHttpServer = false;
       callback?.();
       return;
     }
