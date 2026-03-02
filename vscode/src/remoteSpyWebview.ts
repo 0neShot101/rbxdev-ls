@@ -8,6 +8,7 @@ import { randomBytes } from 'crypto';
 import { Disposable, ExtensionContext, ViewColumn, WebviewPanel, window } from 'vscode';
 
 import type { BlockEntry, IgnoreEntry, RemoteSpyCallEntry, RemoteSpyState } from './remoteSpyState';
+import type { RemoteSpyWebviewMessage } from './remoteSpyWebviewActions';
 
 /**
  * Messages sent from the extension host to the WebView
@@ -22,30 +23,7 @@ export interface ToWebviewMessage {
 /**
  * Messages sent from the WebView to the extension host
  */
-export interface FromWebviewMessage {
-  readonly type:
-    | 'selectCall'
-    | 'copyCode'
-    | 'copyPath'
-    | 'copyArgs'
-    | 'ignoreByPath'
-    | 'ignoreByName'
-    | 'blockByPath'
-    | 'blockByName'
-    | 'clearIgnores'
-    | 'clearBlocks'
-    | 'pause'
-    | 'resume'
-    | 'toggleSpy'
-    | 'search'
-    | 'clear'
-    | 'removeIgnore'
-    | 'removeBlock';
-  readonly index?: number;
-  readonly query?: string;
-  readonly enabled?: boolean;
-  readonly entry?: IgnoreEntry | BlockEntry;
-}
+export type FromWebviewMessage = RemoteSpyWebviewMessage;
 
 interface WebviewStateSnapshot {
   readonly calls: ReadonlyArray<RemoteSpyCallEntry>;
@@ -552,6 +530,9 @@ export class RemoteSpyPanel {
       font-size: 11.5px;
     }
     .list-entry .entry-remove {
+      appearance: none;
+      background: transparent;
+      border: 0;
       cursor: pointer;
       color: var(--vscode-descriptionForeground);
       font-size: 16px;
@@ -604,16 +585,16 @@ export class RemoteSpyPanel {
 <body>
   <div class="toolbar">
     <div class="toolbar-group">
-      <button class="btn primary" id="btn-toggle" onclick="toggleSpy()">Enable Spy</button>
-      <button class="btn" id="btn-pause" onclick="togglePause()" disabled>Pause</button>
-      <button class="btn" id="btn-clear" onclick="clearCalls()">Clear</button>
+      <button class="btn primary" id="btn-toggle" data-action="toggleSpy">Enable Spy</button>
+      <button class="btn" id="btn-pause" data-action="togglePause" disabled>Pause</button>
+      <button class="btn" id="btn-clear" data-action="clearCalls">Clear</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-group">
-      <button class="btn" id="btn-ignores" onclick="toggleListsPanel('ignores')">Ignores <span class="badge" id="ignore-count">0</span></button>
-      <button class="btn" id="btn-blocks" onclick="toggleListsPanel('blocks')">Blocks <span class="badge" id="block-count">0</span></button>
+      <button class="btn" id="btn-ignores" data-action="toggleListsPanel" data-list-mode="ignores">Ignores <span class="badge" id="ignore-count">0</span></button>
+      <button class="btn" id="btn-blocks" data-action="toggleListsPanel" data-list-mode="blocks">Blocks <span class="badge" id="block-count">0</span></button>
     </div>
-    <input type="text" class="search-box" id="search" placeholder="Search remotes..." oninput="onSearch(this.value)">
+    <input type="text" class="search-box" id="search" placeholder="Search remotes...">
   </div>
 
   <div class="main">
@@ -629,15 +610,15 @@ export class RemoteSpyPanel {
         <span id="code-header-text">Code</span>
       </div>
       <div class="code-actions" id="code-actions" style="display:none;">
-        <button class="btn" onclick="copyCode()">Copy Code</button>
-        <button class="btn" onclick="copyPath()">Copy Path</button>
-        <button class="btn" onclick="copyArgs()">Copy Args</button>
+        <button class="btn" data-action="copyCode">Copy Code</button>
+        <button class="btn" data-action="copyPath">Copy Path</button>
+        <button class="btn" data-action="copyArgs">Copy Args</button>
         <div class="toolbar-sep"></div>
-        <button class="btn" onclick="ignoreByPath()">Ignore Path</button>
-        <button class="btn" onclick="ignoreByName()">Ignore Name</button>
+        <button class="btn" data-action="ignoreByPath">Ignore Path</button>
+        <button class="btn" data-action="ignoreByName">Ignore Name</button>
         <div class="toolbar-sep"></div>
-        <button class="btn danger" onclick="blockByPath()">Block Path</button>
-        <button class="btn danger" onclick="blockByName()">Block Name</button>
+        <button class="btn danger" data-action="blockByPath">Block Path</button>
+        <button class="btn danger" data-action="blockByName">Block Name</button>
       </div>
       <div class="code-empty" id="code-empty">
         <div class="code-empty-icon">{ }</div>
@@ -775,7 +756,7 @@ export class RemoteSpyPanel {
         const typeClass = getCallClass(call);
         const selected = realIndex === state.selectedIndex ? ' selected' : '';
         const blocked = call._blocked ? ' blocked' : '';
-        html += '<div class="call-item ' + typeClass + selected + blocked + '" data-index="' + realIndex + '" onclick="selectCall(' + realIndex + ')">'
+        html += '<div class="call-item ' + typeClass + selected + blocked + '" data-index="' + realIndex + '">'
           + '<div class="call-info">'
           + '<div class="call-name">' + escHtml(call.remoteName) + '</div>'
           + '<div class="call-meta">'
@@ -836,10 +817,10 @@ export class RemoteSpyPanel {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
             + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<span class="entry-remove" onclick="removeIgnoreEntry(\\'' + escAttr(entry.type) + '\\', \\'' + escAttr(entry.value) + '\\')">x</span>'
+            + '<button class="entry-remove" aria-label="Remove ignored remote ' + escHtml(entry.value) + '" title="Remove ignored remote" data-action="removeIgnore" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
             + '</div>';
         }
-        html += '<div style="padding:4px 10px;"><button class="btn" onclick="doClearIgnores()" style="width:100%;">Clear All Ignores</button></div>';
+        html += '<div style="padding:4px 10px;"><button class="btn" data-action="clearIgnores" style="width:100%;">Clear All Ignores</button></div>';
       } else if (state.listsMode === 'blocks') {
         html += '<div class="list-header">Blocked Remotes (' + state.blockList.length + ')</div>';
         if (state.blockList.length === 0) {
@@ -849,10 +830,10 @@ export class RemoteSpyPanel {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
             + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<span class="entry-remove" onclick="removeBlockEntry(\\'' + escAttr(entry.type) + '\\', \\'' + escAttr(entry.value) + '\\')">x</span>'
+            + '<button class="entry-remove" aria-label="Remove blocked remote ' + escHtml(entry.value) + '" title="Remove blocked remote" data-action="removeBlock" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
             + '</div>';
         }
-        html += '<div style="padding:4px 10px;"><button class="btn danger" onclick="doClearBlocks()" style="width:100%;">Clear All Blocks</button></div>';
+        html += '<div style="padding:4px 10px;"><button class="btn danger" data-action="clearBlocks" style="width:100%;">Clear All Blocks</button></div>';
       }
       panel.innerHTML = html;
     };
@@ -898,7 +879,12 @@ export class RemoteSpyPanel {
     };
     const escAttr = (s) => {
       if (typeof s !== 'string') return '';
-      return s.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'");
+      return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     };
 
     const selectCall = (index) => {
@@ -944,16 +930,6 @@ export class RemoteSpyPanel {
       if (state.selectedIndex >= 0) vscode.postMessage({ type: 'blockByName', index: state.selectedIndex });
     };
 
-    const doClearIgnores = () => { vscode.postMessage({ type: 'clearIgnores' }); };
-    const doClearBlocks = () => { vscode.postMessage({ type: 'clearBlocks' }); };
-
-    const removeIgnoreEntry = (type, value) => {
-      vscode.postMessage({ type: 'removeIgnore', entry: { type, value } });
-    };
-    const removeBlockEntry = (type, value) => {
-      vscode.postMessage({ type: 'removeBlock', entry: { type, value } });
-    };
-
     const toggleListsPanel = (mode) => {
       state.listsMode = state.listsMode === mode ? null : mode;
       renderListsPanel();
@@ -969,6 +945,87 @@ export class RemoteSpyPanel {
     callListEl.addEventListener('scroll', () => {
       const atBottom = callListEl.scrollHeight - callListEl.scrollTop - callListEl.clientHeight < 40;
       shouldAutoScroll = atBottom;
+    });
+
+    document.addEventListener('click', (event) => {
+      const eventTarget = event.target;
+      const eventElement =
+        eventTarget instanceof Element ? eventTarget : eventTarget instanceof Node ? eventTarget.parentElement : null;
+      const target = eventElement?.closest('[data-action], .call-item') ?? null;
+      if (target === null) return;
+
+      if (target.classList.contains('call-item')) {
+        const index = Number(target.getAttribute('data-index'));
+        if (Number.isInteger(index)) selectCall(index);
+        return;
+      }
+
+      const action = target.getAttribute('data-action');
+      if (action === null) return;
+
+      switch (action) {
+        case 'toggleSpy':
+          toggleSpy();
+          break;
+        case 'togglePause':
+          togglePause();
+          break;
+        case 'clearCalls':
+          clearCalls();
+          break;
+        case 'toggleListsPanel': {
+          const mode = target.getAttribute('data-list-mode');
+          if (mode === 'ignores' || mode === 'blocks') {
+            toggleListsPanel(mode);
+          }
+          break;
+        }
+        case 'copyCode':
+          copyCode();
+          break;
+        case 'copyPath':
+          copyPath();
+          break;
+        case 'copyArgs':
+          copyArgs();
+          break;
+        case 'ignoreByPath':
+          ignoreByPath();
+          break;
+        case 'ignoreByName':
+          ignoreByName();
+          break;
+        case 'blockByPath':
+          blockByPath();
+          break;
+        case 'blockByName':
+          blockByName();
+          break;
+        case 'clearIgnores':
+          vscode.postMessage({ 'type': 'clearIgnores' });
+          break;
+        case 'clearBlocks':
+          vscode.postMessage({ 'type': 'clearBlocks' });
+          break;
+        case 'removeIgnore':
+        case 'removeBlock': {
+          const type = target.getAttribute('data-entry-type');
+          const value = target.getAttribute('data-entry-value');
+          if ((type === 'name' || type === 'path') && value !== null) {
+            vscode.postMessage({
+              'type': action === 'removeIgnore' ? 'removeIgnore' : 'removeBlock',
+              'entry': { type, value },
+            });
+          }
+          break;
+        }
+      }
+    });
+
+    const searchInput = document.getElementById('search');
+    searchInput.addEventListener('input', (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement) onSearch(target.value);
     });
 
     window.addEventListener('message', (event) => {

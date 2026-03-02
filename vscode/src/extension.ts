@@ -52,6 +52,7 @@ let lastClientType: string | undefined;
 const scriptDocumentPaths = new Map<string, string[]>();
 let isPollingExecutorStatus = false;
 let debugLoggingEnabled = false;
+let syncRemoteSpyStateToExecutor: () => Promise<void> = async () => {};
 
 const logDebug = (...args: unknown[]): void => {
   if (debugLoggingEnabled === false) return;
@@ -141,6 +142,7 @@ const pollExecutorStatus = async (): Promise<void> => {
       lastClientType = currentClientType;
       commands.executeCommand('setContext', 'rbxdev-ls:bridgeConnected', true);
       commands.executeCommand('setContext', 'rbxdev-ls:clientType', currentClientType ?? 'executor');
+      void syncRemoteSpyStateToExecutor();
     } else if (response.isConnected === false && lastConnectedState) {
       const label = lastClientType === 'studio' ? 'Roblox Studio' : (lastExecutorName ?? 'Client');
       window.showWarningMessage(`Roblox: ${label} disconnected`);
@@ -312,6 +314,16 @@ export const activate = (context: ExtensionContext): void => {
     } catch {
       /* noop */
     }
+  };
+
+  syncRemoteSpyStateToExecutor = async (): Promise<void> => {
+    try {
+      await client.sendRequest('custom/setRemoteSpyEnabled', { 'enabled': remoteSpyEnabled });
+    } catch {
+      /* noop */
+    }
+
+    await sendBlockListToExecutor();
   };
 
   remoteSpyPanel.onMessage(async (message: FromWebviewMessage) => {
