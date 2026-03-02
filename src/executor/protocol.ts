@@ -68,8 +68,7 @@ export const isSetRemoteSpyFilterResultMessage =
   createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
 export const isSetRemoteSpyBlockListResultMessage =
   createResultGuard<SetRemoteSpyBlockListResultMessage>('setRemoteSpyBlockListResult');
-export const isSetScriptSourceResultMessage =
-  createResultGuard<SetScriptSourceResultMessage>('setScriptSourceResult');
+export const isSetScriptSourceResultMessage = createResultGuard<SetScriptSourceResultMessage>('setScriptSourceResult');
 
 export const isRemoteSpyMessage = (msg: unknown): msg is RemoteSpyMessage =>
   isRecord(msg) && msg['type'] === 'remoteSpy' && typeof msg['call'] === 'object' && msg['call'] !== null;

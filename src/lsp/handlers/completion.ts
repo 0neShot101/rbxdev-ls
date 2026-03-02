@@ -1730,7 +1730,8 @@ const resolveRequireModuleType = (
   }
 
   const gamePrefix = requireArg.match(/^game\s*[.[]/);
-  const rawExpr = gamePrefix !== null ? requireArg.slice(gamePrefix[0].length - (gamePrefix[0].endsWith('[') ? 1 : 0)) : requireArg;
+  const rawExpr =
+    gamePrefix !== null ? requireArg.slice(gamePrefix[0].length - (gamePrefix[0].endsWith('[') ? 1 : 0)) : requireArg;
 
   const pathParts = splitMemberExpression(rawExpr).filter(p => p.length > 0);
 
@@ -1749,7 +1750,11 @@ const resolveRequireModuleType = (
     for (let i = 0; i < pathParts.length; i++) {
       const expected = pathParts[i] ?? '';
       const actual = dmPath[offset + i] ?? '';
-      if (actual !== expected && actual !== stripScriptSuffix(expected) && stripScriptSuffix(actual) !== stripScriptSuffix(expected)) {
+      if (
+        actual !== expected &&
+        actual !== stripScriptSuffix(expected) &&
+        stripScriptSuffix(actual) !== stripScriptSuffix(expected)
+      ) {
         matches = false;
         break;
       }
@@ -2297,7 +2302,9 @@ const getAutoImportCompletions = (
           filePath = filePath.slice(1);
         }
       }
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
 
     const dataModelPath = getDataModelPath(rojoState.dataModel, filePath);
     if (dataModelPath !== undefined) currentDataModelPath = dataModelPath;
@@ -2540,10 +2547,22 @@ const splitPathExpression = (expr: string): string[] => {
 };
 
 const GAME_SERVICE_NAMES = new Set([
-  'Workspace', 'Players', 'ReplicatedStorage', 'ReplicatedFirst',
-  'ServerStorage', 'ServerScriptService', 'StarterGui', 'StarterPack',
-  'StarterPlayer', 'Lighting', 'SoundService', 'Chat', 'Teams',
-  'CoreGui', 'StarterPlayerScripts', 'StarterCharacterScripts',
+  'Workspace',
+  'Players',
+  'ReplicatedStorage',
+  'ReplicatedFirst',
+  'ServerStorage',
+  'ServerScriptService',
+  'StarterGui',
+  'StarterPack',
+  'StarterPlayer',
+  'Lighting',
+  'SoundService',
+  'Chat',
+  'Teams',
+  'CoreGui',
+  'StarterPlayerScripts',
+  'StarterCharacterScripts',
 ]);
 
 const parseGameTreePath = (expression: string): string[] | undefined => {
@@ -2775,7 +2794,12 @@ export const setupCompletionHandler = (
         if (addedNames.has(name)) return;
         if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) return;
         addedNames.add(name);
-        items.push({ 'label': name, 'kind': CompletionItemKind.TypeParameter, 'detail': detail, 'sortText': `${sortPrefix}${name}` });
+        items.push({
+          'label': name,
+          'kind': CompletionItemKind.TypeParameter,
+          'detail': detail,
+          'sortText': `${sortPrefix}${name}`,
+        });
       };
 
       if (document?.typeCheckResult !== undefined) {
@@ -2903,9 +2927,19 @@ export const setupCompletionHandler = (
             log(`Trying executor bridge for require: ${rawModulePath}${chainedCall}`);
             try {
               const serviceNames = [
-                'ReplicatedStorage', 'ReplicatedFirst', 'ServerStorage', 'ServerScriptService',
-                'StarterGui', 'StarterPack', 'StarterPlayer', 'Lighting', 'SoundService',
-                'Workspace', 'Players', 'Chat', 'Teams',
+                'ReplicatedStorage',
+                'ReplicatedFirst',
+                'ServerStorage',
+                'ServerScriptService',
+                'StarterGui',
+                'StarterPack',
+                'StarterPlayer',
+                'Lighting',
+                'SoundService',
+                'Workspace',
+                'Players',
+                'Chat',
+                'Teams',
               ];
               const preamble: string[] = [];
               for (const svc of serviceNames) {
@@ -2940,7 +2974,9 @@ export const setupCompletionHandler = (
                 .join('\n');
 
               const execResult = await executorBridge.execute(inspectScript);
-              log(`Bridge exec result: success=${execResult.success}, result=${execResult.result ?? 'undefined'}, error=${execResult.error?.message ?? 'none'}`);
+              log(
+                `Bridge exec result: success=${execResult.success}, result=${execResult.result ?? 'undefined'}, error=${execResult.error?.message ?? 'none'}`,
+              );
               if (execResult.success && execResult.result !== undefined) {
                 const members: Record<string, string> = JSON.parse(execResult.result);
                 const items: CompletionItem[] = [];

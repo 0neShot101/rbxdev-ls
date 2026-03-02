@@ -119,7 +119,9 @@ export const basicFormat = (code: string): string => {
       indent++;
     }
 
-    if (trimmed.endsWith('end') && trimmed.includes('function')) { /* noop */ }
+    if (trimmed.endsWith('end') && trimmed.includes('function')) {
+      /* noop */
+    }
   }
 
   return result.join('\n');
@@ -187,13 +189,17 @@ export const setupFormattingHandler = (
       for (let i = 0; i < params.range.start.line; i++) {
         byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       }
-      const rangeStart = byteOffset + Buffer.byteLength((lines[params.range.start.line] ?? '').slice(0, params.range.start.character), 'utf8');
+      const rangeStart =
+        byteOffset +
+        Buffer.byteLength((lines[params.range.start.line] ?? '').slice(0, params.range.start.character), 'utf8');
 
       byteOffset = 0;
       for (let i = 0; i < params.range.end.line; i++) {
         byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       }
-      const rangeEnd = byteOffset + Buffer.byteLength((lines[params.range.end.line] ?? '').slice(0, params.range.end.character), 'utf8');
+      const rangeEnd =
+        byteOffset +
+        Buffer.byteLength((lines[params.range.end.line] ?? '').slice(0, params.range.end.character), 'utf8');
 
       const formatted = await formatWithStyLuaRange(originalText, rangeStart, rangeEnd);
       if (formatted !== undefined && formatted !== originalText) {
