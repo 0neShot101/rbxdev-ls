@@ -1202,9 +1202,13 @@ scheduleReconnect = function()
 
 		if connected or not isBridgeAlive() then return end
 
-		local didConnect = connect(false)
-		if didConnect then
+		local connectState = connect(false)
+		if connectState == 'connected' then
 			reconnectAttemptDelay = CONFIG.reconnectDelay
+			return
+		end
+		if connectState == 'blocked' then
+			scheduleReconnect()
 			return
 		end
 
@@ -1227,7 +1231,7 @@ connect = function(scheduleOnFailure)
 		if scheduleOnFailure then
 			scheduleReconnect()
 		end
-		return false
+		return 'blocked'
 	end
 
 	local ok, ws = pcall(WebSocket.connect, CONFIG.host)
@@ -1235,7 +1239,7 @@ connect = function(scheduleOnFailure)
 		if scheduleOnFailure then
 			scheduleReconnect()
 		end
-		return false
+		return 'failed'
 	end
 
 	connection = ws
@@ -1259,7 +1263,7 @@ connect = function(scheduleOnFailure)
 		scheduleReconnect()
 	end)
 
-	return true
+	return 'connected'
 end
 
 task.defer(connect)

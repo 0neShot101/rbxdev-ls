@@ -72,14 +72,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     }
 
     const httpServerToClose = httpServer;
+    httpServer = undefined;
     isStoppingHttpServer = true;
     httpServerToClose.close(() => {
-      if (httpServer === httpServerToClose) {
-        httpServer = undefined;
-      }
-      if (httpServerToClose.listening === false) {
-        isStoppingHttpServer = false;
-      }
+      isStoppingHttpServer = false;
 
       const restartPort = pendingStartPort;
       pendingStartPort = undefined;

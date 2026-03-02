@@ -27,9 +27,24 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void
 const getAvailablePort = async (): Promise<number> =>
   await new Promise((resolve, reject) => {
     const server = createHttpServer();
-    server.listen(0, '127.0.0.1', () => {
+    const cleanup = (): void => {
+      server.off('error', onError);
+      server.off('listening', onListening);
+    };
+
+    const onError = (error: Error): void => {
+      cleanup();
+      if (server.listening) {
+        server.close(() => reject(error));
+        return;
+      }
+      reject(error);
+    };
+
+    const onListening = (): void => {
       const address = server.address();
       if (address === null || typeof address === 'string') {
+        cleanup();
         server.close();
         reject(new Error('Failed to resolve ephemeral port'));
         return;
@@ -37,13 +52,18 @@ const getAvailablePort = async (): Promise<number> =>
 
       const port = address.port;
       server.close(error => {
+        cleanup();
         if (error) {
           reject(error);
           return;
         }
         resolve(port);
       });
-    });
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(0, '127.0.0.1');
   });
 
 const getJson = async (port: number, path: string): Promise<{ statusCode: number; body: string }> =>
@@ -362,7 +382,7 @@ describe('ExecutorBridge - Proxy Support', () => {
   test('bridge can restart quickly on the same port', async () => {
     bridge.stop();
     bridge.start(port);
-    await wait(100);
+    await waitFor(() => bridge.isRunning === true);
 
     expect(bridge.isRunning).toBe(true);
   });
