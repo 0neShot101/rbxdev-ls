@@ -222,6 +222,8 @@ local bridgeAlive = true
 
 local remoteSpyEnabled = false
 local remoteSpyFilter = ''
+local remoteSpyBlockedNames = {}
+local remoteSpyBlockedPaths = {}
 local spyCleanup = nil
 
 -- Register this bridge instance globally for cleanup on re-execution
@@ -511,6 +513,35 @@ local serializeArguments = function(...)
 	local parts = {}
 	for i = 1, select('#', ...) do table.insert(parts, valueToLua(args[i])) end
 	return table.concat(parts, ', ')
+end
+
+local rebuildRemoteSpyBlockMaps = function(blocks)
+	remoteSpyBlockedNames = {}
+	remoteSpyBlockedPaths = {}
+
+	if type(blocks) ~= 'table' then return end
+
+	for _, entry in ipairs(blocks) do
+		if type(entry) ~= 'table' then continue end
+		if type(entry.type) ~= 'string' or type(entry.value) ~= 'string' then continue end
+
+		if entry.type == 'name' then
+			remoteSpyBlockedNames[entry.value] = true
+		elseif entry.type == 'path' then
+			remoteSpyBlockedPaths[entry.value] = true
+		end
+	end
+end
+
+local getRemoteBlockState = function(remote)
+	if typeof(remote) ~= 'Instance' then
+		return false, '', {}
+	end
+	local remotePath = getInstancePath(remote)
+	local remotePathString = table.concat(remotePath, '.')
+	local remoteName = remote.Name
+	local blocked = remoteSpyBlockedNames[remoteName] == true or remoteSpyBlockedPaths[remotePathString] == true
+	return blocked, remoteName, remotePath
 end
 
 --  Properties
@@ -921,7 +952,7 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 
 	local ok, err = pcall(function()
 		if message.enabled and not remoteSpyEnabled then
-			local logRemoteCall = function(self, method, ...)
+			local logRemoteCall = function(self, method, blocked, remoteName, remotePath, ...)
 				local args = { ... }
 				pcall(function()
 					if not remoteSpyEnabled or not connected then return end
@@ -930,19 +961,19 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 					local className = self.ClassName
 					if className ~= 'RemoteEvent' and className ~= 'RemoteFunction' and className ~= 'UnreliableRemoteEvent' then return end
 
-					local remoteName = self.Name
-					if remoteSpyFilter ~= '' and remoteName:lower():find(remoteSpyFilter:lower()) == nil then return end
+					if blocked ~= true and remoteSpyFilter ~= '' and remoteName:lower():find(remoteSpyFilter:lower()) == nil then return end
 
 					send({
 						type = 'remoteSpy',
 						call = {
 							remoteName = remoteName,
-							remotePath = getInstancePath(self),
+							remotePath = remotePath,
 							remoteType = className,
 							method = method,
 							arguments = serializeArguments(unpack(args)),
 							code = generateRemoteCode(self, method, unpack(args)),
 							timestamp = os.time(),
+							_blocked = blocked == true,
 						},
 					})
 				end)
@@ -955,7 +986,12 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 				oldNamecall = oth.hook(ncFunc, function(self, ...)
 					local method = getnamecallmethod()
 					if method == 'FireServer' or method == 'InvokeServer' then
-						logRemoteCall(self, method, ...)
+						local blocked, remoteName, remotePath = getRemoteBlockState(self)
+						logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
+						if blocked then
+							setnamecallmethod(method)
+							return nil
+						end
 					end
 					setnamecallmethod(method)
 					return oldNamecall(self, ...)
@@ -975,7 +1011,12 @@ MESSAGE_HANDLERS.setRemoteSpyEnabled = function(message)
 				oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
 					local method = getnamecallmethod()
 					if method == 'FireServer' or method == 'InvokeServer' then
-						logRemoteCall(self, method, ...)
+						local blocked, remoteName, remotePath = getRemoteBlockState(self)
+						logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
+						if blocked then
+							setnamecallmethod(method)
+							return nil
+						end
 					end
 					setnamecallmethod(method)
 					return oldNamecall(self, ...)
@@ -1010,6 +1051,11 @@ end
 MESSAGE_HANDLERS.setRemoteSpyFilter = function(message)
 	remoteSpyFilter = message.filter or ''
 	sendResult('setRemoteSpyFilterResult', message.id, true)
+end
+
+MESSAGE_HANDLERS.setRemoteSpyBlockList = function(message)
+	rebuildRemoteSpyBlockMaps(message.blocks)
+	sendResult('setRemoteSpyBlockListResult', message.id, true)
 end
 
 --  Core
