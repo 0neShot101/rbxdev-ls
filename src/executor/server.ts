@@ -23,6 +23,8 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   let handshakeTimeout: ReturnType<typeof setTimeout> | undefined;
   let proxyWs: WebSocket | undefined;
   let isProxyMode = false;
+  let isStoppingHttpServer = false;
+  let pendingStartPort: number | undefined;
 
   const proxyClients = new Set<WebSocket>();
 
@@ -60,6 +62,33 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
   const sendProxyMessage = (message: ProxyStatusChangeMessage | ProxyWelcomeMessage): void => {
     broadcastToProxies(JSON.stringify(message));
+  };
+
+  const closeHttpServer = (callback?: () => void): void => {
+    if (httpServer === undefined) {
+      isStoppingHttpServer = false;
+      callback?.();
+      return;
+    }
+
+    const httpServerToClose = httpServer;
+    isStoppingHttpServer = true;
+    httpServerToClose.close(() => {
+      if (httpServer === httpServerToClose) {
+        httpServer = undefined;
+      }
+      if (httpServerToClose.listening === false) {
+        isStoppingHttpServer = false;
+      }
+
+      const restartPort = pendingStartPort;
+      pendingStartPort = undefined;
+      callback?.();
+
+      if (restartPort !== undefined) {
+        start(restartPort);
+      }
+    });
   };
 
   core.onStatusChange(newStatus => {
@@ -247,6 +276,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   };
 
   const start = (port: number): void => {
+    if (isStoppingHttpServer) {
+      pendingStartPort = port;
+      return;
+    }
     if (httpServer !== undefined || server !== undefined || isProxyMode) return;
 
     setServerTransport();
@@ -337,13 +370,28 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
           startAsProxy(port);
           return;
         }
+        try {
+          server?.close();
+        } catch {
+          /* noop */
+        }
+        server = undefined;
+        closeHttpServer();
         log(`[bridge] HTTP server error: ${err.message}`);
         core.setStatus('error');
       });
       httpServer.listen(port, '127.0.0.1', () => {
+        isStoppingHttpServer = false;
         log(`[bridge] WebSocket server started on port ${port}`);
       });
     } catch (err) {
+      try {
+        server?.close();
+      } catch {
+        /* noop */
+      }
+      server = undefined;
+      closeHttpServer();
       log(`[bridge] Failed to start server: ${err instanceof Error ? err.message : String(err)}`);
       core.setStatus('error');
     }
@@ -377,10 +425,8 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       server.close();
       server = undefined;
     }
-    if (httpServer !== undefined) {
-      httpServer.close();
-      httpServer = undefined;
-    }
+    pendingStartPort = undefined;
+    closeHttpServer();
     core.setExecutorName(undefined);
     core.setConnected(false);
     core.setStatus('stopped');
