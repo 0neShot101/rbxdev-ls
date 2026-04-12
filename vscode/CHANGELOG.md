@@ -2,6 +2,16 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.3.6] - 2026-04-11
+
+### Added
+
+- Rojo-style `sourcemap.json` workspace discovery. If a `sourcemap.json` sits at the workspace root it wins over `default.project.json`, and the LSP watches the file with a debounced `fs.watch` so edits reload the module index and diagnostics.
+- Real function signatures in the module export index. `Counter.increment(value: number): number` now hovers with the actual types instead of the synthetic `() -> any`. Lossy `TypeAnnotation → LuauType` converter handles primitives, optional, and flat unions; anything more exotic falls back to `any`.
+- Hover on user-defined tables and class-typed locals by walking document scopes in the hover handler. Also fixes the standalone case where `local part: BasePart = ...; part.Position` had no hover.
+- Opt-in auto-refresh for the in-game instance tree, shipped in both the Studio plugin and the executor bridge script. Descendant listeners do a single flag write; `RunService.Heartbeat` gates the flush on a coalescing deadline so model pastes and respawn bursts coalesce into one tree push per debounce window. 30s max-coalesce, 2s minimum interval, default off. Two new settings: `rbxdev-ls.autoRefreshGameTree.enabled` and `.intervalMs`.
+- Studio plugin now hooks `plugin.Unloading` for listener cleanup; executor bridge reuses the pre-wired `getgenv()._RBXDEV_BRIDGE.refreshConnections` table for re-execution cleanup.
+
 ## [0.3.5] - 2026-03-02
 
 ### Added
