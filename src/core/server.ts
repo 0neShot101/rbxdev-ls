@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as url from 'url';
 
 import { createExecutorBridge } from '@executor';
@@ -102,6 +103,34 @@ export const startServer = (state: ServerState): void => {
     return createInitializeResult(params);
   });
 
+  let sourcemapWatcher: fs.FSWatcher | undefined;
+  let sourcemapReloadTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const setupSourcemapWatcher = (sourcemapPath: string): void => {
+    try {
+      sourcemapWatcher = fs.watch(sourcemapPath, eventType => {
+        if (eventType !== 'change' && eventType !== 'rename') return;
+        if (sourcemapReloadTimer !== undefined) clearTimeout(sourcemapReloadTimer);
+        sourcemapReloadTimer = setTimeout(() => {
+          sourcemapReloadTimer = undefined;
+          connection.console.log(`Reloading workspace from sourcemap: ${sourcemapPath}`);
+          documentManager.reloadWorkspace();
+          const moduleIndex = documentManager.getModuleIndex();
+          connection.console.log(`Reindexed ${moduleIndex.size} modules from sourcemap`);
+          // Best-effort: clients without pull-diagnostics support will reject this harmlessly.
+          void connection.sendRequest('workspace/diagnostic/refresh').catch(() => {
+            /* noop */
+          });
+        }, 500);
+      });
+      sourcemapWatcher.on('error', err => {
+        connection.console.log(`Sourcemap watcher error: ${err.message}`);
+      });
+    } catch (err) {
+      connection.console.log(`Failed to watch sourcemap.json: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   connection.onInitialized(() => {
     connection.console.log('rbxdev-ls initialized successfully');
 
@@ -110,7 +139,14 @@ export const startServer = (state: ServerState): void => {
       documentManager.initializeWorkspace(workspacePath);
 
       const rojoState = documentManager.getRojoState();
-      if (rojoState?.project !== undefined) connection.console.log(`Found Rojo project: ${rojoState.project.name}`);
+      if (rojoState?.project !== undefined) {
+        connection.console.log(`Workspace tree source: Rojo project (${rojoState.project.name})`);
+      } else if (rojoState?.projectPath !== undefined && rojoState.projectPath.endsWith('sourcemap.json')) {
+        connection.console.log(`Workspace tree source: sourcemap.json (${rojoState.projectPath})`);
+        setupSourcemapWatcher(rojoState.projectPath);
+      } else {
+        connection.console.log('Workspace tree source: fallback directory scan');
+      }
 
       const moduleIndex = documentManager.getModuleIndex();
       connection.console.log(`Indexed ${moduleIndex.size} modules`);
@@ -121,6 +157,18 @@ export const startServer = (state: ServerState): void => {
 
   connection.onShutdown(() => {
     connection.console.log('rbxdev-ls shutting down...');
+    if (sourcemapReloadTimer !== undefined) {
+      clearTimeout(sourcemapReloadTimer);
+      sourcemapReloadTimer = undefined;
+    }
+    if (sourcemapWatcher !== undefined) {
+      try {
+        sourcemapWatcher.close();
+      } catch {
+        /* noop */
+      }
+      sourcemapWatcher = undefined;
+    }
     executorBridge.stop();
   });
 
@@ -147,6 +195,12 @@ export const startServer = (state: ServerState): void => {
 
   connection.onRequest('custom/requestGameTree', () => {
     executorBridge.requestGameTree();
+    return { 'success': true };
+  });
+
+  connection.onRequest('custom/setAutoRefresh', (params: { enabled: boolean; intervalMs: number }) => {
+    const intervalMs = Math.max(2000, Math.floor(params.intervalMs));
+    executorBridge.setAutoRefresh(params.enabled === true, intervalMs);
     return { 'success': true };
   });
 

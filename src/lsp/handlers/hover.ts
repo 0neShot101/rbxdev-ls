@@ -6,7 +6,7 @@ import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
 import type { DeprecationInfo, MemberAccessInfo } from '@typings/handlers';
-import type { DocumentManager } from '@typings/lsp';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { Scope } from '@typings/environment';
 import type { ClassMethod, ClassProperty, ClassType, FunctionType, LuauType, TableType } from '@typings/types';
 import type { Connection, Hover, HoverParams } from 'vscode-languageserver';
@@ -342,6 +342,63 @@ const extractGamePath = (content: string, line: number, character: number): Read
   return undefined;
 };
 
+/**
+ * Walks a document's local scopes and file-level scope for a symbol named
+ * `name` and returns its type if found. Used by the hover handler to find
+ * user-defined locals like module-bound tables and typed variables.
+ */
+export const resolveSymbolTypeInDocument = (document: ParsedDocument, name: string): LuauType | undefined => {
+  if (document.typeCheckResult === undefined) return undefined;
+  const env = document.typeCheckResult.environment;
+
+  let walkScope: Scope | undefined = env.currentScope;
+  while (walkScope !== undefined) {
+    const localSymbol = walkScope.symbols.get(name);
+    if (localSymbol !== undefined) return localSymbol.type;
+    walkScope = walkScope.parent;
+  }
+
+  const fileSymbol = env.globalScope.symbols.get(name);
+  return fileSymbol?.type;
+};
+
+/**
+ * Formats a member access hover for an already-resolved object type.
+ * Supports user tables (module exports via require resolver) and typed
+ * locals that carry a Class type. Returns the markdown body (without
+ * Roblox "Live Value" suffixes) or undefined if the member isn't found.
+ */
+export const formatMemberHoverForType = (
+  objectType: LuauType,
+  memberName: string,
+  resolveClass: (className: string) => ClassType | undefined,
+): string | undefined => {
+  if (objectType.kind === 'Table') {
+    const memberProp = objectType.properties.get(memberName);
+    if (memberProp === undefined) return undefined;
+    return formatTypeDocFull(memberName, memberProp.type);
+  }
+
+  if (objectType.kind === 'Class') {
+    const getSuperclassName = (className: string): string | undefined => {
+      const cls = resolveClass(className);
+      if (cls !== undefined && cls.kind === 'Class' && cls.superclass !== undefined) return cls.superclass.name;
+      return undefined;
+    };
+    const member = lookupClassMember(objectType, memberName, getSuperclassName);
+    if (member === undefined) return undefined;
+    if (member.kind === 'method') {
+      return '```lua\n' + formatMethodDoc(memberName, member.method) + '\n```';
+    }
+    if (member.kind === 'property') {
+      return '```lua\n' + formatPropertyDoc(memberName, member.prop) + '\n```';
+    }
+    return undefined;
+  }
+
+  return undefined;
+};
+
 /** Registers the hover handler with the LSP connection. */
 export const setupHoverHandler = (
   connection: Connection,
@@ -451,6 +508,27 @@ export const setupHoverHandler = (
             'contents': {
               'kind': MarkupKind.Markdown,
               'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
+            },
+          };
+        }
+      }
+
+      // Walk the document's local + file-level scopes for the object name.
+      // This covers user-defined table locals (including module exports
+      // surfaced by the require resolver through sourcemap.json / Rojo)
+      // as well as class-typed locals like `local part: BasePart`.
+      const localObjectType = resolveSymbolTypeInDocument(document, memberAccess.objectName);
+      if (localObjectType !== undefined) {
+        const resolveClass = (className: string): ClassType | undefined => {
+          const cls = documentManager.globalEnv.robloxClasses.get(className);
+          return cls !== undefined && cls.kind === 'Class' ? cls : undefined;
+        };
+        const markdown = formatMemberHoverForType(localObjectType, memberAccess.memberName, resolveClass);
+        if (markdown !== undefined) {
+          return {
+            'contents': {
+              'kind': MarkupKind.Markdown,
+              'value': markdown + liveValueMarkdown,
             },
           };
         }

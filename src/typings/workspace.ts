@@ -26,11 +26,24 @@ export interface RojoState {
   readonly projectPath: string | undefined;
 }
 
+export interface ModuleExportSignatureParam {
+  readonly name: string | undefined;
+  readonly type: import('./types').LuauType;
+  readonly optional: boolean;
+}
+
+export interface ModuleExportSignature {
+  readonly params: ReadonlyArray<ModuleExportSignatureParam>;
+  readonly returnType: import('./types').LuauType;
+  readonly isVariadic: boolean;
+}
+
 export interface ModuleExport {
   readonly name: string;
   readonly kind: 'function' | 'table' | 'value' | 'type';
   readonly modulePath: string;
   readonly filePath: string;
+  readonly signature?: ModuleExportSignature;
 }
 
 export interface ModuleInfo {

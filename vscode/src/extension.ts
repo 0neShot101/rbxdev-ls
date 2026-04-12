@@ -124,6 +124,19 @@ const updateStatusBar = (status: BridgeStatus, executorName?: string, clientType
   }
 };
 
+const applyAutoRefreshSetting = async (): Promise<void> => {
+  if (client === undefined) return;
+  const config = workspace.getConfiguration('rbxdev-ls');
+  const enabled = config.get<boolean>('autoRefreshGameTree.enabled', false);
+  const rawInterval = config.get<number>('autoRefreshGameTree.intervalMs', 5000);
+  const intervalMs = Math.max(2000, Math.floor(rawInterval));
+  try {
+    await client.sendRequest('custom/setAutoRefresh', { enabled, intervalMs });
+  } catch (err) {
+    logDebug('[rbxdev-ls] setAutoRefresh request failed:', err);
+  }
+};
+
 const pollExecutorStatus = async (): Promise<void> => {
   if (client === undefined) return;
   if (isPollingExecutorStatus === true) return;
@@ -143,6 +156,7 @@ const pollExecutorStatus = async (): Promise<void> => {
       commands.executeCommand('setContext', 'rbxdev-ls:bridgeConnected', true);
       commands.executeCommand('setContext', 'rbxdev-ls:clientType', currentClientType ?? 'executor');
       void syncRemoteSpyStateToExecutor();
+      void applyAutoRefreshSetting();
     } else if (response.isConnected === false && lastConnectedState) {
       const label = lastClientType === 'studio' ? 'Roblox Studio' : (lastExecutorName ?? 'Client');
       window.showWarningMessage(`Roblox: ${label} disconnected`);
@@ -643,6 +657,14 @@ export const activate = (context: ExtensionContext): void => {
         else window.showErrorMessage(`Push to Studio failed: ${result.error ?? 'Unknown error'}`);
       } catch (err) {
         window.showErrorMessage(`Push to Studio failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('rbxdev-ls.autoRefreshGameTree')) {
+        void applyAutoRefreshSetting();
       }
     }),
   );

@@ -81,6 +81,7 @@ export interface ExecutorBridge {
   stop: () => void;
   execute: (code: string) => Promise<ExecuteResult>;
   requestGameTree: () => void;
+  setAutoRefresh: (enabled: boolean, intervalMs: number) => void;
   requestProperties: (path: ReadonlyArray<string>, properties?: ReadonlyArray<string>) => Promise<PropertiesResult>;
   requestModuleInterface: (moduleRef: ModuleReference) => Promise<ModuleInterfaceResult>;
   setProperty: (

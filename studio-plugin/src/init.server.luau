@@ -51,6 +51,12 @@ MESSAGE_HANDLERS.requestGameTree = function(message)
 	sendMessage{ type = 'gameTree', data = gameTreeHandler.buildTree(message.services) }
 end
 
+MESSAGE_HANDLERS.setAutoRefresh = function(message)
+	gameTreeHandler.setAutoRefresh(message.enabled, message.intervalMs, function(tree)
+		sendMessage{ type = 'gameTree', data = tree }
+	end)
+end
+
 MESSAGE_HANDLERS.requestChildren = function(message)
 	local result = gameTreeHandler.getChildren(message.path)
 	sendResult('childrenResult', message.id, result.success, {
@@ -239,14 +245,23 @@ connect = function()
 
 	wsClient.Closed:Connect(function()
 		warn'[rbxdev-studio] Disconnected from bridge, reconnecting...'
+		gameTreeHandler.shutdownAutoRefresh()
 		scheduleReconnect()
 	end)
 
 	wsClient.Error:Connect(function(statusCode, errorMessage)
 		warn('[rbxdev-studio] WebSocket error:', statusCode, errorMessage)
+		gameTreeHandler.shutdownAutoRefresh()
 		scheduleReconnect()
 	end)
 end
 
 consoleHandler.setup(sendMessage)
+
+if plugin ~= nil then
+	plugin.Unloading:Connect(function()
+		gameTreeHandler.shutdownAutoRefresh()
+	end)
+end
+
 connect()

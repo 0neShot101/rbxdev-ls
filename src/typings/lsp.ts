@@ -24,6 +24,7 @@ export interface DocumentManager {
   getDocument: (uri: string) => ParsedDocument | undefined;
   removeDocument: (uri: string) => void;
   initializeWorkspace: (workspacePath: string) => void;
+  reloadWorkspace: () => void;
   getRojoState: () => RojoState | undefined;
   getModuleIndex: () => Map<string, ModuleInfo>;
   searchModuleExports: (query: string) => ModuleExport[];

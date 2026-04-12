@@ -164,6 +164,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     stop,
     'execute': core.execute,
     'requestGameTree': core.requestGameTree,
+    'setAutoRefresh': core.setAutoRefresh,
     'requestProperties': core.requestProperties,
     'requestModuleInterface': core.requestModuleInterface,
     'setProperty': core.setProperty,

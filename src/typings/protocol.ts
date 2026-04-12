@@ -23,6 +23,12 @@ export interface RequestGameTreeMessage {
   readonly services?: string[];
 }
 
+export interface SetAutoRefreshMessage {
+  readonly type: 'setAutoRefresh';
+  readonly enabled: boolean;
+  readonly intervalMs: number;
+}
+
 export interface RequestPropertiesMessage {
   readonly type: 'requestProperties';
   readonly id: string;
@@ -127,6 +133,7 @@ export interface SetScriptSourceMessage {
 export type ServerMessage =
   | ExecuteMessage
   | RequestGameTreeMessage
+  | SetAutoRefreshMessage
   | RequestPropertiesMessage
   | RequestModuleInterfaceMessage
   | SetPropertyMessage
