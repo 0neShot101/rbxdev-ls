@@ -455,6 +455,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     stop,
     'execute': core.execute,
     'requestGameTree': core.requestGameTree,
+    'setAutoRefresh': core.setAutoRefresh,
     'requestProperties': core.requestProperties,
     'requestModuleInterface': core.requestModuleInterface,
     'setProperty': core.setProperty,

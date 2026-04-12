@@ -1,5 +1,6 @@
 local HttpService = game:GetService'HttpService'
 local Players = game:GetService'Players'
+local RunService = game:GetService'RunService'
 
 local BRIDGE_ID = tostring(math.random(1, 999999999))
 
@@ -716,9 +717,123 @@ local getGameTree = function(services, depth)
 	return tree
 end
 
--- Game tree updates are sent only on connect and when explicitly requested by VS Code.
--- No automatic DescendantAdded/DescendantRemoving listeners — they fire too frequently
--- and flood VS Code with redundant tree dumps. Use the refresh button instead.
+-- Auto-refresh subsystem (opt-in). Event handlers do one flag write; a
+-- RunService.Heartbeat-gated deadline coalesces flushes so bursty edits
+-- (model pastes, respawns, StarterGui loads) don't flood the bridge.
+-- This replaces the previous "no listeners at all" policy — the original
+-- flood concern was the full serialisation per event, not the event
+-- surface itself. Keeping the handlers to a single flag write and
+-- debouncing the flush on Heartbeat makes it safe to opt into.
+--
+-- RBXScriptConnections live inside the top-level `refreshConnections`
+-- table so the bridge's re-execution cleanup (at the top of the file)
+-- disposes them when the script is re-run.
+
+local MIN_AUTO_REFRESH_INTERVAL_SEC = 2.0
+local MAX_COALESCE_SEC = 30.0
+
+local autoRefreshEnabled = false
+local autoRefreshIntervalSec = 5.0
+local autoRefreshDirty = false
+local autoRefreshFirstDirtyAt = nil
+local autoRefreshFlushAt = nil
+local autoRefreshHeartbeat = nil
+local autoRefreshTopLevel = nil
+
+local markAutoRefreshDirty
+local attachAutoRefreshListeners
+local detachAutoRefreshListeners
+local autoRefreshHeartbeatTick
+local setAutoRefresh
+local shutdownAutoRefresh
+
+markAutoRefreshDirty = function()
+	if not autoRefreshEnabled then return end
+	autoRefreshDirty = true
+	local now = os.clock()
+	if autoRefreshFirstDirtyAt == nil then autoRefreshFirstDirtyAt = now end
+	if autoRefreshFlushAt == nil then autoRefreshFlushAt = now + autoRefreshIntervalSec end
+end
+
+attachAutoRefreshListeners = function(instance)
+	if instance == nil then return end
+	local ok, addedConn = pcall(function() return instance.DescendantAdded:Connect(markAutoRefreshDirty) end)
+	if ok and addedConn ~= nil then table.insert(refreshConnections, addedConn) end
+	local ok2, removingConn = pcall(function() return instance.DescendantRemoving:Connect(markAutoRefreshDirty) end)
+	if ok2 and removingConn ~= nil then table.insert(refreshConnections, removingConn) end
+end
+
+detachAutoRefreshListeners = function()
+	for _, conn in ipairs(refreshConnections) do pcall(conn.Disconnect, conn) end
+	-- Clear in-place so the getgenv()._RBXDEV_BRIDGE.refreshConnections
+	-- reference at the top of the file keeps pointing at a valid table.
+	for i = #refreshConnections, 1, -1 do refreshConnections[i] = nil end
+	autoRefreshHeartbeat = nil
+	autoRefreshTopLevel = nil
+end
+
+autoRefreshHeartbeatTick = function()
+	if not autoRefreshEnabled or not autoRefreshDirty then return end
+	local now = os.clock()
+	local force = autoRefreshFirstDirtyAt ~= nil and (now - autoRefreshFirstDirtyAt) >= MAX_COALESCE_SEC
+	if autoRefreshFlushAt ~= nil and now < autoRefreshFlushAt and not force then return end
+
+	-- Clear state BEFORE building: a DescendantAdded firing during
+	-- serialisation must re-arm the next flush, not be lost.
+	autoRefreshDirty = false
+	autoRefreshFirstDirtyAt = nil
+	autoRefreshFlushAt = nil
+
+	if not connected then return end
+	local ok, tree = pcall(getGameTree, nil, CONFIG.updateTreeDepth)
+	if ok and connected then
+		pcall(send, { type = 'gameTree', data = tree })
+	end
+end
+
+setAutoRefresh = function(enabled, intervalMs)
+	local newEnabled = enabled == true
+	local rawInterval = tonumber(intervalMs) or 5000
+	local newIntervalSec = math.max(MIN_AUTO_REFRESH_INTERVAL_SEC, rawInterval / 1000)
+
+	if newEnabled == autoRefreshEnabled and newIntervalSec == autoRefreshIntervalSec and newEnabled then
+		return
+	end
+
+	detachAutoRefreshListeners()
+	autoRefreshDirty = false
+	autoRefreshFirstDirtyAt = nil
+	autoRefreshFlushAt = nil
+
+	autoRefreshEnabled = newEnabled
+	autoRefreshIntervalSec = newIntervalSec
+
+	if not autoRefreshEnabled then return end
+
+	for _, serviceName in ipairs(CONFIG.gameTreeServices) do
+		local ok, svc = pcall(game.GetService, game, serviceName)
+		if ok and svc ~= nil then attachAutoRefreshListeners(svc) end
+	end
+
+	-- Cover top-level children not in the standard allowlist: when a new
+	-- top-level service/child appears, attach listeners and mark dirty.
+	autoRefreshTopLevel = game.ChildAdded:Connect(function(child)
+		attachAutoRefreshListeners(child)
+		markAutoRefreshDirty()
+	end)
+	if autoRefreshTopLevel ~= nil then table.insert(refreshConnections, autoRefreshTopLevel) end
+
+	autoRefreshHeartbeat = RunService.Heartbeat:Connect(autoRefreshHeartbeatTick)
+	if autoRefreshHeartbeat ~= nil then table.insert(refreshConnections, autoRefreshHeartbeat) end
+end
+
+shutdownAutoRefresh = function()
+	detachAutoRefreshListeners()
+	autoRefreshEnabled = false
+	autoRefreshDirty = false
+	autoRefreshFirstDirtyAt = nil
+	autoRefreshFlushAt = nil
+end
 
 --  Teleport helper
 
@@ -792,6 +907,10 @@ end
 MESSAGE_HANDLERS.requestGameTree = function(message)
 	local depth = message.depth or CONFIG.updateTreeDepth
 	send{ type = 'gameTree', data = getGameTree(message.services, depth) }
+end
+
+MESSAGE_HANDLERS.setAutoRefresh = function(message)
+	setAutoRefresh(message.enabled, message.intervalMs)
 end
 
 MESSAGE_HANDLERS.requestChildren = function(message)
@@ -1260,6 +1379,7 @@ connect = function(scheduleOnFailure)
 	ws.OnClose:Connect(function()
 		connected = false
 		connection = nil
+		shutdownAutoRefresh()
 		scheduleReconnect()
 	end)
 

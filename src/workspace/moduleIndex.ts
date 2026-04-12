@@ -3,8 +3,35 @@ import * as path from 'path';
 
 import { parse } from '@parser/parser';
 
-import type { Chunk } from '@typings/ast';
-import type { DataModelNode, ModuleExport, ModuleFileEntry, ModuleInfo, RojoState } from '@typings/workspace';
+import type { Chunk, FunctionExpression } from '@typings/ast';
+import type {
+  DataModelNode,
+  ModuleExport,
+  ModuleExportSignature,
+  ModuleExportSignatureParam,
+  ModuleFileEntry,
+  ModuleInfo,
+  RojoState,
+} from '@typings/workspace';
+
+import { resolveAnnotationToType } from './annotationResolver';
+
+const buildSignature = (func: FunctionExpression): ModuleExportSignature => {
+  const params: ModuleExportSignatureParam[] = [];
+  for (const param of func.params) {
+    if (param.name === undefined) continue;
+    params.push({
+      'name': param.name.name,
+      'type': resolveAnnotationToType(param.type),
+      'optional': false,
+    });
+  }
+  return {
+    params,
+    'returnType': resolveAnnotationToType(func.returnType),
+    'isVariadic': func.isVariadic,
+  };
+};
 
 const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: string[]): ModuleExport[] => {
   const exports: ModuleExport[] = [];
@@ -24,14 +51,16 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
       if (field.kind === 'TableFieldKey') {
         const name = field.key.name;
         let kind: ModuleExport['kind'] = 'value';
+        let signature: ModuleExportSignature | undefined;
 
         if (field.value.kind === 'FunctionExpression') {
           kind = 'function';
+          signature = buildSignature(field.value);
         } else if (field.value.kind === 'TableExpression') {
           kind = 'table';
         }
 
-        exports.push({ name, kind, modulePath, filePath });
+        exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
       }
     }
     return exports;
@@ -50,14 +79,22 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
               if (field.kind === 'TableFieldKey') {
                 const name = field.key.name;
                 let kind: ModuleExport['kind'] = 'value';
+                let signature: ModuleExportSignature | undefined;
 
                 if (field.value.kind === 'FunctionExpression') {
                   kind = 'function';
+                  signature = buildSignature(field.value);
                 } else if (field.value.kind === 'TableExpression') {
                   kind = 'table';
                 }
 
-                exports.push({ name, kind, modulePath, filePath });
+                exports.push({
+                  name,
+                  kind,
+                  modulePath,
+                  filePath,
+                  ...(signature !== undefined ? { signature } : {}),
+                });
               }
             }
           }
@@ -77,21 +114,29 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
           const name = target.property.name;
           const value = stmt.values[0];
           let kind: ModuleExport['kind'] = 'value';
+          let signature: ModuleExportSignature | undefined;
 
           if (value?.kind === 'FunctionExpression') {
             kind = 'function';
+            signature = buildSignature(value);
           } else if (value?.kind === 'TableExpression') {
             kind = 'table';
           }
 
-          exports.push({ name, kind, modulePath, filePath });
+          exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
         }
       }
 
       if (stmt.kind === 'FunctionDeclaration' && stmt.name.base.name === varName) {
         const funcName = stmt.name.method?.name ?? stmt.name.path[stmt.name.path.length - 1]?.name;
         if (funcName !== undefined) {
-          exports.push({ 'name': funcName, 'kind': 'function', modulePath, filePath });
+          exports.push({
+            'name': funcName,
+            'kind': 'function',
+            modulePath,
+            filePath,
+            'signature': buildSignature(stmt.func),
+          });
         }
       }
     }

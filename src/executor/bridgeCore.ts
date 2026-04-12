@@ -54,6 +54,7 @@ export interface BridgeCore {
   readonly rejectAllPending: (reason: string) => void;
   readonly execute: (code: string) => Promise<ExecuteResult>;
   readonly requestGameTree: () => void;
+  readonly setAutoRefresh: (enabled: boolean, intervalMs: number) => void;
   readonly requestProperties: (
     path: ReadonlyArray<string>,
     properties?: ReadonlyArray<string>,
@@ -366,6 +367,10 @@ export const createBridgeCore = (
     sendFn({ 'type': 'requestGameTree' });
   };
 
+  const setAutoRefresh = (enabled: boolean, intervalMs: number): void => {
+    sendFn({ 'type': 'setAutoRefresh', enabled, intervalMs });
+  };
+
   const requestProperties = (
     path: ReadonlyArray<string>,
     properties?: ReadonlyArray<string>,
@@ -517,6 +522,7 @@ export const createBridgeCore = (
     rejectAllPending,
     execute,
     requestGameTree,
+    setAutoRefresh,
     requestProperties,
     requestModuleInterface,
     setProperty,

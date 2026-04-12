@@ -542,6 +542,17 @@
           "type": "boolean",
           "default": false,
           "description": "Enable verbose debug logging in the extension output/devtools console"
+        },
+        "rbxdev-ls.autoRefreshGameTree.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically refresh the game tree when instances are added or removed in Studio or the connected executor. Opt-in because it adds main-thread cost in Studio on bursty edits; listeners do a single flag write and flushes are debounced."
+        },
+        "rbxdev-ls.autoRefreshGameTree.intervalMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 2000,
+          "description": "Debounce window for auto-refresh (milliseconds). Lower values give fresher trees at higher serialisation cost. Clamped to a 2000 ms minimum."
         }
       }
     },

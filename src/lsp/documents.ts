@@ -6,6 +6,7 @@ import type { LuauType, PropertyType } from '@typings/types';
 import { AnyType, createFunctionType, createTableType } from '@typings/types';
 import { buildModuleIndex, searchExports } from '@workspace/moduleIndex';
 import { loadRojoState } from '@workspace/rojo';
+import { loadSourcemapState } from '@workspace/sourcemap';
 
 import type { Comment } from '@typings/ast';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
@@ -103,8 +104,19 @@ export const createDocumentManager = (): DocumentManager => {
             const properties = new Map<string, PropertyType>();
             for (const exp of info.exports) {
               let propType: LuauType = AnyType;
-              if (exp.kind === 'function') propType = createFunctionType([], AnyType);
-              else if (exp.kind === 'table') propType = createTableType(new Map());
+              if (exp.kind === 'function') {
+                if (exp.signature !== undefined) {
+                  propType = createFunctionType(
+                    exp.signature.params.map(p => ({ 'name': p.name, 'type': p.type, 'optional': p.optional })),
+                    exp.signature.returnType,
+                    { 'isVariadic': exp.signature.isVariadic },
+                  );
+                } else {
+                  propType = createFunctionType([], AnyType);
+                }
+              } else if (exp.kind === 'table') {
+                propType = createTableType(new Map());
+              }
               properties.set(exp.name, { 'type': propType, 'readonly': true, 'optional': false });
             }
             return createTableType(properties);
@@ -157,10 +169,17 @@ export const createDocumentManager = (): DocumentManager => {
 
   let rojoState: RojoState | undefined;
   let moduleIndex: Map<string, ModuleInfo> = new Map();
+  let currentWorkspacePath: string | undefined;
 
   const initializeWorkspace = (workspacePath: string): void => {
-    rojoState = loadRojoState(workspacePath);
+    currentWorkspacePath = workspacePath;
+    const sourcemapState = loadSourcemapState(workspacePath);
+    rojoState = sourcemapState.dataModel !== undefined ? sourcemapState : loadRojoState(workspacePath);
     moduleIndex = buildModuleIndex(rojoState, workspacePath);
+  };
+
+  const reloadWorkspace = (): void => {
+    if (currentWorkspacePath !== undefined) initializeWorkspace(currentWorkspacePath);
   };
 
   const getRojoState = (): RojoState | undefined => rojoState;
@@ -176,6 +195,7 @@ export const createDocumentManager = (): DocumentManager => {
     getDocument,
     removeDocument,
     initializeWorkspace,
+    reloadWorkspace,
     getRojoState,
     getModuleIndex,
     searchModuleExports,
