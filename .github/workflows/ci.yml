@@ -124,6 +124,16 @@ jobs:
           test -f "packages/vscode/rbxdev-ls-${version}.vsix" || { echo "VSIX not found"; exit 1; }
           test -f "roblox/studio-plugin/dist/rbxdev-studio-bridge.rbxm" || { echo "Studio plugin not found"; exit 1; }
 
+      - name: Publish to VS Code Marketplace
+        if: steps.version.outputs.changed == 'true'
+        run: bunx @vscode/vsce publish --pat ${{ secrets.VSCE_PAT }}
+        working-directory: packages/vscode
+
+      - name: Publish to Open VSX
+        if: steps.version.outputs.changed == 'true' && secrets.OVSX_PAT != ''
+        run: bunx ovsx publish --pat ${{ secrets.OVSX_PAT }}
+        working-directory: packages/vscode
+
       - name: Create GitHub Release
         if: steps.version.outputs.changed == 'true'
         uses: softprops/action-gh-release@v2
