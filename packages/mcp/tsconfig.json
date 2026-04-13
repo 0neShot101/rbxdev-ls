@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "composite": true,
+    "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
+    "outDir": "./dist",
+    "rootDir": ".",
+    "declaration": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@core/*": ["../server/src/core/*"],
+      "@parser/*": ["../server/src/parser/*"],
+      "@typings/*": ["../server/src/typings/*"],
+      "@definitions/*": ["../server/src/definitions/*"],
+      "@lsp/*": ["../server/src/lsp/*"],
+      "@utils/*": ["../server/src/utils/*"],
+      "@workspace/*": ["../server/src/workspace/*"],
+      "@executor": ["../server/src/executor/index.ts"],
+      "@executor/*": ["../server/src/executor/*"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

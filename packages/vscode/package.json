@@ -1,0 +1,861 @@
+{
+  "name": "rbxdev-ls",
+  "displayName": "Roblox Luau Language Server",
+  "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
+  "version": "0.3.6",
+  "publisher": "rbxdev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0neShot101/rbxdev-ls"
+  },
+  "homepage": "https://github.com/0neShot101/rbxdev-ls#readme",
+  "bugs": {
+    "url": "https://github.com/0neShot101/rbxdev-ls/issues"
+  },
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "keywords": [
+    "roblox",
+    "luau",
+    "lua",
+    "sunc",
+    "language-server",
+    "mcp",
+    "copilot",
+    "ai"
+  ],
+  "activationEvents": [
+    "onLanguage:lua",
+    "onLanguage:luau",
+    "workspaceContains:**/*.lua",
+    "workspaceContains:**/*.luau",
+    "workspaceContains:**/default.project.json"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languageModelTools": [
+      {
+        "name": "rbxdev_get_bridge_status",
+        "toolReferenceName": "roblox-status",
+        "displayName": "Get Roblox Bridge Status",
+        "description": "Get the current status of the Roblox executor bridge connection. Returns whether the bridge is running, connected, and the executor name if connected.",
+        "modelDescription": "Check if the Roblox executor bridge is connected. ALWAYS call this first before using any other Roblox tools. If not connected, no other tools will work. Returns isRunning, isConnected, executorName, and the number of services in the game tree.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "rbxdev_execute_code",
+        "toolReferenceName": "roblox-execute",
+        "displayName": "Execute Luau Code",
+        "description": "Execute Luau code in the connected Roblox game. The code runs in the executor environment with access to the full Roblox API.",
+        "modelDescription": "Execute Luau code in the connected Roblox game with full Roblox API access (game, workspace, Players, Instance.new, Vector3, CFrame, etc.). Use 'return <expr>' to get a value back. Write complete scripts in a single call rather than multiple calls. The code runs on the CLIENT side. If execution errors occur, read the error carefully and fix the code.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "The Luau code to execute in the game"
+            }
+          },
+          "required": [
+            "code"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_get_game_tree",
+        "toolReferenceName": "roblox-tree",
+        "displayName": "Get Roblox Game Tree",
+        "description": "Get the current game hierarchy tree from the connected Roblox game. Returns the structure of services and their children.",
+        "modelDescription": "Get the game hierarchy tree showing all services and instances. IMPORTANT: Always explore the game tree before trying to interact with specific instances — don't guess at paths, look them up. Use the path parameter to drill into a specific subtree (e.g., [\"Workspace\"]). Use 'json' format when you need structured data for programmatic use. The tree only shows a few levels deep — use get_children for deeper exploration.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional path to a specific node (e.g., [\"Workspace\", \"Folder\"]). If omitted, returns all services."
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "tree",
+                "json"
+              ],
+              "description": "Output format: 'tree' for human-readable, 'json' for structured data. Defaults to 'tree'."
+            }
+          }
+        }
+      },
+      {
+        "name": "rbxdev_get_properties",
+        "toolReferenceName": "roblox-props",
+        "displayName": "Get Instance Properties",
+        "description": "Get property values from an instance in the Roblox game.",
+        "modelDescription": "Read property values from any Roblox instance. ALWAYS read properties before modifying them with set_property — this tells you the current value and the correct valueType to use. Pass specific property names in the 'properties' array for faster results, or omit it to get all properties. Returns name, value, and valueType for each property.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional list of specific property names to fetch"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_set_property",
+        "toolReferenceName": "roblox-set-prop",
+        "displayName": "Set Instance Property",
+        "description": "Set a property value on an instance in the Roblox game.",
+        "modelDescription": "Set a property on a Roblox instance. You MUST specify the correct valueType. Common types: 'string', 'number', 'boolean', 'Vector3' (value: '1, 2, 3'), 'Color3' (value: '255, 0, 0' as RGB), 'CFrame' (value: '0, 5, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1'), 'UDim2' (value: '0, 100, 0, 50'), 'EnumItem' (value: 'Enum.Material.Neon'). Use get_properties first to check the current value and type.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the instance (e.g., [\"Workspace\", \"Part\"])"
+            },
+            "property": {
+              "type": "string",
+              "description": "Name of the property to set"
+            },
+            "value": {
+              "type": "string",
+              "description": "The value to set (as string, e.g., '100', 'true', '1, 2, 3' for Vector3)"
+            },
+            "valueType": {
+              "type": "string",
+              "description": "The type of the value (string, number, boolean, Vector3, Color3, CFrame, UDim2)"
+            }
+          },
+          "required": [
+            "path",
+            "property",
+            "value",
+            "valueType"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_teleport_player",
+        "toolReferenceName": "roblox-teleport",
+        "displayName": "Teleport Player",
+        "description": "Teleport the local player to an instance's position in the Roblox game.",
+        "modelDescription": "Teleport the local player to an instance's position. The target must be a BasePart or Model with a Position/CFrame. Use get_game_tree to find valid targets first.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the target instance (e.g., [\"Workspace\", \"SpawnLocation\"])"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_delete_instance",
+        "toolReferenceName": "roblox-delete",
+        "displayName": "Delete Instance",
+        "description": "Delete an instance from the Roblox game. This is permanent and cannot be undone.",
+        "modelDescription": "Permanently delete an instance from the game. WARNING: This cannot be undone. Always confirm with the user before deleting. Verify the path is correct using get_game_tree first.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the instance to delete (e.g., [\"Workspace\", \"Part\"])"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_reparent_instance",
+        "toolReferenceName": "roblox-reparent",
+        "displayName": "Reparent Instance",
+        "description": "Move an instance to a new parent in the Roblox game hierarchy.",
+        "modelDescription": "Move an instance to a new parent in the game hierarchy. sourcePath is the instance to move, targetPath is its new parent. Both paths must exist — verify with get_game_tree first.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sourcePath": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the instance to move"
+            },
+            "targetPath": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the new parent instance"
+            }
+          },
+          "required": [
+            "sourcePath",
+            "targetPath"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_get_children",
+        "toolReferenceName": "roblox-children",
+        "displayName": "Get Instance Children",
+        "description": "Get the children of an instance in the Roblox game.",
+        "modelDescription": "Get the direct children of an instance. Use this to explore deeper into the game tree when get_game_tree doesn't show enough depth. Essential for navigating large hierarchies like PlayerGui, StarterGui, or deeply nested models.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the parent instance"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "tree",
+                "json"
+              ],
+              "description": "Output format: 'tree' for human-readable, 'json' for structured data"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_get_script_source",
+        "toolReferenceName": "roblox-script",
+        "displayName": "Get Script Source",
+        "description": "Get the decompiled source code of a Script, LocalScript, or ModuleScript in the Roblox game.",
+        "modelDescription": "Decompile and read the source code of a Script, LocalScript, or ModuleScript. Useful for understanding game logic, debugging, or reverse engineering. Find script paths using get_game_tree first — scripts show as Script/LocalScript/ModuleScript class names in the tree.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the script instance (e.g., [\"ReplicatedStorage\", \"MyModule\"])"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_create_instance",
+        "toolReferenceName": "roblox-create",
+        "displayName": "Create Roblox Instance",
+        "description": "Create a new instance in the Roblox game as a child of the specified parent.",
+        "modelDescription": "Create a new Roblox instance as a child of the specified parent. Common classes: 'Part', 'MeshPart', 'Model', 'Folder', 'Script', 'LocalScript', 'ModuleScript', 'ScreenGui', 'Frame', 'TextLabel', 'TextButton'. After creating, use set_property to configure its properties (Size, Position, Color, etc.).",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "className": {
+              "type": "string",
+              "description": "The Roblox class name to create (e.g., 'Part', 'Folder', 'Model')"
+            },
+            "parentPath": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the parent instance (e.g., [\"Workspace\"])"
+            },
+            "name": {
+              "type": "string",
+              "description": "Optional name for the new instance"
+            }
+          },
+          "required": [
+            "className",
+            "parentPath"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_clone_instance",
+        "toolReferenceName": "roblox-clone",
+        "displayName": "Clone Roblox Instance",
+        "description": "Clone an existing instance in the Roblox game.",
+        "modelDescription": "Clone (duplicate) an instance including all its children and properties. The clone is created as a sibling of the original. Useful for duplicating parts, models, or UI elements. Use reparent_instance after to move the clone elsewhere if needed.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Path to the instance to clone (e.g., [\"Workspace\", \"Part\"])"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_get_remote_calls",
+        "toolReferenceName": "roblox-remote-spy",
+        "displayName": "Get Remote Spy Calls",
+        "description": "Get recently captured remote calls from the Remote Spy feature.",
+        "modelDescription": "Get recently captured RemoteEvent:FireServer and RemoteFunction:InvokeServer calls. IMPORTANT: Remote Spy must be enabled first (use the 'Enable Remote Spy' command or execute code to enable it). Returns the remote name, type, method, and reproducible Luau code for each call. Useful for reverse engineering client-server communication and understanding game mechanics.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "number",
+              "description": "Maximum number of calls to return (default 50)"
+            }
+          }
+        }
+      },
+      {
+        "name": "rbxdev_set_remote_spy_block_list",
+        "toolReferenceName": "roblox-block-remotes",
+        "displayName": "Block Remotes",
+        "description": "Set the list of remotes to block from firing to the server.",
+        "modelDescription": "Block specific remotes from firing to the server. Each block entry matches either by 'path' (e.g., 'ReplicatedStorage.Events.ChatEvent') or 'name' (e.g., 'ChatEvent'). Blocked remotes are intercepted and prevented from reaching the server.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blocks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "path",
+                      "name"
+                    ]
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "value"
+                ]
+              }
+            }
+          },
+          "required": [
+            "blocks"
+          ]
+        }
+      },
+      {
+        "name": "rbxdev_save_instance",
+        "toolReferenceName": "roblox-save",
+        "displayName": "Save Instance",
+        "description": "Save the game or a specific instance to a file using saveinstance().",
+        "modelDescription": "Save the Roblox game (full DataModel) or a specific instance to a .rbxl/.rbxm file. The file saves to the executor's workspace directory on disk. Use path to target a specific instance, or omit to save the entire game.",
+        "canBeReferencedInPrompt": true,
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional instance path"
+            },
+            "fileName": {
+              "type": "string",
+              "description": "Output file name (default: game.rbxl)"
+            },
+            "decompile": {
+              "type": "boolean",
+              "description": "Decompile scripts (default: true)"
+            }
+          }
+        }
+      }
+    ],
+    "languages": [
+      {
+        "id": "luau",
+        "aliases": [
+          "Luau",
+          "luau"
+        ],
+        "extensions": [
+          ".luau"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/luau.svg",
+          "dark": "./images/luau.svg"
+        }
+      },
+      {
+        "id": "lua",
+        "aliases": [
+          "Lua",
+          "lua"
+        ],
+        "extensions": [
+          ".lua"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/lua.svg",
+          "dark": "./images/lua.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "luau",
+        "scopeName": "source.luau",
+        "path": "./syntaxes/luau.tmLanguage.json"
+      },
+      {
+        "language": "lua",
+        "scopeName": "source.luau",
+        "path": "./syntaxes/luau.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Roblox Luau Language Server",
+      "properties": {
+        "rbxdev-ls.typeCheckMode": {
+          "type": "string",
+          "default": "strict",
+          "enum": [
+            "nocheck",
+            "nonstrict",
+            "strict"
+          ],
+          "description": "Type checking mode (matches --!strict, --!nonstrict, --!nocheck)"
+        },
+        "rbxdev-ls.enableSuncApi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Sunc executor API completions and type checking"
+        },
+        "rbxdev-ls.executorBridge.port": {
+          "type": "number",
+          "default": 21324,
+          "description": "WebSocket port for executor bridge connections"
+        },
+        "rbxdev-ls.mcp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable MCP server for AI assistants (GitHub Copilot, Claude, etc.)"
+        },
+        "rbxdev-ls.bundler.path": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to a bundler executable. Leave empty to use npx @0neshot101/luau-bundler."
+        },
+        "rbxdev-ls.saveInstance.decompile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Decompile scripts when saving instances"
+        },
+        "rbxdev-ls.saveInstance.noscripts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude all scripts when saving instances"
+        },
+        "rbxdev-ls.saveInstance.excludeServices": {
+          "type": "array",
+          "default": [
+            "Chat",
+            "CoreGui",
+            "CorePackages"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Services to exclude from full game saves"
+        },
+        "rbxdev-ls.debugLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose debug logging in the extension output/devtools console"
+        },
+        "rbxdev-ls.autoRefreshGameTree.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically refresh the game tree when instances are added or removed in Studio or the connected executor. Opt-in because it adds main-thread cost in Studio on bursty edits; listeners do a single flag write and flushes are debounced."
+        },
+        "rbxdev-ls.autoRefreshGameTree.intervalMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 2000,
+          "description": "Debounce window for auto-refresh (milliseconds). Lower values give fresher trees at higher serialisation cost. Clamped to a 2000 ms minimum."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "rbxdev-explorer",
+          "title": "Roblox Explorer",
+          "icon": "icon.png"
+        }
+      ]
+    },
+    "views": {
+      "rbxdev-explorer": [
+        {
+          "id": "rbxdev-gameTree",
+          "name": "Game Tree"
+        },
+        {
+          "id": "rbxdev-properties",
+          "name": "Properties",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "rbxdev-ls.execute",
+        "title": "Execute in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.executeNormal",
+        "title": "Execute in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.executeSelection",
+        "title": "Execute Selection in Roblox",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rbxdev-ls.toggleBridge",
+        "title": "Toggle Executor Bridge"
+      },
+      {
+        "command": "rbxdev-ls.copyPath",
+        "title": "Copy Instance Path"
+      },
+      {
+        "command": "rbxdev-ls.insertPath",
+        "title": "Insert Path at Cursor"
+      },
+      {
+        "command": "rbxdev-ls.insertService",
+        "title": "Insert GetService Statement"
+      },
+      {
+        "command": "rbxdev-ls.refreshGameTree",
+        "title": "Refresh Game Tree",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "rbxdev-ls.editProperty",
+        "title": "Edit Value",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "rbxdev-ls.teleportTo",
+        "title": "Teleport To",
+        "icon": "$(location)"
+      },
+      {
+        "command": "rbxdev-ls.deleteInstance",
+        "title": "Delete Instance",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "rbxdev-ls.setupMcp",
+        "title": "Roblox: Setup MCP Server for Copilot"
+      },
+      {
+        "command": "rbxdev-ls.viewScript",
+        "title": "View Script Source",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "rbxdev-ls.createInstance",
+        "title": "Create Instance",
+        "icon": "$(add)"
+      },
+      {
+        "command": "rbxdev-ls.cloneInstance",
+        "title": "Clone Instance",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "rbxdev-ls.searchGameTree",
+        "title": "Search Game Tree",
+        "icon": "$(search)"
+      },
+      {
+        "command": "rbxdev-ls.clearGameTreeSearch",
+        "title": "Clear Search",
+        "icon": "$(close)"
+      },
+      {
+        "command": "rbxdev-ls.toggleRemoteSpy",
+        "title": "Toggle Remote Spy",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.setRemoteSpyFilter",
+        "title": "Set Remote Spy Filter",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "rbxdev-ls.clearRemoteSpyOutput",
+        "title": "Clear Remote Spy Output",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "rbxdev-ls.showRemoteSpy",
+        "title": "Show Remote Spy Panel",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.openRemoteSpy",
+        "title": "Open Remote Spy",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "rbxdev-ls.showRemoteSpyLog",
+        "title": "Show Remote Spy Log",
+        "icon": "$(output)"
+      },
+      {
+        "command": "rbxdev-ls.saveGame",
+        "title": "Roblox: Save Game (Full DataModel)",
+        "icon": "$(save-all)"
+      },
+      {
+        "command": "rbxdev-ls.saveInstance",
+        "title": "Save Instance",
+        "icon": "$(save)"
+      },
+      {
+        "command": "rbxdev-ls.copyLastRemoteCall",
+        "title": "Copy Remote Call to Clipboard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "rbxdev-ls.insertLastRemoteCall",
+        "title": "Insert Remote Call at Cursor",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "rbxdev-ls.copyQuickRemote",
+        "title": "Quick Copy Last Remote Call",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "rbxdev-ls.bundleExecute",
+        "title": "Bundle & Execute in Roblox",
+        "icon": "$(package)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "rbxdev-ls.execute",
+        "key": "ctrl+shift+e",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.executeSelection",
+        "key": "ctrl+shift+alt+e",
+        "when": "(editorLangId == lua || editorLangId == luau) && editorHasSelection"
+      },
+      {
+        "command": "rbxdev-ls.copyLastRemoteCall",
+        "key": "ctrl+shift+r",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.insertLastRemoteCall",
+        "key": "ctrl+shift+alt+r",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.copyQuickRemote",
+        "key": "ctrl+alt+c",
+        "when": "editorLangId == lua || editorLangId == luau"
+      },
+      {
+        "command": "rbxdev-ls.bundleExecute",
+        "key": "ctrl+alt+e",
+        "when": "editorLangId == lua || editorLangId == luau"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "rbxdev-ls.executeNormal",
+          "when": "editorLangId == lua || editorLangId == luau",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbxdev-ls.bundleExecute",
+          "when": "editorLangId == lua || editorLangId == luau",
+          "group": "navigation@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "rbxdev-ls.executeSelection",
+          "when": "(editorLangId == lua || editorLangId == luau) && editorHasSelection",
+          "group": "1_modification"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "rbxdev-ls.searchGameTree",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbxdev-ls.clearGameTreeSearch",
+          "when": "view == rbxdev-gameTree && rbxdev-ls:searchActive",
+          "group": "navigation@2"
+        },
+        {
+          "command": "rbxdev-ls.refreshGameTree",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rbxdev-ls.copyPath",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "rbxdev-ls.insertPath",
+          "when": "view == rbxdev-gameTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "rbxdev-ls.insertService",
+          "when": "view == rbxdev-gameTree && viewItem == service",
+          "group": "navigation@3"
+        },
+        {
+          "command": "rbxdev-ls.teleportTo",
+          "when": "view == rbxdev-gameTree",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "rbxdev-ls.deleteInstance",
+          "when": "view == rbxdev-gameTree && viewItem != service",
+          "group": "2_actions@2"
+        },
+        {
+          "command": "rbxdev-ls.viewScript",
+          "when": "view == rbxdev-gameTree && viewItem =~ /script/",
+          "group": "navigation@4"
+        },
+        {
+          "command": "rbxdev-ls.createInstance",
+          "when": "view == rbxdev-gameTree",
+          "group": "3_create@1"
+        },
+        {
+          "command": "rbxdev-ls.cloneInstance",
+          "when": "view == rbxdev-gameTree && viewItem != service",
+          "group": "3_create@2"
+        },
+        {
+          "command": "rbxdev-ls.saveInstance",
+          "when": "view == rbxdev-gameTree && rbxdev-ls:bridgeConnected",
+          "group": "4_save@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run build-all",
+    "build-all": "bun run --cwd ../server build && bun run --cwd ../mcp build && bun run bundle && bun run copy-server",
+    "copy-server": "bun ./scripts/copy-server.ts",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "bundle": "bun run clean && esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap --minify",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.0.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.0.0"
+  }
+}

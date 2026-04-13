@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "composite": true,
+    "allowImportingTsExtensions": false,
+
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "removeComments": false,
+    "sourceMap": true,
+    "inlineSources": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+
+    "allowJs": false,
+    "checkJs": false,
+
+    "paths": {
+      "@core/*": ["./src/core/*"],
+      "@parser/*": ["./src/parser/*"],
+      "@typings/*": ["./src/typings/*"],
+      "@analyzer/*": ["./src/analyzer/*"],
+      "@definitions/*": ["./src/definitions/*"],
+      "@lsp/*": ["./src/lsp/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@workspace/*": ["./src/workspace/*"],
+      "@executor": ["./src/executor/index.ts"],
+      "@executor/*": ["./src/executor/*"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

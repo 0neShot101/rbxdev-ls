@@ -6,7 +6,8 @@ import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const rootDir = join(import.meta.dir, '..');
-const vscodeDir = join(rootDir, 'vscode');
+const vscodeDir = join(rootDir, 'packages', 'vscode');
+const serverDir = join(rootDir, 'packages', 'server');
 
 const run = (cmd: string, cwd: string = rootDir): void => {
   execSync(cmd, { 'cwd': cwd, 'stdio': 'inherit' });
@@ -94,11 +95,11 @@ if (isBeta) {
   });
 
   step('Run tests', () => {
-    run('bun test');
+    run('bun test', serverDir);
   });
 
   step('Build language server + MCP server', () => {
-    run('bun build src/index.ts src/mcp.ts --outdir dist --target node');
+    run('bun build src/index.ts src/mcp.ts --outdir dist --target node', serverDir);
   });
 
   step('Bundle VSCode extension', () => {
@@ -115,7 +116,7 @@ if (isBeta) {
 
   step('Restore package.json files', () => {
     restorePackageFiles();
-    console.log('  Reverted package.json and vscode/package.json');
+    console.log('  Reverted package.json and packages/vscode/package.json');
   });
 
   const vsixFiles = readdirSync(vscodeDir)
@@ -126,7 +127,7 @@ if (isBeta) {
   console.log('\n' + '\u2550'.repeat(43));
   console.log('  BETA build complete!');
   if (latest !== undefined) {
-    console.log(`  VSIX: vscode/${latest}`);
+    console.log(`  VSIX: packages/vscode/${latest}`);
     console.log(`  Distribute this file to beta testers.`);
   }
   console.log('\u2550'.repeat(43) + '\n');
@@ -142,19 +143,19 @@ if (isBeta) {
     updatePackageVersion(rootPkg, newVersion);
     updatePackageVersion(vscodePkg, newVersion);
     console.log(`  Updated package.json: ${newVersion}`);
-    console.log(`  Updated vscode/package.json: ${newVersion}`);
+    console.log(`  Updated packages/vscode/package.json: ${newVersion}`);
   });
 
   step('Run tests', () => {
-    run('bun test');
+    run('bun test', serverDir);
   });
 
   step('Type check', () => {
-    run('bun run type-check');
+    run('bun run type-check', serverDir);
   });
 
   step('Build language server + MCP server', () => {
-    run('bun build src/index.ts src/mcp.ts --outdir dist --target node');
+    run('bun build src/index.ts src/mcp.ts --outdir dist --target node', serverDir);
   });
 
   step('Bundle VSCode extension', () => {
@@ -177,7 +178,7 @@ if (isBeta) {
   console.log('\n' + '\u2550'.repeat(43));
   console.log('  Build complete!');
   if (latest !== undefined) {
-    console.log(`  VSIX: vscode/${latest}`);
+    console.log(`  VSIX: packages/vscode/${latest}`);
   }
   console.log('\u2550'.repeat(43) + '\n');
 }

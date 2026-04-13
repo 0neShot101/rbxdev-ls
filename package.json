@@ -1,61 +1,40 @@
 {
-  "name": "rbxdev-ls",
+  "name": "rbxdev-ls-workspace",
   "version": "0.3.6",
-  "description": "High-performance Roblox/Luau language server with full API support",
-  "main": "dist/index.js",
-  "bin": {
-    "rbxdev-ls": "./dist/index.js",
-    "rbxdev-mcp": "./dist/mcp.js"
-  },
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node",
-    "build:mcp": "bun build src/mcp.ts --outdir dist --target node",
-    "build:all": "bun build src/index.ts src/mcp.ts --outdir dist --target node && bun scripts/build-studio-plugin.ts",
-    "start": "bun dist/index.js",
-    "start:mcp": "node dist/mcp.js",
-    "dev": "bun --watch src/index.ts",
-    "dev:mcp": "node --watch dist/mcp.js",
-    "clean": "rm -rf dist",
-    "lint": "eslint src --ext .ts --fix",
-    "lint:check": "eslint src --ext .ts",
+    "build": "bun run --cwd packages/server build",
+    "build:mcp": "bun run --cwd packages/mcp build",
+    "build:all": "bun run --cwd packages/server build && bun run build:mcp",
+    "start": "bun run --cwd packages/server start",
+    "start:mcp": "bun run --cwd packages/mcp start",
+    "dev": "bun run --cwd packages/server dev",
+    "dev:mcp": "bun run --cwd packages/mcp dev",
+    "clean": "bun run --cwd packages/server clean",
+    "lint": "eslint packages/server/src --ext .ts --fix",
+    "lint:check": "eslint packages/server/src --ext .ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "type-check": "tsc --noEmit",
-    "test": "bun test",
+    "type-check": "tsc --noEmit -p packages/server/tsconfig.json",
+    "test": "bun test --cwd packages/server && bun test --cwd packages/mcp",
     "fetch-api": "bun scripts/fetch-roblox-api.ts",
     "build:vsix": "bun scripts/build-vsix.ts",
     "build:beta": "bun scripts/build-vsix.ts --beta",
-    "publish:mcp": "bun scripts/publish-mcp.ts",
-    "publish:mcp:dry": "bun scripts/publish-mcp.ts --dry-run",
+    "build:bridge": "bun packages/luau-bundler/src/cli.ts --src roblox/executor-bridge/src --out scripts/executor-bridge.lua --header 'rbxdev executor bridge'",
     "build:studio": "bun scripts/build-studio-plugin.ts"
-  },
-  "keywords": [
-    "roblox",
-    "luau",
-    "lua",
-    "language-server",
-    "lsp",
-    "sunc"
-  ],
-  "author": "Andrew",
-  "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "vscode-jsonrpc": "^8.2.0",
-    "vscode-languageserver": "^9.0.1",
-    "vscode-languageserver-protocol": "^3.17.5",
-    "vscode-languageserver-textdocument": "^1.0.12",
-    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.0.0",
-    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^9.0.0",
+    "eslint-import-resolver-node": "^0.3.10",
     "eslint-plugin-import": "^2.0.0",
     "eslint-plugin-prettier": "^5.0.0",
     "prettier": "^3.0.0",
@@ -71,8 +50,5 @@
     "@typescript-eslint/typescript-estree": {
       "minimatch": "^9.0.7"
     }
-  },
-  "engines": {
-    "bun": ">=1.0.0"
   }
 }

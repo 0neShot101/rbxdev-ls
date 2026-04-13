@@ -6,7 +6,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const rootDir = join(import.meta.dir, '..');
-const pluginDir = join(rootDir, 'studio-plugin');
+const pluginDir = join(rootDir, 'packages', 'studio-plugin');
 const distDir = join(pluginDir, 'dist');
 const projectFile = join(pluginDir, 'default.project.json');
 const outputFile = join(distDir, 'rbxdev-studio-bridge.rbxm');
@@ -29,7 +29,7 @@ console.log('  rbxdev Studio Plugin Build');
 console.log('\u2550'.repeat(43));
 
 step('Validate project file', () => {
-  if (existsSync(projectFile) === false) throw new Error('studio-plugin/default.project.json not found');
+  if (existsSync(projectFile) === false) throw new Error('roblox/studio-plugin/default.project.json not found');
 });
 
 step('Build .rbxm with Rojo', () => {
@@ -39,6 +39,6 @@ step('Build .rbxm with Rojo', () => {
 
 console.log('\n' + '\u2550'.repeat(43));
 console.log('  Build complete!');
-console.log(`  Plugin: studio-plugin/dist/rbxdev-studio-bridge.rbxm`);
+console.log(`  Plugin: roblox/studio-plugin/dist/rbxdev-studio-bridge.rbxm`);
 console.log('  Install: drop into your Studio plugins folder');
 console.log('\u2550'.repeat(43) + '\n');

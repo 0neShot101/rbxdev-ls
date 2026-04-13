@@ -15,6 +15,11 @@ module.exports = {
     'console': 'readonly',
     'process': 'readonly',
   },
+  'settings': {
+    'import/resolver': {
+      'node': true,
+    },
+  },
   'rules': {
     'prettier/prettier': ['error', {}, { 'usePrettierrc': true }],
     'no-unused-vars': 'off',

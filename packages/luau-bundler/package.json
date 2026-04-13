@@ -1,0 +1,25 @@
+{
+  "name": "@0neshot101/luau-bundler",
+  "version": "0.1.0",
+  "description": "Bundles multiple Luau/Lua source files into a single self-contained script",
+  "main": "src/index.ts",
+  "bin": {
+    "luau-bundler": "./src/cli.ts"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist --target node",
+    "test": "bun test"
+  },
+  "author": "Andrew",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0neShot101/rbxdev-ls",
+    "directory": "packages/luau-bundler"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0"
+  }
+}

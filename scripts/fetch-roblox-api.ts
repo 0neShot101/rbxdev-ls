@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 
 const API_URL = 'https://raw.githubusercontent.com/MaximumADHD/Roblox-Client-Tracker/roblox/Full-API-Dump.json';
-const OUTPUT_PATH = join(__dirname, '..', 'data', 'roblox-api.json');
+const OUTPUT_PATH = join(__dirname, '..', 'packages', 'server', 'data', 'roblox-api.json');
 
 const fetchRobloxApi = async (): Promise<void> => {
   console.log('Fetching Roblox API dump...');

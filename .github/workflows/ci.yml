@@ -1,45 +1,214 @@
 name: CI
 
 on:
+  push:
+    branches: [main, development]
   pull_request:
-    branches:
-      - main
-      - production
+    branches: [main, development]
   workflow_dispatch:
 
 jobs:
-  test-and-build:
+  test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Install root dependencies
+      - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Install VS Code extension dependencies
-        working-directory: vscode
-        run: bun install --frozen-lockfile
-
-      - name: Run tests
-        run: bun test
 
       - name: Type check
         run: bun run type-check
 
-      - name: Build language server + MCP bundle
-        run: bun build src/index.ts src/mcp.ts --outdir dist --target node
+      - name: Run server tests
+        run: bun test --cwd packages/server
+
+      - name: Build server
+        run: bun run build
+
+      - name: Run MCP tests
+        run: bun test --cwd packages/mcp
+
+      - name: Build MCP
+        run: bun run build:mcp
 
       - name: Bundle VS Code extension
-        working-directory: vscode
-        run: bun run bundle
+        run: bun run --cwd packages/vscode bundle
 
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+          old_version=""
+          if git show HEAD~1:package.json >/dev/null 2>&1; then
+            old_version="$(git show HEAD~1:package.json | node -p 'JSON.parse(require("fs").readFileSync("/dev/stdin","utf8")).version')"
+          fi
+
+          if [[ "${version}" != "${old_version}" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip if version unchanged
+        if: steps.version.outputs.changed != 'true'
+        run: echo "Version unchanged (${version}), skipping release."
+
+      - name: Setup Bun
+        if: steps.version.outputs.changed == 'true'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Foreman (Rojo)
+        if: steps.version.outputs.changed == 'true'
+        uses: Roblox/setup-foreman@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install dependencies
+        if: steps.version.outputs.changed == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build server
+        if: steps.version.outputs.changed == 'true'
+        run: bun run build
+
+      - name: Build MCP
+        if: steps.version.outputs.changed == 'true'
+        run: bun run build:mcp
+
+      - name: Bundle and package VS Code extension
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          cd packages/vscode
+          bun run bundle
+          bun run copy-server
+          bun run package
+
+      - name: Build Studio plugin
+        if: steps.version.outputs.changed == 'true'
+        run: bun run build:studio
+
+      - name: Validate assets
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          test -f "packages/vscode/rbxdev-ls-${version}.vsix" || { echo "VSIX not found"; exit 1; }
+          test -f "roblox/studio-plugin/dist/rbxdev-studio-bridge.rbxm" || { echo "Studio plugin not found"; exit 1; }
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            packages/vscode/rbxdev-ls-${{ steps.version.outputs.version }}.vsix
+            roblox/studio-plugin/dist/rbxdev-studio-bridge.rbxm
+
+  publish-mcp:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+          should_publish="false"
+          old_version=""
+          if git show HEAD~1:package.json >/dev/null 2>&1; then
+            old_version="$(git show HEAD~1:package.json | node -p 'JSON.parse(require("fs").readFileSync("/dev/stdin","utf8")).version')"
+          fi
+
+          if [[ "${version}" != "${old_version}" ]]; then
+            should_publish="true"
+          fi
+
+          echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node.js
+        if: steps.version.outputs.should_publish == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: '@0neshot101'
+
+      - name: Setup Bun
+        if: steps.version.outputs.should_publish == 'true'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        if: steps.version.outputs.should_publish == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build server (for exports)
+        if: steps.version.outputs.should_publish == 'true'
+        run: bun run build
+
+      - name: Build MCP
+        if: steps.version.outputs.should_publish == 'true'
+        run: bun run build:mcp
+
+      - name: Sync package versions
+        if: steps.version.outputs.should_publish == 'true'
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          for pkg in packages/mcp/package.json packages/luau-bundler/package.json; do
+            node -e "
+              const fs = require('fs');
+              const p = JSON.parse(fs.readFileSync('${pkg}', 'utf8'));
+              p.version = '${version}';
+              fs.writeFileSync('${pkg}', JSON.stringify(p, null, 2) + '\n');
+            "
+          done
+
+      - name: Publish MCP to GitHub Packages
+        if: steps.version.outputs.should_publish == 'true'
+        working-directory: packages/mcp
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish luau-bundler to GitHub Packages
+        if: steps.version.outputs.should_publish == 'true'
+        working-directory: packages/luau-bundler
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

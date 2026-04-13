@@ -1,0 +1,42 @@
+{
+  "name": "rbxdev-server",
+  "version": "0.3.6",
+  "description": "High-performance Roblox/Luau language server with full API support",
+  "main": "dist/exports.js",
+  "types": "src/exports.ts",
+  "exports": {
+    ".": {
+      "types": "./src/exports.ts",
+      "default": "./dist/exports.js"
+    }
+  },
+  "bin": {
+    "rbxdev-ls": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts src/exports.ts --outdir dist --target node",
+    "start": "bun dist/index.js",
+    "dev": "bun --watch src/index.ts",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "test": "bun test",
+    "lint": "eslint src --ext .ts --fix",
+    "lint:check": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.0",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@0neshot101/rbxdev-mcp": "workspace:*",
+    "@types/bun": "latest",
+    "@types/ws": "^8.18.1"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
