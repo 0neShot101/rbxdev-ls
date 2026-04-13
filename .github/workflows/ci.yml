@@ -67,21 +67,21 @@ jobs:
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Current version: ${version}"
 
-          old_version=""
+          old_version="none"
           if git show HEAD~1:package.json >/dev/null 2>&1; then
-            old_version="$(git show HEAD~1:package.json | node -p 'JSON.parse(require("fs").readFileSync("/dev/stdin","utf8")).version')"
+            old_version="$(node -e "console.log(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version)" < <(git show HEAD~1:package.json))" || old_version="none"
           fi
+          echo "Previous version: ${old_version}"
 
           if [[ "${version}" != "${old_version}" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed, will release."
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged, skipping release."
           fi
-
-      - name: Skip if version unchanged
-        if: steps.version.outputs.changed != 'true'
-        run: echo "Version unchanged (${version}), skipping release."
 
       - name: Setup Bun
         if: steps.version.outputs.changed == 'true'
@@ -169,9 +169,9 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
           should_publish="false"
-          old_version=""
+          old_version="none"
           if git show HEAD~1:package.json >/dev/null 2>&1; then
-            old_version="$(git show HEAD~1:package.json | node -p 'JSON.parse(require("fs").readFileSync("/dev/stdin","utf8")).version')"
+            old_version="$(node -e "console.log(JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).version)" < <(git show HEAD~1:package.json))" || old_version="none"
           fi
 
           if [[ "${version}" != "${old_version}" ]]; then
