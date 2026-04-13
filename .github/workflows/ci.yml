@@ -130,9 +130,10 @@ jobs:
         working-directory: packages/vscode
 
       - name: Publish to Open VSX
-        if: steps.version.outputs.changed == 'true' && secrets.OVSX_PAT != ''
+        if: steps.version.outputs.changed == 'true'
         run: bunx ovsx publish --pat ${{ secrets.OVSX_PAT }}
         working-directory: packages/vscode
+        continue-on-error: true
 
       - name: Create GitHub Release
         if: steps.version.outputs.changed == 'true'
