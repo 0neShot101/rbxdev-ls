@@ -38,6 +38,10 @@ jobs:
       - name: Bundle VS Code extension
         run: bun run --cwd packages/vscode bundle
 
+      - name: Install website dependencies
+        run: bun install --frozen-lockfile
+        working-directory: apps/web
+
       - name: Check website
         run: bun run --cwd apps/web check
 
