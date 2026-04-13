@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Particles from '$lib/components/Particles.svelte';
+
 	let copied = $state(false);
 
 	const copyInstall = () => {
@@ -7,6 +9,8 @@
 		setTimeout(() => (copied = false), 2000);
 	};
 </script>
+
+<Particles />
 
 <!-- Nav -->
 <nav class="fixed top-0 z-50 w-full border-b border-white/5 bg-surface-base/80 backdrop-blur-xl">
