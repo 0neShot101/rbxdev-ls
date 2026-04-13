@@ -5,6 +5,7 @@
 src/**
 scripts/**
 node_modules/**
+tests/**
 *.vsix
 *.ts
 !*.d.ts
@@ -14,3 +15,5 @@ tsconfig.json
 bun.lock
 bun.lockb
 .gitignore
+.editorconfig
+../**
