@@ -239,9 +239,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version
-        id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Extract metadata
+        id: meta
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          version=$(node -p "require('./package.json').version")
+          echo "owner=${owner}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -249,5 +253,5 @@ jobs:
           context: apps/web
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/web:latest
-            ghcr.io/${{ github.repository }}/web:${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.meta.outputs.owner }}/rbxdev-web:latest
+            ghcr.io/${{ steps.meta.outputs.owner }}/rbxdev-web:${{ steps.meta.outputs.version }}
