@@ -23,17 +23,17 @@ jobs:
       - name: Type check
         run: bun run type-check
 
-      - name: Run server tests
-        run: bun test --cwd packages/server
-
       - name: Build server
         run: bun run build
 
-      - name: Run MCP tests
-        run: bun test --cwd packages/mcp
-
       - name: Build MCP
         run: bun run build:mcp
+
+      - name: Run server tests
+        run: bun test --cwd packages/server
+
+      - name: Run MCP tests
+        run: bun test --cwd packages/mcp
 
       - name: Bundle VS Code extension
         run: bun run --cwd packages/vscode bundle
