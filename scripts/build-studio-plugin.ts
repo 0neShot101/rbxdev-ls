@@ -6,7 +6,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
 const rootDir = join(import.meta.dir, '..');
-const pluginDir = join(rootDir, 'packages', 'studio-plugin');
+const pluginDir = join(rootDir, 'roblox', 'studio-plugin');
 const distDir = join(pluginDir, 'dist');
 const projectFile = join(pluginDir, 'default.project.json');
 const outputFile = join(distDir, 'rbxdev-studio-bridge.rbxm');
