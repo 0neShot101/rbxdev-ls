@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Surface system: elevation through lightness, not shadows */
+	--color-surface-base: #09090b;
+	--color-surface-raised: #0f0f12;
+	--color-surface-overlay: #18181b;
+	--color-surface-elevated: #1e1e23;
+	--color-surface-highest: #27272a;
+
+	/* Text hierarchy: 4 levels of contrast */
+	--color-text-primary: #fafafa;
+	--color-text-secondary: #a1a1aa;
+	--color-text-tertiary: #71717a;
+	--color-text-muted: #52525b;
+
+	/* Brand: indigo-violet pulled from the extension icon */
+	--color-brand-50: #eef2ff;
+	--color-brand-100: #e0e7ff;
+	--color-brand-200: #c7d2fe;
+	--color-brand-300: #a5b4fc;
+	--color-brand-400: #818cf8;
+	--color-brand-500: #6366f1;
+	--color-brand-600: #4f46e5;
+	--color-brand-700: #4338ca;
+
+	/* Accent: cyan for interactive highlights */
+	--color-accent-400: #22d3ee;
+	--color-accent-500: #06b6d4;
+	--color-accent-600: #0891b2;
+
+	/* Code block surfaces */
+	--color-code-bg: #0c0c0f;
+	--color-code-border: #1e1e23;
+
+	/* Fonts */
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+	--font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+	/* Type scale: major third (1.250) from 16px base */
+	--text-xs: 0.75rem;
+	--text-sm: 0.875rem;
+	--text-base: 1rem;
+	--text-lg: 1.25rem;
+	--text-xl: 1.563rem;
+	--text-2xl: 1.953rem;
+	--text-3xl: 2.441rem;
+	--text-4xl: 3.052rem;
+	--text-5xl: 3.815rem;
+}
+
+html {
+	background-color: var(--color-surface-base);
+	color: var(--color-text-primary);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+	background-color: var(--color-brand-500);
+	color: white;
+}
+
+code, pre {
+	font-family: var(--font-mono);
+}

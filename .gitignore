@@ -170,3 +170,7 @@ packages/vscode/*.vsix
 
 # Studio plugin build output
 roblox/studio-plugin/dist/
+
+# Website build output
+apps/web/build/
+apps/web/.svelte-kit/
