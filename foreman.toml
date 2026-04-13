@@ -1,0 +1,2 @@
+[tools]
+rojo = { github = "rojo-rbx/rojo", version = "=7.4.4" }
