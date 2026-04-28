@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/0neshot101-rbxdev-ls-badge.png)](https://mseep.ai/app/0neshot101-rbxdev-ls)
+
 <div align="center">
   <img src="packages/vscode/icon.png" alt="rbxdev-ls logo" width="160">
   <h1>rbxdev-ls</h1>
