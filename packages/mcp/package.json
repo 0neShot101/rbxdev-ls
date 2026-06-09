@@ -15,7 +15,7 @@
     }
   },
   "bin": {
-    "rbxdev-mcp": "./dist/index.js"
+    "rbxdev-mcp": "dist/index.js"
   },
   "type": "module",
   "files": [
