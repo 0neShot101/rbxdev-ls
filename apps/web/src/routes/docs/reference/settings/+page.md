@@ -21,7 +21,7 @@ All settings are prefixed with `rbxdev-ls.` in VS Code's `settings.json`.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `bundler.path` | `string` | `""` | Custom path to a bundler executable. Leave empty to use `npx @0neshot101/luau-bundler` |
+| `bundler.path` | `string` | `""` | Custom path to a bundler executable. Leave empty to use `npx @oneshot101/luau-bundler` |
 
 ## MCP
 

@@ -2,7 +2,7 @@
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"]
+      "args": ["-y", "@oneshot101/rbxdev-mcp"]
     }
   }
 }

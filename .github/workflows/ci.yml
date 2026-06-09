@@ -153,7 +153,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
       id-token: write
     steps:
       - name: Checkout
@@ -186,8 +185,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://npm.pkg.github.com
-          scope: '@0neshot101'
+          registry-url: https://registry.npmjs.org
 
       - name: Setup Bun
         if: steps.version.outputs.should_publish == 'true'
@@ -219,19 +217,19 @@ jobs:
             "
           done
 
-      - name: Publish MCP to GitHub Packages
+      - name: Publish MCP to npm
         if: steps.version.outputs.should_publish == 'true'
         working-directory: packages/mcp
         run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish luau-bundler to GitHub Packages
+      - name: Publish luau-bundler to npm
         if: steps.version.outputs.should_publish == 'true'
         working-directory: packages/luau-bundler
         run: npm publish --provenance --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   docker:
     needs: test

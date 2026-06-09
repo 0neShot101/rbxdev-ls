@@ -1,7 +1,7 @@
 
 # MCP Tools Reference
 
-The MCP server exposes 16 tools that AI assistants can call to interact with a running Roblox game.
+The MCP server exposes 19 tools that AI assistants can call to interact with a running Roblox game.
 
 ## Connection
 
@@ -169,3 +169,37 @@ Toggles the Remote Spy on or off.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `enabled` | `boolean` | Yes | `true` to start capturing, `false` to stop |
+
+### set_remote_spy_block_list
+
+Sets remotes to block from firing to the server.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `blocks` | `{ type: "path" \| "name"; value: string }[]` | Yes | Remote paths or names to block |
+
+## Studio
+
+### set_script_source
+
+Updates the source code of a Script, LocalScript, or ModuleScript when connected through Roblox Studio.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string[]` | Yes | Path to the script instance |
+| `source` | `string` | Yes | New script source |
+
+## Saving
+
+### save_instance
+
+Saves the full DataModel or a specific instance to a file through executor `saveinstance()`.
+
+**Parameters:**
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string[]` | No | Optional instance path |
+| `fileName` | `string` | No | Output filename |
+| `decompile` | `boolean` | No | Whether to decompile scripts |

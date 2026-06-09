@@ -154,6 +154,9 @@ nul
 # Claude Code local settings
 .claude/
 
+# Codex local settings
+.codex/
+
 # Root build output (stale from pre-monorepo)
 dist/
 

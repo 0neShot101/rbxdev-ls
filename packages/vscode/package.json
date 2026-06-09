@@ -514,7 +514,7 @@
         "rbxdev-ls.bundler.path": {
           "type": "string",
           "default": "",
-          "description": "Custom path to a bundler executable. Leave empty to use npx @0neshot101/luau-bundler."
+          "description": "Custom path to a bundler executable. Leave empty to use npx @oneshot101/luau-bundler."
         },
         "rbxdev-ls.saveInstance.decompile": {
           "type": "boolean",

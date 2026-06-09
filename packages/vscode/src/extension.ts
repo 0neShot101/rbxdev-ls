@@ -182,7 +182,7 @@ const pollExecutorStatus = async (): Promise<void> => {
   }
 };
 
-const BUNDLER_PACKAGE = '@0neshot101/luau-bundler';
+const BUNDLER_PACKAGE = '@oneshot101/luau-bundler';
 
 /**
  * Resolves the bundler command. Priority order:

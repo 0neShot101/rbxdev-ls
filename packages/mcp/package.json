@@ -1,11 +1,11 @@
 {
-  "name": "@0neshot101/rbxdev-mcp",
+  "name": "@oneshot101/rbxdev-mcp",
   "version": "0.3.6",
   "description": "MCP server for connecting AI tools (Claude, Cursor, etc.) to live Roblox game instances",
   "main": "dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts"
+    ".": "./dist/index.js",
+    "./server": "./dist/server.js"
   },
   "bin": {
     "rbxdev-mcp": "./dist/index.js"
@@ -13,20 +13,23 @@
   "type": "module",
   "files": [
     "dist/index.js",
+    "dist/server.js",
     "README.md"
   ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target node",
+    "build": "bun build src/index.ts src/server.ts --outdir dist --target node",
     "start": "node dist/index.js",
     "dev": "node --watch dist/index.js",
     "test": "bun test",
     "type-check": "tsc --noEmit"
   },
-  "dependencies": {
-    "rbxdev-server": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.0.0"
-  },
   "devDependencies": {
+    "rbxdev-server": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/bun": "latest",
     "@types/node": "^22.0.0"
   },

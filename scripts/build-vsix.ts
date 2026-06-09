@@ -8,6 +8,7 @@ import { join } from 'path';
 const rootDir = join(import.meta.dir, '..');
 const vscodeDir = join(rootDir, 'packages', 'vscode');
 const serverDir = join(rootDir, 'packages', 'server');
+const mcpDir = join(rootDir, 'packages', 'mcp');
 
 const run = (cmd: string, cwd: string = rootDir): void => {
   execSync(cmd, { 'cwd': cwd, 'stdio': 'inherit' });
@@ -99,7 +100,8 @@ if (isBeta) {
   });
 
   step('Build language server + MCP server', () => {
-    run('bun build src/index.ts src/mcp.ts --outdir dist --target node', serverDir);
+    run('bun run build', serverDir);
+    run('bun run build', mcpDir);
   });
 
   step('Bundle VSCode extension', () => {
@@ -155,7 +157,8 @@ if (isBeta) {
   });
 
   step('Build language server + MCP server', () => {
-    run('bun build src/index.ts src/mcp.ts --outdir dist --target node', serverDir);
+    run('bun run build', serverDir);
+    run('bun run build', mcpDir);
   });
 
   step('Bundle VSCode extension', () => {

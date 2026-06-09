@@ -1,17 +1,13 @@
 
 # MCP Server
 
-The MCP (Model Context Protocol) server lets AI assistants interact with your running Roblox game. It exposes 16 tools for browsing instances, executing code, reading properties, and monitoring remote calls.
+The MCP (Model Context Protocol) server lets AI assistants interact with your running Roblox game. It exposes 19 tools for browsing instances, executing code, reading properties, saving instances, editing scripts through Studio, and monitoring remote calls.
 
 ## Setup
 
 ### Registry configuration
 
-The package is hosted on GitHub Packages. Add this to your `~/.npmrc`:
-
-```
-@0neshot101:registry=https://npm.pkg.github.com
-```
+The package is published to the public npm registry under the `@oneshot101` scope.
 
 ### Claude Code
 
@@ -22,7 +18,7 @@ Add to `~/.claude/mcp_config.json`:
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"]
+      "args": ["-y", "@oneshot101/rbxdev-mcp"]
     }
   }
 }
@@ -41,7 +37,7 @@ Add to `.cursor/mcp.json` in your project root:
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"]
+      "args": ["-y", "@oneshot101/rbxdev-mcp"]
     }
   }
 }
@@ -49,7 +45,7 @@ Add to `.cursor/mcp.json` in your project root:
 
 ### Windsurf
 
-Open Cascade, go to MCP, click Add Server, and enter the command `npx -y @0neshot101/rbxdev-mcp`.
+Open Cascade, go to MCP, click Add Server, and enter the command `npx -y @oneshot101/rbxdev-mcp`.
 
 ## Proxy mode
 
@@ -66,7 +62,7 @@ Set the `RBXDEV_BRIDGE_PORT` environment variable:
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"],
+      "args": ["-y", "@oneshot101/rbxdev-mcp"],
       "env": {
         "RBXDEV_BRIDGE_PORT": "21325"
       }
@@ -77,7 +73,7 @@ Set the `RBXDEV_BRIDGE_PORT` environment variable:
 
 ## Available tools
 
-The server registers 16 tools that AI assistants can call:
+The server registers 19 tools that AI assistants can call:
 
 | Tool | Description |
 |------|-------------|
@@ -97,6 +93,9 @@ The server registers 16 tools that AI assistants can call:
 | `refresh_game_tree` | Request a fresh tree snapshot |
 | `get_remote_calls` | View captured remote calls |
 | `set_remote_spy_enabled` | Toggle the Remote Spy |
+| `set_remote_spy_block_list` | Block selected remotes |
+| `set_script_source` | Update script source through Studio |
+| `save_instance` | Save the DataModel or a selected instance |
 
 ## Resources
 
