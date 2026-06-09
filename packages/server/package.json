@@ -1,6 +1,6 @@
 {
   "name": "rbxdev-server",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/exports.js",
   "types": "src/exports.ts",
