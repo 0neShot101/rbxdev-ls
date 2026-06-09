@@ -151,7 +151,7 @@ local installNamecallHook = function(logRemoteCall)
 			return cleanup, strategyOrError
 		end
 		if ok then
-			table.insert(errors, tostring(cleanup))
+			table.insert(errors, tostring(strategyOrError))
 		else
 			table.insert(errors, tostring(cleanup))
 		end
@@ -201,6 +201,9 @@ M.handleSetRemoteSpyEnabled = function(message)
 			end
 
 			state.spyCleanup = cleanup
+			if getgenv and getgenv()._RBXDEV_BRIDGE then
+				getgenv()._RBXDEV_BRIDGE.spyCleanup = cleanup
+			end
 			print('[rbxdev-bridge] Remote spy enabled (' .. tostring(strategyOrError) .. ')')
 
 			state.remoteSpyEnabled = true
@@ -209,6 +212,9 @@ M.handleSetRemoteSpyEnabled = function(message)
 			if state.spyCleanup ~= nil then
 				pcall(state.spyCleanup)
 				state.spyCleanup = nil
+				if getgenv and getgenv()._RBXDEV_BRIDGE then
+					getgenv()._RBXDEV_BRIDGE.spyCleanup = nil
+				end
 			end
 			state.remoteSpyEnabled = false
 			print'[rbxdev-bridge] Remote spy disabled'

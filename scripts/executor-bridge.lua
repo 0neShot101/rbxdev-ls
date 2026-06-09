@@ -886,7 +886,7 @@ _modules["handlers/remoteSpy.luau"] = {
 						return cleanup, strategyOrError
 					end
 					if ok then
-						table.insert(errors, tostring(cleanup))
+						table.insert(errors, tostring(strategyOrError))
 					else
 						table.insert(errors, tostring(cleanup))
 					end
@@ -936,6 +936,9 @@ _modules["handlers/remoteSpy.luau"] = {
 						end
 			
 						state.spyCleanup = cleanup
+						if getgenv and getgenv()._RBXDEV_BRIDGE then
+							getgenv()._RBXDEV_BRIDGE.spyCleanup = cleanup
+						end
 						print('[rbxdev-bridge] Remote spy enabled (' .. tostring(strategyOrError) .. ')')
 			
 						state.remoteSpyEnabled = true
@@ -944,6 +947,9 @@ _modules["handlers/remoteSpy.luau"] = {
 						if state.spyCleanup ~= nil then
 							pcall(state.spyCleanup)
 							state.spyCleanup = nil
+							if getgenv and getgenv()._RBXDEV_BRIDGE then
+								getgenv()._RBXDEV_BRIDGE.spyCleanup = nil
+							end
 						end
 						state.remoteSpyEnabled = false
 						print'[rbxdev-bridge] Remote spy disabled'
@@ -1100,6 +1106,10 @@ _modules["init.luau"] = {
 				local old = getgenv()._RBXDEV_BRIDGE
 				if old.connection then pcall(old.connection.Close, old.connection) end
 				for _, conn in ipairs(old.refreshConnections or {}) do pcall(conn.Disconnect, conn) end
+				if old.spyCleanup ~= nil then
+					pcall(old.spyCleanup)
+					old.spyCleanup = nil
+				end
 				old.alive = false
 			end
 			
@@ -1763,6 +1773,7 @@ _modules["state.luau"] = {
 						id = M.BRIDGE_ID,
 						connection = nil,
 						refreshConnections = M.refreshConnections,
+						spyCleanup = nil,
 						alive = true,
 					}
 				end

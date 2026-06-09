@@ -1,5 +1,6 @@
 import { formatGameTreeNode, formatServicesTree, serializeGameTreeNode } from '@mcp/utils/formatters';
 import { NOT_CONNECTED, errorResult, requirePath, textResult } from '@mcp/utils/results';
+import { asRecord } from '@mcp/utils/validation';
 
 import type { ToolHandlerMap } from './shared';
 
@@ -32,12 +33,14 @@ export const gameTreeToolHandlers: ToolHandlerMap = {
   'get_properties': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[]; properties?: string[] };
-    const pathError = requirePath(typedArgs.path);
+    const rawArgs = asRecord(args);
+    const pathError = requirePath(rawArgs?.['path']);
     if (pathError !== undefined) return pathError;
+    const path = rawArgs?.['path'] as string[];
+    const properties = Array.isArray(rawArgs?.['properties']) ? (rawArgs['properties'] as string[]) : undefined;
 
     try {
-      const result = await bridge.requestProperties(typedArgs.path, typedArgs.properties);
+      const result = await bridge.requestProperties(path, properties);
       if (result.success && result.properties !== undefined) {
         const formatted = result.properties
           .map(p => `${p.name}: ${p.value} (${p.valueType}${p.className !== undefined ? `, ${p.className}` : ''})`)
@@ -54,13 +57,14 @@ export const gameTreeToolHandlers: ToolHandlerMap = {
   'get_children': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[]; format?: 'tree' | 'json' };
-    const format = typedArgs.format ?? 'tree';
-    const pathError = requirePath(typedArgs.path);
+    const rawArgs = asRecord(args);
+    const format = rawArgs?.['format'] === 'json' ? 'json' : 'tree';
+    const pathError = requirePath(rawArgs?.['path']);
     if (pathError !== undefined) return pathError;
+    const path = rawArgs?.['path'] as string[];
 
     try {
-      const result = await bridge.requestChildren(typedArgs.path);
+      const result = await bridge.requestChildren(path);
       if (result.success && result.children !== undefined) {
         if (format === 'json') return textResult(JSON.stringify(result.children.map(serializeGameTreeNode), null, 2));
         return textResult(result.children.map(child => formatGameTreeNode(child)).join('\n') || 'No children');

@@ -1,13 +1,15 @@
 import { hasCapability } from 'rbxdev-server';
 
 import { bridgeCall, NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
+import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
 
 import type { ToolHandlerMap } from './shared';
 
 export const remoteSpyToolHandlers: ToolHandlerMap = {
   'get_remote_calls': async (args, { bridge }) => {
-    const typedArgs = args as { limit?: number } | undefined;
-    const calls = bridge.remoteSpyCalls.slice(-(typedArgs?.limit ?? 50));
+    const rawArgs = asRecord(args);
+    const limit = normalizePositiveInteger(rawArgs?.['limit'], 50, 1000);
+    const calls = bridge.remoteSpyCalls.slice(-limit);
     if (calls.length === 0)
       return textResult(
         `No remote calls captured. Remote Spy is ${bridge.isRemoteSpyEnabled ? 'enabled' : 'disabled, enable it first with set_remote_spy_enabled'}.`,
@@ -27,11 +29,14 @@ export const remoteSpyToolHandlers: ToolHandlerMap = {
     if (hasCapability(bridge.clientCapabilities, 'remoteSpy') === false)
       return errorResult('Error: Remote Spy is not available with the current client');
 
-    const typedArgs = args as { enabled: boolean };
-    if (typeof typedArgs.enabled !== 'boolean') return errorResult('Error: enabled parameter is required (boolean)');
+    const rawArgs = asRecord(args);
+    if (typeof rawArgs?.['enabled'] !== 'boolean') {
+      return errorResult('Error: enabled parameter is required (boolean)');
+    }
+    const enabled = rawArgs['enabled'];
 
     return bridgeCall(
-      () => bridge.setRemoteSpyEnabled(typedArgs.enabled),
+      () => bridge.setRemoteSpyEnabled(enabled),
       result => `Remote Spy ${result.enabled === true ? 'enabled' : 'disabled'}`,
       'Failed to set Remote Spy state',
     );
@@ -42,12 +47,15 @@ export const remoteSpyToolHandlers: ToolHandlerMap = {
     if (hasCapability(bridge.clientCapabilities, 'remoteSpy') === false)
       return errorResult('Error: Remote Spy is not available with the current client');
 
-    const typedArgs = args as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
-    if (Array.isArray(typedArgs.blocks) === false) return errorResult('Error: blocks parameter is required (array)');
+    const rawArgs = asRecord(args);
+    if (Array.isArray(rawArgs?.['blocks']) === false) {
+      return errorResult('Error: blocks parameter is required (array)');
+    }
+    const blocks = rawArgs['blocks'] as Array<{ type: 'path' | 'name'; value: string }>;
 
     return bridgeCall(
-      () => bridge.setRemoteSpyBlockList(typedArgs.blocks),
-      () => `Block list updated (${typedArgs.blocks.length} entries)`,
+      () => bridge.setRemoteSpyBlockList(blocks),
+      () => `Block list updated (${blocks.length} entries)`,
       'Failed to set block list',
     );
   },

@@ -203,6 +203,10 @@ jobs:
         if: steps.version.outputs.should_publish == 'true'
         run: bun run build:mcp
 
+      - name: Build luau-bundler
+        if: steps.version.outputs.should_publish == 'true'
+        run: bun run --cwd packages/luau-bundler build
+
       - name: Sync package versions
         if: steps.version.outputs.should_publish == 'true'
         shell: bash

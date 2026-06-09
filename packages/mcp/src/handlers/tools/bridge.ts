@@ -2,6 +2,7 @@ import { hasCapability } from 'rbxdev-server';
 
 import { formatLogEntry } from '@mcp/utils/formatters';
 import { NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
+import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
 
 import type { ToolHandlerMap } from './shared';
 
@@ -27,7 +28,8 @@ export const bridgeToolHandlers: ToolHandlerMap = {
     if (hasCapability(bridge.clientCapabilities, 'execute') === false)
       return errorResult('Error: Code execution is not available with the current client');
 
-    const code = (args as { code: string }).code;
+    const rawArgs = asRecord(args);
+    const code = rawArgs?.['code'];
     if (typeof code !== 'string' || code.trim() === '') return errorResult('Error: code parameter is required');
 
     try {
@@ -42,9 +44,9 @@ export const bridgeToolHandlers: ToolHandlerMap = {
   },
 
   'get_console_output': async (args, { logBuffer }) => {
-    const typedArgs = args as { limit?: number; level?: 'info' | 'warn' | 'error' | 'all' } | undefined;
-    const limit = typedArgs?.limit ?? 50;
-    const level = typedArgs?.level ?? 'all';
+    const rawArgs = asRecord(args);
+    const limit = normalizePositiveInteger(rawArgs?.['limit'], 50, 1000);
+    const level = rawArgs?.['level'] ?? 'all';
     const filtered = level !== 'all' ? logBuffer.filter(entry => entry.level === level) : logBuffer;
     return textResult(filtered.slice(-limit).map(formatLogEntry).join('\n') || 'No console output');
   },

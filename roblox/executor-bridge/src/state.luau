@@ -22,6 +22,7 @@ M.registerGlobal = function()
 			id = M.BRIDGE_ID,
 			connection = nil,
 			refreshConnections = M.refreshConnections,
+			spyCleanup = nil,
 			alive = true,
 		}
 	end
