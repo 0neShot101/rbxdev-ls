@@ -57,6 +57,10 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
+      - name: Use latest npm
+        if: steps.version.outputs.should_publish == 'true'
+        run: npm install -g npm@latest
+
       - name: Check npm package versions
         if: steps.version.outputs.should_publish == 'true'
         id: npm_status

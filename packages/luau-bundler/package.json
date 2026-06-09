@@ -4,7 +4,7 @@
   "description": "Bundles multiple Luau/Lua source files into a single self-contained script",
   "main": "dist/index.js",
   "bin": {
-    "luau-bundler": "./dist/cli.js"
+    "luau-bundler": "dist/cli.js"
   },
   "type": "module",
   "files": [
