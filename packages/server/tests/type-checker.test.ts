@@ -174,5 +174,18 @@ end`;
       const diagnostics = getDiagnostics('local function foo(a: number, b: string)\n  return a\nend');
       expect(diagnostics.length).toBe(0);
     });
+
+    test('produces no diagnostics for sUNC getgenv usage', () => {
+      const diagnostics = getDiagnostics('getgenv().sharedFlag = true\nlocal value = getgenv().sharedFlag');
+      expect(diagnostics.length).toBe(0);
+    });
+  });
+
+  describe('sUNC Globals', () => {
+    test('types getgenv as a string-keyed any table', () => {
+      const type = getSymbolType('local env = getgenv()', 'env');
+      expect(type).toBeDefined();
+      expect(typeToString(type!)).toBe('{[string]: any}');
+    });
   });
 });

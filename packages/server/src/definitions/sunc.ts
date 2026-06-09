@@ -57,6 +57,8 @@ export const RequestResponseType: TableType = createTableType(
   ]),
 );
 
+const StringAnyTableType = createTableType(new Map(), { 'indexer': { 'keyType': StringType, 'valueType': AnyType } });
+
 const suncTypeToLuau = (typeName: string): LuauType => {
   switch (typeName.toLowerCase()) {
     case 'string':
@@ -76,7 +78,7 @@ const suncTypeToLuau = (typeName: string): LuauType => {
     case 'function':
       return createFunctionType([], AnyType, { 'isVariadic': true });
     case 'table':
-      return createTableType(new Map());
+      return StringAnyTableType;
     case 'thread':
       return { 'kind': 'Primitive', 'name': 'thread' };
     case 'userdata':

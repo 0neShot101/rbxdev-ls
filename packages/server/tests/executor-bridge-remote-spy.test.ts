@@ -31,4 +31,17 @@ describe('Executor Bridge Remote Spy Blocking', () => {
   test('marks blocked remote spy notifications for the UI', () => {
     expect(/_blocked\s*=/.test(remoteSpySource)).toBe(true);
   });
+
+  test('does not use unstable oth hook fallback', () => {
+    expect(remoteSpySource.includes('oth')).toBe(false);
+  });
+
+  test('supports hookfunction method hooks without raw namecall metatable patching', () => {
+    expect(/installWithMethodHooks/.test(remoteSpySource)).toBe(true);
+    expect(/RemoteEvent/.test(remoteSpySource)).toBe(true);
+    expect(/RemoteFunction/.test(remoteSpySource)).toBe(true);
+    expect(/FireServer/.test(remoteSpySource)).toBe(true);
+    expect(/InvokeServer/.test(remoteSpySource)).toBe(true);
+    expect(/pcall\(hookfunction, target, proxy\)/.test(remoteSpySource)).toBe(true);
+  });
 });

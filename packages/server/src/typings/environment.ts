@@ -2048,6 +2048,10 @@ export const addRobloxGlobals = (env: TypeEnvironment): void => {
 
 /** Adds Sunc executor-specific globals to the environment. */
 export const addSuncGlobals = (env: TypeEnvironment): void => {
+  const stringAnyTableType = createTableType(new Map(), {
+    'indexer': { 'keyType': StringType, 'valueType': AnyType },
+  });
+
   defineSymbol(env, 'checkcaller', createFunctionType([], BooleanType), 'Global', false);
   defineSymbol(
     env,
@@ -2119,10 +2123,10 @@ export const addSuncGlobals = (env: TypeEnvironment): void => {
     false,
   );
 
-  defineSymbol(env, 'getgc', createFunctionType([], AnyType), 'Global', false);
-  defineSymbol(env, 'getgenv', createFunctionType([], AnyType), 'Global', false);
-  defineSymbol(env, 'getrenv', createFunctionType([], AnyType), 'Global', false);
-  defineSymbol(env, 'getreg', createFunctionType([], AnyType), 'Global', false);
+  defineSymbol(env, 'getgc', createFunctionType([], stringAnyTableType), 'Global', false);
+  defineSymbol(env, 'getgenv', createFunctionType([], stringAnyTableType), 'Global', false);
+  defineSymbol(env, 'getrenv', createFunctionType([], stringAnyTableType), 'Global', false);
+  defineSymbol(env, 'getreg', createFunctionType([], stringAnyTableType), 'Global', false);
   defineSymbol(
     env,
     'filtergc',

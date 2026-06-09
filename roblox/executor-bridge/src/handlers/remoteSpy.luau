@@ -3,14 +3,15 @@ local protocol = require("protocol")
 
 local M = {}
 
-local isOthHookAvailable = function()
-	return type(oth) == 'table' and type(oth.hook) == 'function'
+local shouldCaptureCaller = function()
+	if type(checkcaller) ~= 'function' then return true end
+	local ok, isExecutorCaller = pcall(checkcaller)
+	return not (ok and isExecutorCaller == true)
 end
 
 local hasAnyHookStrategy = function()
 	if type(hookmetamethod) == 'function' then return true end
-	if type(hookfunction) == 'function' and type(getrawmetatable) == 'function' then return true end
-	if isOthHookAvailable() then return true end
+	if type(hookfunction) == 'function' then return true end
 	return false
 end
 
@@ -31,7 +32,7 @@ local createNamecallProxy = function(logRemoteCall)
 	local oldNamecall = nil
 	local proxy = function(self, ...)
 		local method = getNamecallMethodSafe()
-		if method == 'FireServer' or method == 'InvokeServer' then
+		if shouldCaptureCaller() and (method == 'FireServer' or method == 'InvokeServer') then
 			local blocked, remoteName, remotePath = protocol.getRemoteBlockState(self)
 			logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
 			if blocked then
@@ -52,6 +53,53 @@ local createNamecallProxy = function(logRemoteCall)
 	return proxy, bindOriginal
 end
 
+local createMethodProxy = function(method, logRemoteCall)
+	local oldMethod = nil
+	local proxy = function(self, ...)
+		if shouldCaptureCaller() and typeof(self) == 'Instance' then
+			local className = self.ClassName
+			local isMatchingRemote =
+				(method == 'FireServer' and (className == 'RemoteEvent' or className == 'UnreliableRemoteEvent'))
+				or (method == 'InvokeServer' and className == 'RemoteFunction')
+
+			if isMatchingRemote then
+				local blocked, remoteName, remotePath = protocol.getRemoteBlockState(self)
+				logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
+				if blocked then return nil end
+			end
+		end
+
+		if oldMethod == nil then return nil end
+		return oldMethod(self, ...)
+	end
+
+	local bindOriginal = function(original)
+		oldMethod = original
+	end
+
+	return proxy, bindOriginal
+end
+
+local getRemoteMethod = function(className, method)
+	local okInstance, instance = pcall(Instance.new, className)
+	if not okInstance or typeof(instance) ~= 'Instance' then
+		return nil, className .. ' unavailable'
+	end
+
+	local okMethod, target = pcall(function()
+		return instance[method]
+	end)
+	pcall(function()
+		instance:Destroy()
+	end)
+
+	if not okMethod or type(target) ~= 'function' then
+		return nil, className .. '.' .. method .. ' unavailable'
+	end
+
+	return target
+end
+
 local installWithHookMetamethod = function(logRemoteCall)
 	if type(hookmetamethod) ~= 'function' then
 		return nil, 'hookmetamethod unavailable'
@@ -69,8 +117,64 @@ local installWithHookMetamethod = function(logRemoteCall)
 	bindOriginal(oldNamecall)
 
 	return function()
-		hookmetamethod(game, '__namecall', oldNamecall)
+		pcall(hookmetamethod, game, '__namecall', oldNamecall)
 	end, 'hookmetamethod'
+end
+
+local installWithMethodHooks = function(logRemoteCall)
+	if type(hookfunction) ~= 'function' then
+		return nil, 'hookfunction unavailable for method hooks'
+	end
+
+	local installed = {}
+	local errors = {}
+
+	local cleanup = function()
+		for i = #installed, 1, -1 do
+			local hook = installed[i]
+			pcall(hookfunction, hook.target, hook.original)
+		end
+	end
+
+	local installMethod = function(className, method)
+		local target, targetError = getRemoteMethod(className, method)
+		if target == nil then
+			table.insert(errors, targetError)
+			return
+		end
+
+		local proxy, bindOriginal = createMethodProxy(method, logRemoteCall)
+		if type(newcclosure) == 'function' then
+			local okClosure, cclosure = pcall(newcclosure, proxy)
+			if okClosure and type(cclosure) == 'function' then
+				proxy = cclosure
+			end
+		end
+
+		local okHook, oldMethod = pcall(hookfunction, target, proxy)
+		if not okHook then
+			table.insert(errors, className .. '.' .. method .. ' hook failed: ' .. tostring(oldMethod))
+			return
+		end
+		if type(oldMethod) ~= 'function' then
+			table.insert(errors, className .. '.' .. method .. ' hook did not return a callable original')
+			return
+		end
+
+		bindOriginal(oldMethod)
+		table.insert(installed, { target = target, original = oldMethod })
+	end
+
+	installMethod('RemoteEvent', 'FireServer')
+	installMethod('UnreliableRemoteEvent', 'FireServer')
+	installMethod('RemoteFunction', 'InvokeServer')
+
+	if #installed == 0 then
+		cleanup()
+		return nil, table.concat(errors, '; ')
+	end
+
+	return cleanup, 'method hooks'
 end
 
 local installWithHookfunction = function(logRemoteCall)
@@ -92,6 +196,10 @@ local installWithHookfunction = function(logRemoteCall)
 	end
 
 	local proxy, bindOriginal = createNamecallProxy(logRemoteCall)
+	if type(newcclosure) == 'function' then
+		proxy = newcclosure(proxy)
+	end
+
 	local oldNamecall = hookfunction(ncFunc, proxy)
 	if type(oldNamecall) ~= 'function' then
 		return nil, 'hookfunction did not return a callable original'
@@ -99,50 +207,16 @@ local installWithHookfunction = function(logRemoteCall)
 	bindOriginal(oldNamecall)
 
 	return function()
-		hookfunction(ncFunc, oldNamecall)
+		pcall(hookfunction, ncFunc, oldNamecall)
 	end, 'hookfunction'
-end
-
-local installWithOthHook = function(logRemoteCall)
-	if not isOthHookAvailable() then
-		return nil, 'oth.hook unavailable'
-	end
-	if type(getrawmetatable) ~= 'function' then
-		return nil, 'getrawmetatable unavailable for oth.hook'
-	end
-
-	local mt = getrawmetatable(game)
-	if type(mt) ~= 'table' then
-		return nil, 'raw metatable unavailable for oth.hook'
-	end
-
-	local ncFunc = rawget(mt, '__namecall')
-	if type(ncFunc) ~= 'function' then
-		return nil, '__namecall missing for oth.hook'
-	end
-
-	local proxy, bindOriginal = createNamecallProxy(logRemoteCall)
-	local oldNamecall = oth.hook(ncFunc, proxy)
-	if type(oldNamecall) ~= 'function' then
-		return nil, 'oth.hook did not return a callable original'
-	end
-	bindOriginal(oldNamecall)
-
-	return function()
-		if type(oth.unhook) == 'function' then
-			oth.unhook(ncFunc)
-		else
-			oth.hook(ncFunc, oldNamecall)
-		end
-	end, 'oth.hook'
 end
 
 local installNamecallHook = function(logRemoteCall)
 	local errors = {}
 	local strategies = {
 		installWithHookMetamethod,
+		installWithMethodHooks,
 		installWithHookfunction,
-		installWithOthHook,
 	}
 
 	for _, installer in ipairs(strategies) do
