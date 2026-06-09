@@ -183,24 +183,95 @@ const pollExecutorStatus = async (): Promise<void> => {
 };
 
 const BUNDLER_PACKAGE = '@oneshot101/luau-bundler';
+const BUNDLER_BIN = 'luau-bundler';
+
+type BundlerCommand = {
+  command: string;
+  prefix: string[];
+  label: string;
+};
+
+type BundlerRunError = Error & {
+  code?: string;
+};
+
+const commandShims = (command: string): string[] => (process.platform === 'win32' ? [`${command}.cmd`, command] : [command]);
+
+const isMissingExecutableError = (err: unknown): boolean => {
+  if (err instanceof Error === false) return false;
+  const code = (err as BundlerRunError).code;
+  return code === 'ENOENT' || err.message.includes('ENOENT');
+};
+
+const execBundlerCommand = (candidate: BundlerCommand, args: string[], cwd: string): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    execFile(candidate.command, [...candidate.prefix, ...args], { cwd, 'windowsHide': true }, (error, _stdout, stderr) => {
+      if (error !== null) {
+        const message = stderr.trim() !== '' ? stderr.trim() : error.message;
+        const runError = new Error(message) as BundlerRunError;
+        if (typeof error.code === 'string') runError.code = error.code;
+        reject(runError);
+        return;
+      }
+
+      resolve();
+    });
+  });
+
+const runBundlerCommand = async (candidates: BundlerCommand[], args: string[], cwd: string): Promise<void> => {
+  const missingLaunchers: string[] = [];
+
+  for (const candidate of candidates) {
+    try {
+      await execBundlerCommand(candidate, args, cwd);
+      return;
+    } catch (err) {
+      if (isMissingExecutableError(err)) {
+        missingLaunchers.push(candidate.label);
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw new Error(
+    `Could not find a bundler launcher (${missingLaunchers.join(', ')}). Install Node.js/npm or set rbxdev-ls.bundler.path to a luau-bundler executable.`,
+  );
+};
 
 /**
- * Resolves the bundler command. Priority order:
+ * Resolves bundler commands. Priority order:
  * 1. User-configured custom path (rbxdev-ls.bundler.path setting)
  * 2. Local workspace copy (../luau-bundler/src/cli.ts via bun, for development)
- * 3. Published package via npx (for end users)
+ * 3. Published package via npx/npm exec (for end users)
  * @param context - The VS Code extension context.
- * @returns The command and args array to spawn the bundler.
+ * @returns Ordered command candidates and their prefix args.
  */
-const resolveBundlerCommand = (context: ExtensionContext): { command: string; prefix: string[] } => {
+const resolveBundlerCommands = (context: ExtensionContext): BundlerCommand[] => {
   const config = workspace.getConfiguration('rbxdev-ls');
   const customPath = config.get<string>('bundler.path', '');
-  if (customPath !== '' && fs.existsSync(customPath)) return { 'command': customPath, 'prefix': [] };
+  if (customPath !== '' && fs.existsSync(customPath)) return [{ 'command': customPath, 'prefix': [], 'label': customPath }];
 
+  const candidates: BundlerCommand[] = [];
   const localCli = path.join(context.extensionPath, '..', 'luau-bundler', 'src', 'cli.ts');
-  if (fs.existsSync(localCli)) return { 'command': 'bun', 'prefix': [localCli] };
+  if (fs.existsSync(localCli)) {
+    for (const command of commandShims('bun')) candidates.push({ command, 'prefix': [localCli], 'label': command });
+  }
 
-  return { 'command': 'npx', 'prefix': ['-y', BUNDLER_PACKAGE] };
+  for (const command of commandShims('npx')) {
+    candidates.push({ command, 'prefix': ['-y', BUNDLER_PACKAGE], 'label': command });
+  }
+
+  for (const command of commandShims('npm')) {
+    candidates.push({
+      command,
+      'prefix': ['exec', '-y', '--package', BUNDLER_PACKAGE, '--', BUNDLER_BIN],
+      'label': `${command} exec`,
+    });
+  }
+
+  return candidates;
 };
 
 export const activate = (context: ExtensionContext): void => {
@@ -749,9 +820,9 @@ export const activate = (context: ExtensionContext): void => {
       }
     }
 
-    const { command, prefix } = resolveBundlerCommand(context);
+    const bundlerCommands = resolveBundlerCommands(context);
     const srcArgs = project !== undefined ? ['--project', project] : ['--src', srcDir];
-    const bundlerArgs = [...prefix, ...srcArgs, '--out', outputFile, '--entry', entry];
+    const bundlerArgs = [...srcArgs, '--out', outputFile, '--entry', entry];
     const outputPath = path.join(workspaceRoot, outputFile);
 
     try {
@@ -762,15 +833,7 @@ export const activate = (context: ExtensionContext): void => {
           'cancellable': false,
         },
         () =>
-          new Promise<void>((resolve, reject) => {
-            execFile(command, bundlerArgs, { 'cwd': workspaceRoot }, (error, _stdout, stderr) => {
-              if (error !== null) {
-                reject(new Error(stderr || error.message));
-                return;
-              }
-              resolve();
-            });
-          }),
+          runBundlerCommand(bundlerCommands, bundlerArgs, workspaceRoot),
       );
     } catch (err) {
       window.showErrorMessage(`Bundle failed: ${err instanceof Error ? err.message : String(err)}`);

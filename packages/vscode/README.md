@@ -160,7 +160,7 @@ All settings are under the `rbxdev-ls` namespace in VS Code.
 | `rbxdev-ls.enableSuncApi`                  | `true`                                | Enable Sunc executor API completions and type checking                              |
 | `rbxdev-ls.executorBridge.port`            | `21324`                               | WebSocket port for executor bridge connections                                      |
 | `rbxdev-ls.mcp.enabled`                    | `true`                                | Enable the built-in MCP server for AI assistants                                    |
-| `rbxdev-ls.bundler.path`                   | `""`                                  | Custom path to the `luau-bundle` executable; leave empty to auto-download           |
+| `rbxdev-ls.bundler.path`                   | `""`                                  | Custom path to the `luau-bundler` executable; leave empty to auto-run through npx/npm |
 | `rbxdev-ls.saveInstance.decompile`         | `true`                                | Decompile scripts when saving instances to disk                                     |
 | `rbxdev-ls.saveInstance.noscripts`         | `false`                               | Exclude all scripts from saved instances                                            |
 | `rbxdev-ls.saveInstance.excludeServices`   | `["Chat", "CoreGui", "CorePackages"]` | Services to exclude from full DataModel saves                                       |
