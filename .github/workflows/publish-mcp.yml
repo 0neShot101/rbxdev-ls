@@ -57,28 +57,52 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
-      - name: Setup Bun
+      - name: Check npm package versions
         if: steps.version.outputs.should_publish == 'true'
+        id: npm_status
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+
+          check_package() {
+            local package_name="$1"
+            local output_name="$2"
+
+            if npm view "${package_name}@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "${package_name}@${version} already exists; skipping publish."
+              echo "${output_name}=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "${package_name}@${version} is not published; publishing."
+              echo "${output_name}=true" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          check_package "@oneshot101/rbxdev-mcp" "publish_mcp"
+          check_package "@oneshot101/luau-bundler" "publish_luau_bundler"
+
+      - name: Setup Bun
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
         uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
         run: bun install --frozen-lockfile
 
       - name: Build server (for exports)
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_mcp == 'true'
         run: bun run build
 
       - name: Build MCP
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_mcp == 'true'
         run: bun run build:mcp
 
       - name: Build luau-bundler
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_luau_bundler == 'true'
         run: bun run --cwd packages/luau-bundler build
 
       - name: Sync package versions
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
         shell: bash
         run: |
           version="${{ steps.version.outputs.version }}"
@@ -92,11 +116,11 @@ jobs:
           done
 
       - name: Publish MCP to npm
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_mcp == 'true'
         working-directory: packages/mcp
         run: npm publish --access public
 
       - name: Publish luau-bundler to npm
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.npm_status.outputs.publish_luau_bundler == 'true'
         working-directory: packages/luau-bundler
         run: npm publish --access public
