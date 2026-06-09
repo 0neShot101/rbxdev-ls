@@ -24,7 +24,7 @@ If you want AI assistants (Claude, Cursor, Windsurf) to interact with your game,
 The bundler is available as a standalone CLI for bundling multi-file Luau projects into a single script:
 
 ```bash
-npx @0neshot101/luau-bundler --src src --out dist/out.lua
+npx @oneshot101/luau-bundler --src src --out dist/out.lua
 ```
 
 See the [Luau Bundler guide](/docs/guides/luau-bundler) for configuration and usage.

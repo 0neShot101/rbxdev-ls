@@ -1182,7 +1182,7 @@ describe('ExecutorBridge - EADDRINUSE auto-fallback', () => {
 
 describe('MCP Server - injected bridge', () => {
   test('createMcpServer accepts injected bridge', async () => {
-    const { createMcpServer } = await import('@0neshot101/rbxdev-mcp/server');
+    const { createMcpServer } = await import('@oneshot101/rbxdev-mcp/server');
     const bridge = createExecutorBridge(noop);
     const result = createMcpServer(bridge);
     expect(result.bridge).toBe(bridge);
@@ -1190,7 +1190,7 @@ describe('MCP Server - injected bridge', () => {
   });
 
   test('createMcpServer uses default bridge when none provided', async () => {
-    const { createMcpServer } = await import('@0neshot101/rbxdev-mcp/server');
+    const { createMcpServer } = await import('@oneshot101/rbxdev-mcp/server');
     const result = createMcpServer();
     expect(result.bridge).toBeDefined();
     expect(typeof result.bridge.execute).toBe('function');

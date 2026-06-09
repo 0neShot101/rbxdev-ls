@@ -19,6 +19,10 @@ if getgenv and getgenv()._RBXDEV_BRIDGE then
 	local old = getgenv()._RBXDEV_BRIDGE
 	if old.connection then pcall(old.connection.Close, old.connection) end
 	for _, conn in ipairs(old.refreshConnections or {}) do pcall(conn.Disconnect, conn) end
+	if old.spyCleanup ~= nil then
+		pcall(old.spyCleanup)
+		old.spyCleanup = nil
+	end
 	old.alive = false
 end
 

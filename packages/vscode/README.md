@@ -21,7 +21,7 @@
 
 rbxdev-ls is a VS Code extension that brings full Roblox API support and Luau type checking to your editor. It ships a custom language server that understands Roblox classes, services, data types, enums, and the Luau type system &mdash; providing completions, diagnostics, hover documentation, go-to-definition, rename, and formatting out of the box.
 
-Beyond language features, the extension connects to a live Roblox game through a WebSocket executor bridge. This gives you a Game Tree explorer, a Properties panel, in-editor code execution, a Remote Spy, and instance manipulation &mdash; all without leaving VS Code. It also exposes 16 language model tools for GitHub Copilot and a built-in MCP server for Claude, Cursor, and other AI assistants, so your AI tools can interact with the running game directly.
+Beyond language features, the extension connects to a live Roblox game through a WebSocket executor bridge. This gives you a Game Tree explorer, a Properties panel, in-editor code execution, a Remote Spy, and instance manipulation &mdash; all without leaving VS Code. It also exposes 19 language model tools for GitHub Copilot and a built-in MCP server for Claude, Cursor, and other AI assistants, so your AI tools can interact with the running game directly.
 
 ## Features
 
@@ -30,7 +30,7 @@ Beyond language features, the extension connects to a live Roblox game through a
 - **Live Game Tree** &mdash; Browse the running game hierarchy, inspect properties, and manipulate instances from the VS Code sidebar
 - **In-editor code execution** &mdash; Execute Luau files or selections in the game with a single keybinding
 - **Remote Spy** &mdash; Monitor RemoteEvent and RemoteFunction calls in real time with copyable Luau reproduction code
-- **AI integration** &mdash; 16 language model tools for GitHub Copilot plus a built-in MCP server for external AI assistants
+- **AI integration** &mdash; 19 language model tools for GitHub Copilot plus a built-in MCP server for external AI assistants
 - **Bundle and execute** &mdash; Bundle multi-file Luau projects with `luau-bundle` and execute the result in-game
 - **Save instances** &mdash; Save the full DataModel or individual instances to `.rbxl`/`.rbxm` files with optional script decompilation
 - **Rojo sourcemap support** &mdash; Reads `sourcemap.json` for go-to-definition and module resolution in Rojo-managed projects
@@ -124,11 +124,11 @@ Create, clone, delete, and reparent instances directly from the Game Tree. Drag 
 
 ### GitHub Copilot Tools
 
-The extension registers 16 language model tools that GitHub Copilot can call directly. These cover the same capabilities as the MCP tools: bridge status, code execution, game tree traversal, property read/write, instance manipulation, script decompilation, console output, and Remote Spy.
+The extension registers 19 language model tools that GitHub Copilot can call directly. These cover the same capabilities as the MCP tools: bridge status, code execution, game tree traversal, property read/write, instance manipulation, script editing through Studio, saving instances, console output, and Remote Spy.
 
 ### Built-in MCP Server
 
-The extension includes an embedded MCP server that external AI assistants (Claude, Cursor, Windsurf) can connect to. When `rbxdev-ls.mcp.enabled` is `true` (the default), the server starts automatically and shares the extension's executor bridge. See the [@0neshot101/rbxdev-mcp](https://www.npmjs.com/package/@0neshot101/rbxdev-mcp) package for standalone MCP usage outside VS Code.
+The extension includes an embedded MCP server that external AI assistants (Claude, Cursor, Windsurf) can connect to. When `rbxdev-ls.mcp.enabled` is `true` (the default), the server starts automatically and shares the extension's executor bridge. See the [@oneshot101/rbxdev-mcp](https://www.npmjs.com/package/@oneshot101/rbxdev-mcp) package for standalone MCP usage outside VS Code.
 
 ### MCP Resources
 

@@ -10,6 +10,7 @@
     "sourceMap": true,
     "skipLibCheck": true,
     "paths": {
+      "@mcp/*": ["./src/*"],
       "@core/*": ["../server/src/core/*"],
       "@parser/*": ["../server/src/parser/*"],
       "@typings/*": ["../server/src/typings/*"],

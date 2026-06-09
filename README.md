@@ -5,7 +5,7 @@
   <p>
     <a href="https://marketplace.visualstudio.com/items?itemName=rbxdev.rbxdev-ls"><img src="https://img.shields.io/visual-studio-marketplace/v/rbxdev.rbxdev-ls?label=VS%20Code%20Marketplace&style=flat-square" alt="VS Code Marketplace"></a>
     <a href="https://open-vsx.org/extension/rbxdev/rbxdev-ls"><img src="https://img.shields.io/open-vsx/v/rbxdev/rbxdev-ls?label=Open%20VSX&style=flat-square" alt="Open VSX"></a>
-    <a href="https://github.com/0neShot101/rbxdev-ls/packages"><img src="https://img.shields.io/badge/MCP-0.3.6-blue?style=flat-square" alt="MCP"></a>
+    <a href="https://www.npmjs.com/package/@oneshot101/rbxdev-mcp"><img src="https://img.shields.io/npm/v/@oneshot101/rbxdev-mcp?style=flat-square" alt="MCP"></a>
     <a href="https://github.com/0neShot101/rbxdev-ls/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   </p>
 </div>
@@ -14,7 +14,7 @@
 
 ## Overview
 
-rbxdev-ls is a monorepo that ships a full-featured Luau language server, a VS Code extension, a standalone MCP server, and a Roblox Studio bridge plugin. The workspaces are **server** (parser, type checker, 30+ LSP handlers, and the executor bridge protocol), **vscode** (game tree explorer, properties panel, remote spy, and AI tool registration), **mcp** (the `@0neshot101/rbxdev-mcp` package for Claude, Cursor, Windsurf, and other MCP-compatible assistants), and **studio-plugin** (a Luau plugin built with Rojo that bridges Studio to the language server).
+rbxdev-ls is a monorepo that ships a full-featured Luau language server, a VS Code extension, a standalone MCP server, and a Roblox Studio bridge plugin. The workspaces are **server** (parser, type checker, 30+ LSP handlers, and the executor bridge protocol), **vscode** (game tree explorer, properties panel, remote spy, and AI tool registration), **mcp** (the `@oneshot101/rbxdev-mcp` package for Claude, Cursor, Windsurf, and other MCP-compatible assistants), and **studio-plugin** (a Luau plugin built with Rojo that bridges Studio to the language server).
 
 Most Luau editors offer syntax highlighting and maybe basic completions. rbxdev-ls goes further by loading the official Roblox API dump for type-aware completions and hover docs, running a real type checker that respects `--!strict` / `--!nonstrict` / `--!nocheck` annotations, and layering live-game tooling on top &mdash; you can browse the instance hierarchy, edit properties, execute code, and spy on remote calls without leaving your editor. The MCP server extends the same bridge to AI assistants so they can read game state and run code as part of a conversation.
 
@@ -27,8 +27,8 @@ Most Luau editors offer syntax highlighting and maybe basic completions. rbxdev-
 - **Game Tree explorer** &mdash; a sidebar panel that renders the live instance hierarchy from a connected Roblox game, with expand/collapse, property inspection, and context-menu actions.
 - **Remote Spy** &mdash; captures RemoteEvent and RemoteFunction traffic in real time, with filtering, block lists, and quick-copy to reproduce calls.
 - **In-editor code execution** &mdash; run the current file, a selection, or a bundled multi-file payload directly inside the game.
-- **MCP server for AI assistants** &mdash; 16 tools (execute code, browse the game tree, read/write properties, manage instances, read console output, and more) exposed over the Model Context Protocol.
-- **GitHub Copilot integration** &mdash; the same 16 tools are registered with VS Code's Language Model API so Copilot can interact with the game without a separate MCP client.
+- **MCP server for AI assistants** &mdash; 19 tools (execute code, browse the game tree, read/write properties, manage instances, read console output, and more) exposed over the Model Context Protocol.
+- **GitHub Copilot integration** &mdash; the same 19 tools are registered with VS Code's Language Model API so Copilot can interact with the game without a separate MCP client.
 - **Instance manipulation** &mdash; create, clone, delete, reparent, and teleport to instances from the editor or through AI tools.
 
 ## Table of Contents
@@ -100,7 +100,7 @@ graph TD
     end
 
     subgraph MCP["MCP Server"]
-        MCPS["@0neshot101/rbxdev-mcp"]
+        MCPS["@oneshot101/rbxdev-mcp"]
     end
 
     subgraph Game["Roblox Game"]
@@ -204,15 +204,11 @@ loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/0neShot101/rbxde
 
 ## MCP Server
 
-The `@0neshot101/rbxdev-mcp` package exposes 16 tools over the Model Context Protocol, letting Claude, Cursor, Windsurf, and other MCP-compatible AI assistants interact with a live Roblox game. It requires Node.js 18+ and a running executor bridge connection.
+The `@oneshot101/rbxdev-mcp` package exposes 19 tools over the Model Context Protocol, letting Claude, Cursor, Windsurf, and other MCP-compatible AI assistants interact with a live Roblox game. It requires Node.js 18+ and a running executor bridge connection.
 
 ### Setup
 
-The package is hosted on GitHub Packages. Configure npm to use the GitHub registry for the `@0neshot101` scope by adding this to your `~/.npmrc`:
-
-```
-@0neshot101:registry=https://npm.pkg.github.com
-```
+The package is published to the public npm registry under the `@oneshot101` scope.
 
 Then add this block to your MCP client configuration:
 
@@ -221,7 +217,7 @@ Then add this block to your MCP client configuration:
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"]
+      "args": ["-y", "@oneshot101/rbxdev-mcp"]
     }
   }
 }
@@ -249,7 +245,7 @@ To use a non-default port, set the `RBXDEV_BRIDGE_PORT` environment variable:
   "mcpServers": {
     "rbxdev-roblox": {
       "command": "npx",
-      "args": ["-y", "@0neshot101/rbxdev-mcp"],
+      "args": ["-y", "@oneshot101/rbxdev-mcp"],
       "env": {
         "RBXDEV_BRIDGE_PORT": "21325"
       }
@@ -279,6 +275,9 @@ To use a non-default port, set the `RBXDEV_BRIDGE_PORT` environment variable:
 | `refresh_game_tree`      | Request a fresh snapshot of the game tree                               |
 | `get_remote_calls`       | View captured RemoteEvent/RemoteFunction calls                          |
 | `set_remote_spy_enabled` | Toggle the remote spy on or off                                         |
+| `set_remote_spy_block_list` | Block selected remotes from firing to the server                    |
+| `set_script_source`      | Update script source when connected through Studio                      |
+| `save_instance`          | Save the game or a specific instance to a file                          |
 
 The server also exposes three MCP resources for passive reading:
 
@@ -338,8 +337,8 @@ rbxdev-ls/
 │   │       ├── gameTreeProvider.ts Game tree sidebar data provider
 │   │       ├── propertiesProvider.ts Properties panel data provider
 │   │       ├── remoteSpyWebview.ts Remote spy webview panel
-│   │       └── mcpTools.ts        16 language model tools for Copilot integration
-│   ├── mcp/                       Standalone MCP server (@0neshot101/rbxdev-mcp)
+│   │       └── mcpTools.ts        19 language model tools for Copilot integration
+│   ├── mcp/                       Standalone MCP server (@oneshot101/rbxdev-mcp)
 │   │   └── src/
 │   │       ├── index.ts           Entry point (stdio transport)
 │   │       └── server.ts          Tool and resource registration
@@ -349,7 +348,6 @@ rbxdev-ls/
 ├── scripts/                       Build orchestration and maintenance
 │   ├── build-vsix.ts              Packages the VS Code extension as a .vsix
 │   ├── build-studio-plugin.ts     Builds the Studio plugin via Rojo
-│   ├── publish-mcp.ts             Publishes @0neshot101/rbxdev-mcp to GitHub Packages
 │   ├── fetch-roblox-api.ts        Downloads the latest Roblox API dump
 │   └── executor-bridge.lua        Bridge script loaded by executors at runtime
 └── package.json                   Workspace root (bun workspaces)

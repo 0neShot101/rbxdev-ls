@@ -32,7 +32,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
-    "@0neshot101/rbxdev-mcp": "workspace:*",
+    "@oneshot101/rbxdev-mcp": "workspace:*",
     "@types/bun": "latest",
     "@types/ws": "^8.18.1"
   },

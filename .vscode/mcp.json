@@ -3,7 +3,7 @@
     "rbxdev-ls": {
       "type": "stdio",
       "command": "node",
-      "args": ["${workspaceFolder}/dist/mcp.js"],
+      "args": ["${workspaceFolder}/packages/mcp/dist/index.js"],
       "env": {
         "RBXDEV_BRIDGE_PORT": "${config:rbxdev-ls.executorBridge.port}"
       },

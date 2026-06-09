@@ -20,10 +20,11 @@
   const particles: Particle[] = [];
   let animationFrame: number;
   let mounted = false;
+  let enabled = false;
 
   const mouse = { 'x': -9999, 'y': -9999 };
 
-  const PARTICLE_COUNT = 80;
+  const PARTICLE_COUNT = 56;
   const CONNECTION_DISTANCE = 120;
   const CONNECTION_DISTANCE_SQ = CONNECTION_DISTANCE ** 2;
   const MOUSE_INFLUENCE = 150;
@@ -198,21 +199,21 @@
   };
 
   const handleMouseMove = (e: MouseEvent) => updateMouse(e.clientX, e.clientY);
-  const handleTouchMove = (e: TouchEvent) => {
-    e.preventDefault();
-    const t = e.touches[0];
-    if (t) updateMouse(t.clientX, t.clientY);
-  };
 
   onMount(() => {
     if (browser === false) return;
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const hasFinePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    enabled = prefersReducedMotion === false && hasFinePointer;
+    if (enabled === false) return;
+
     mounted = true;
     ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('touchmove', handleTouchMove, { 'passive': false });
 
     animate();
   });
@@ -223,10 +224,9 @@
     cancelAnimationFrame(animationFrame);
     window.removeEventListener('resize', resizeCanvas);
     window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('touchmove', handleTouchMove);
   });
 </script>
 
 {#if browser}
-  <canvas bind:this={canvas} class="fixed inset-0 z-0 h-full w-full pointer-events-none"></canvas>
+  <canvas bind:this={canvas} class:hidden={!enabled} class="fixed inset-0 z-0 h-full w-full pointer-events-none"></canvas>
 {/if}

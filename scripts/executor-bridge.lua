@@ -738,8 +738,165 @@ _modules["handlers/remoteSpy.luau"] = {
 			
 			local M = {}
 			
+			local isOthHookAvailable = function()
+				return type(oth) == 'table' and type(oth.hook) == 'function'
+			end
+			
+			local hasAnyHookStrategy = function()
+				if type(hookmetamethod) == 'function' then return true end
+				if type(hookfunction) == 'function' and type(getrawmetatable) == 'function' then return true end
+				if isOthHookAvailable() then return true end
+				return false
+			end
+			
+			local getNamecallMethodSafe = function()
+				if type(getnamecallmethod) ~= 'function' then return nil end
+				local ok, method = pcall(getnamecallmethod)
+				if not ok or type(method) ~= 'string' then return nil end
+				return method
+			end
+			
+			local restoreNamecallMethodSafe = function(method)
+				if type(setnamecallmethod) ~= 'function' then return end
+				if type(method) ~= 'string' then return end
+				pcall(setnamecallmethod, method)
+			end
+			
+			local createNamecallProxy = function(logRemoteCall)
+				local oldNamecall = nil
+				local proxy = function(self, ...)
+					local method = getNamecallMethodSafe()
+					if method == 'FireServer' or method == 'InvokeServer' then
+						local blocked, remoteName, remotePath = protocol.getRemoteBlockState(self)
+						logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
+						if blocked then
+							restoreNamecallMethodSafe(method)
+							return nil
+						end
+					end
+			
+					restoreNamecallMethodSafe(method)
+					if oldNamecall == nil then return nil end
+					return oldNamecall(self, ...)
+				end
+			
+				local bindOriginal = function(original)
+					oldNamecall = original
+				end
+			
+				return proxy, bindOriginal
+			end
+			
+			local installWithHookMetamethod = function(logRemoteCall)
+				if type(hookmetamethod) ~= 'function' then
+					return nil, 'hookmetamethod unavailable'
+				end
+			
+				local proxy, bindOriginal = createNamecallProxy(logRemoteCall)
+				if type(newcclosure) == 'function' then
+					proxy = newcclosure(proxy)
+				end
+			
+				local oldNamecall = hookmetamethod(game, '__namecall', proxy)
+				if type(oldNamecall) ~= 'function' then
+					return nil, 'hookmetamethod did not return a callable original'
+				end
+				bindOriginal(oldNamecall)
+			
+				return function()
+					hookmetamethod(game, '__namecall', oldNamecall)
+				end, 'hookmetamethod'
+			end
+			
+			local installWithHookfunction = function(logRemoteCall)
+				if type(hookfunction) ~= 'function' then
+					return nil, 'hookfunction unavailable'
+				end
+				if type(getrawmetatable) ~= 'function' then
+					return nil, 'getrawmetatable unavailable'
+				end
+			
+				local mt = getrawmetatable(game)
+				if type(mt) ~= 'table' then
+					return nil, 'raw metatable unavailable'
+				end
+			
+				local ncFunc = rawget(mt, '__namecall')
+				if type(ncFunc) ~= 'function' then
+					return nil, '__namecall missing from raw metatable'
+				end
+			
+				local proxy, bindOriginal = createNamecallProxy(logRemoteCall)
+				local oldNamecall = hookfunction(ncFunc, proxy)
+				if type(oldNamecall) ~= 'function' then
+					return nil, 'hookfunction did not return a callable original'
+				end
+				bindOriginal(oldNamecall)
+			
+				return function()
+					hookfunction(ncFunc, oldNamecall)
+				end, 'hookfunction'
+			end
+			
+			local installWithOthHook = function(logRemoteCall)
+				if not isOthHookAvailable() then
+					return nil, 'oth.hook unavailable'
+				end
+				if type(getrawmetatable) ~= 'function' then
+					return nil, 'getrawmetatable unavailable for oth.hook'
+				end
+			
+				local mt = getrawmetatable(game)
+				if type(mt) ~= 'table' then
+					return nil, 'raw metatable unavailable for oth.hook'
+				end
+			
+				local ncFunc = rawget(mt, '__namecall')
+				if type(ncFunc) ~= 'function' then
+					return nil, '__namecall missing for oth.hook'
+				end
+			
+				local proxy, bindOriginal = createNamecallProxy(logRemoteCall)
+				local oldNamecall = oth.hook(ncFunc, proxy)
+				if type(oldNamecall) ~= 'function' then
+					return nil, 'oth.hook did not return a callable original'
+				end
+				bindOriginal(oldNamecall)
+			
+				return function()
+					if type(oth.unhook) == 'function' then
+						oth.unhook(ncFunc)
+					else
+						oth.hook(ncFunc, oldNamecall)
+					end
+				end, 'oth.hook'
+			end
+			
+			local installNamecallHook = function(logRemoteCall)
+				local errors = {}
+				local strategies = {
+					installWithHookMetamethod,
+					installWithHookfunction,
+					installWithOthHook,
+				}
+			
+				for _, installer in ipairs(strategies) do
+					local ok, cleanup, strategyOrError = pcall(installer, logRemoteCall)
+					if ok and type(cleanup) == 'function' then
+						return cleanup, strategyOrError
+					end
+					if ok then
+						table.insert(errors, tostring(strategyOrError))
+					else
+						table.insert(errors, tostring(cleanup))
+					end
+				end
+			
+				return nil, table.concat(errors, '; ')
+			end
+			
 			M.handleSetRemoteSpyEnabled = function(message)
-				if oth == nil and hookmetamethod == nil then
+				if not hasAnyHookStrategy() then
 					protocol.sendResult('setRemoteSpyEnabledResult', message.id, false, { error = 'No hooking method available in this executor' })
 					return
 				end
@@ -773,54 +930,16 @@ _modules["handlers/remoteSpy.luau"] = {
 							end)
 						end
 			
-						if oth ~= nil and type(oth.hook) == 'function' then
-							local mt = getrawmetatable(game)
-							local ncFunc = rawget(mt, '__namecall')
-							local oldNamecall
-							oldNamecall = oth.hook(ncFunc, function(self, ...)
-								local method = getnamecallmethod()
-								if method == 'FireServer' or method == 'InvokeServer' then
-									local blocked, remoteName, remotePath = protocol.getRemoteBlockState(self)
-									logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
-									if blocked then
-										setnamecallmethod(method)
-										return nil
-									end
-								end
-								setnamecallmethod(method)
-								return oldNamecall(self, ...)
-							end)
-			
-							state.spyCleanup = function()
-								if type(oth.unhook) == 'function' then
-									oth.unhook(ncFunc)
-								else
-									oth.hook(ncFunc, oldNamecall)
-								end
-							end
-							print'[rbxdev-bridge] Remote spy enabled (oth)'
-			
-						else
-							local oldNamecall
-							oldNamecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
-								local method = getnamecallmethod()
-								if method == 'FireServer' or method == 'InvokeServer' then
-									local blocked, remoteName, remotePath = protocol.getRemoteBlockState(self)
-									logRemoteCall(self, method, blocked, remoteName, remotePath, ...)
-									if blocked then
-										setnamecallmethod(method)
-										return nil
-									end
-								end
-								setnamecallmethod(method)
-								return oldNamecall(self, ...)
-							end))
-			
-							state.spyCleanup = function()
-								hookmetamethod(game, '__namecall', oldNamecall)
-							end
-							print'[rbxdev-bridge] Remote spy enabled (hookmetamethod)'
+						local cleanup, strategyOrError = installNamecallHook(logRemoteCall)
+						if cleanup == nil then
+							error('Failed to install remote spy hook: ' .. tostring(strategyOrError))
 						end
+			
+						state.spyCleanup = cleanup
+						if getgenv and getgenv()._RBXDEV_BRIDGE then
+							getgenv()._RBXDEV_BRIDGE.spyCleanup = cleanup
+						end
+						print('[rbxdev-bridge] Remote spy enabled (' .. tostring(strategyOrError) .. ')')
 			
 						state.remoteSpyEnabled = true
 			
@@ -828,6 +947,9 @@ _modules["handlers/remoteSpy.luau"] = {
 						if state.spyCleanup ~= nil then
 							pcall(state.spyCleanup)
 							state.spyCleanup = nil
+							if getgenv and getgenv()._RBXDEV_BRIDGE then
+								getgenv()._RBXDEV_BRIDGE.spyCleanup = nil
+							end
 						end
 						state.remoteSpyEnabled = false
 						print'[rbxdev-bridge] Remote spy disabled'
@@ -984,6 +1106,10 @@ _modules["init.luau"] = {
 				local old = getgenv()._RBXDEV_BRIDGE
 				if old.connection then pcall(old.connection.Close, old.connection) end
 				for _, conn in ipairs(old.refreshConnections or {}) do pcall(conn.Disconnect, conn) end
+				if old.spyCleanup ~= nil then
+					pcall(old.spyCleanup)
+					old.spyCleanup = nil
+				end
 				old.alive = false
 			end
 			
@@ -1647,6 +1773,7 @@ _modules["state.luau"] = {
 						id = M.BRIDGE_ID,
 						connection = nil,
 						refreshConnections = M.refreshConnections,
+						spyCleanup = nil,
 						alive = true,
 					}
 				end

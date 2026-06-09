@@ -1,14 +1,21 @@
 {
-  "name": "@0neshot101/luau-bundler",
+  "name": "@oneshot101/luau-bundler",
   "version": "0.1.0",
   "description": "Bundles multiple Luau/Lua source files into a single self-contained script",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "bin": {
-    "luau-bundler": "./src/cli.ts"
+    "luau-bundler": "./dist/cli.js"
   },
   "type": "module",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
-    "build": "bun build src/cli.ts --outdir dist --target node",
+    "build": "bun build src/index.ts src/cli.ts --outdir dist --target node",
     "test": "bun test"
   },
   "author": "Andrew",
@@ -21,5 +28,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

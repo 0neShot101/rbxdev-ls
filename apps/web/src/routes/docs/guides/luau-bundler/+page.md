@@ -52,13 +52,13 @@ Install globally or run via npx:
 
 ```bash
 # Direct source directory
-npx @0neshot101/luau-bundler --src src --out dist/out.lua
+npx @oneshot101/luau-bundler --src src --out dist/out.lua
 
 # From a Rojo project
-npx @0neshot101/luau-bundler --project default.project.json --out dist/out.lua
+npx @oneshot101/luau-bundler --project default.project.json --out dist/out.lua
 
 # Custom entry point
-npx @0neshot101/luau-bundler --src src --out dist/out.lua --entry main
+npx @oneshot101/luau-bundler --src src --out dist/out.lua --entry main
 ```
 
 ## How it works

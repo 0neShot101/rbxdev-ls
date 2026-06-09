@@ -171,7 +171,7 @@
   <span class="text-brand-300">"mcpServers"</span><span class="text-text-muted">: &#123;</span>
     <span class="text-brand-300">"rbxdev-roblox"</span><span class="text-text-muted">: &#123;</span>
       <span class="text-accent-400">"command"</span><span class="text-text-muted">:</span> <span class="text-green-400">"npx"</span><span class="text-text-muted">,</span>
-      <span class="text-accent-400">"args"</span><span class="text-text-muted">:</span> <span class="text-text-muted">[</span><span class="text-green-400">"-y"</span><span class="text-text-muted">,</span> <span class="text-green-400">"@0neshot101/rbxdev-mcp"</span><span class="text-text-muted">]</span>
+      <span class="text-accent-400">"args"</span><span class="text-text-muted">:</span> <span class="text-text-muted">[</span><span class="text-green-400">"-y"</span><span class="text-text-muted">,</span> <span class="text-green-400">"@oneshot101/rbxdev-mcp"</span><span class="text-text-muted">]</span>
     <span class="text-text-muted">&#125;</span>
   <span class="text-text-muted">&#125;</span>
 <span class="text-text-muted">&#125;</span></code></pre>
@@ -186,7 +186,7 @@
 					Let AI work with your game
 				</h2>
 				<p class="mb-8 text-lg leading-relaxed text-text-secondary">
-					The MCP server exposes 16 tools that let Claude, Cursor, and Windsurf interact with
+					The MCP server exposes 19 tools that let Claude, Cursor, and Windsurf interact with
 					your running Roblox game. Browse instances, execute code, read properties, and monitor
 					remote traffic through natural language.
 				</p>
@@ -290,7 +290,7 @@
 		{
 			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>',
 			title: 'AI Tools',
-			description: '16 language model tools for GitHub Copilot. Standalone MCP server for Claude and Cursor.'
+			description: '19 language model tools for GitHub Copilot. Standalone MCP server for Claude and Cursor.'
 		},
 	];
 
@@ -305,8 +305,8 @@
 
 	const mcpFeatures = [
 		'Works with Claude, Cursor, Windsurf, and any MCP client',
-		'16 tools: execute code, browse tree, read/write properties, inspect scripts',
+		'19 tools: execute code, browse tree, read/write properties, inspect scripts',
 		'Proxy mode shares the executor connection with the VS Code extension',
-		'Published to GitHub Packages as @0neshot101/rbxdev-mcp',
+		'Published to npm as @oneshot101/rbxdev-mcp',
 	];
 </script>
