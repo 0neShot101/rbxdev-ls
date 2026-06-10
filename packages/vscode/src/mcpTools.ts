@@ -6,58 +6,86 @@
 import * as vscode from 'vscode';
 
 import type { LanguageClient } from 'vscode-languageclient/node';
+import type { GameTreeNode } from '@typings/gameTree';
+import type { PropertyEntry } from '@typings/properties';
 
-interface GameTreeNode {
-  name: string;
-  className: string;
-  children?: GameTreeNode[];
-  hasChildren?: boolean;
-}
+/**
+ * Wraps plain text in a language model tool result.
+ */
+const textResult = (text: string): vscode.LanguageModelToolResult =>
+  new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
 
-interface PropertyEntry {
-  name: string;
-  valueType: string;
-  value: string;
-  className?: string;
-}
+/**
+ * Builds a tool result describing a caught error.
+ */
+const errorResult = (error: unknown): vscode.LanguageModelToolResult =>
+  textResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
 
-const escapeLuaString = (value: string): string =>
+/**
+ * Checks that a tool input value is a non-empty path array.
+ */
+const isPath = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0;
+
+/**
+ * Escapes a value for safe embedding inside a Lua string literal.
+ */
+const escapeLua = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"');
 
-const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
+/**
+ * Builds a Lua expression that resolves an instance from path segments.
+ */
+const luaLookup = (segments: ReadonlyArray<string>): string => {
   const serviceName = segments[0];
   if (serviceName === undefined) return 'nil';
 
-  let lookup = `game:GetService("${escapeLuaString(serviceName)}")`;
-  for (const segment of segments.slice(1)) lookup += `:FindFirstChild("${escapeLuaString(segment)}")`;
+  let lookup = `game:GetService("${escapeLua(serviceName)}")`;
+  for (const segment of segments.slice(1)) lookup += `:FindFirstChild("${escapeLua(segment)}")`;
   return lookup;
 };
 
-const formatGameTreeNode = (node: GameTreeNode, indent: number = 0): string => {
-  const prefix = '  '.repeat(indent);
-  let result = `${prefix}${node.name} (${node.className})`;
+/**
+ * Renders a game tree node and its children as an indented text tree.
+ */
+const formatNode = (node: GameTreeNode, indent: number = 0): string => {
+  let result = `${'  '.repeat(indent)}${node.name} (${node.className})`;
 
   if (node.hasChildren === true && (node.children === undefined || node.children.length === 0)) result += ' [+]';
 
-  if (node.children !== undefined && node.children.length > 0) {
-    result += '\n';
-    result += node.children.map(child => formatGameTreeNode(child, indent + 1)).join('\n');
-  }
+  if (node.children !== undefined && node.children.length > 0)
+    result += '\n' + node.children.map(child => formatNode(child, indent + 1)).join('\n');
 
   return result;
 };
 
 /**
- * Registers all Roblox bridge tools with VS Code's Language Model API
+ * Renders a list of game tree nodes as JSON or an indented text tree.
+ */
+const renderNodes = (nodes: ReadonlyArray<GameTreeNode>, format: 'tree' | 'json'): string =>
+  format === 'json' ? JSON.stringify(nodes, null, 2) : nodes.map(node => formatNode(node)).join('\n');
+
+/**
+ * Formats a property entry as a single human-readable line.
+ */
+const formatProperty = (entry: PropertyEntry): string => {
+  const suffix = entry.className !== undefined && entry.className !== '' ? `, ${entry.className}` : '';
+  return `${entry.name}: ${entry.value} (${entry.valueType}${suffix})`;
+};
+
+/**
+ * Registers all Roblox bridge tools with VS Code's Language Model API.
+ * @param context - Extension context that owns the tool subscriptions.
+ * @param client - Language client used to reach the bridge server.
+ * @param isConnected - Returns whether an executor is currently connected.
  */
 export const registerMcpTools = (
   context: vscode.ExtensionContext,
   client: LanguageClient,
-  getConnectionStatus: () => boolean,
+  isConnected: () => boolean,
 ): void => {
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_bridge_status', {
-      async invoke(_options, _token) {
+      invoke: async () => {
         try {
           const response = await client.sendRequest<{
             isRunning: boolean;
@@ -65,23 +93,19 @@ export const registerMcpTools = (
             executorName?: string;
           }>('custom/executorStatus');
 
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(
-              JSON.stringify(
-                {
-                  'isRunning': response.isRunning,
-                  'isConnected': response.isConnected,
-                  'executorName': response.executorName ?? null,
-                },
-                null,
-                2,
-              ),
+          return textResult(
+            JSON.stringify(
+              {
+                'isRunning': response.isRunning,
+                'isConnected': response.isConnected,
+                'executorName': response.executorName ?? null,
+              },
+              null,
+              2,
             ),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          );
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -89,18 +113,11 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_execute_code', {
-      async invoke(options, _token) {
+      invoke: async options => {
         const code = (options.input as { code?: string })?.code;
-        if (typeof code !== 'string' || code.trim() === '') {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: code parameter is required'),
-          ]);
-        }
+        if (typeof code !== 'string' || code.trim() === '') return textResult('Error: code parameter is required');
 
-        if (getConnectionStatus() === false)
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: No executor connected. Connect an executor first.'),
-          ]);
+        if (isConnected() === false) return textResult('Error: No executor connected. Connect an executor first.');
 
         try {
           const result = await client.sendRequest<{
@@ -109,20 +126,14 @@ export const registerMcpTools = (
             error?: { message: string; stack?: string };
           }>('custom/execute', { code });
 
-          if (result.success === true)
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(result.result ?? '(no output)'),
-            ]);
+          if (result.success === true) return textResult(result.result ?? '(no output)');
 
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(
-              `Execution error: ${result.error?.message ?? 'Unknown error'}${result.error?.stack ? `\n\nStack trace:\n${result.error.stack}` : ''}`,
-            ),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          const stack = result.error?.stack;
+          return textResult(
+            `Execution error: ${result.error?.message ?? 'Unknown error'}${stack !== undefined && stack !== '' ? `\n\nStack trace:\n${stack}` : ''}`,
+          );
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -130,46 +141,32 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_game_tree', {
-      async invoke(options, _token) {
+      invoke: async options => {
         const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
-        const pathArg = input?.path;
+        const path = input?.path;
         const format = input?.format ?? 'tree';
 
         try {
-          // Get cached game tree from server
           const response = await client.sendRequest<{
             success: boolean;
             nodes?: GameTreeNode[];
             node?: GameTreeNode;
             error?: string;
-          }>('custom/getGameTree', { 'path': pathArg });
+          }>('custom/getGameTree', { path });
 
-          if (response.success === false) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Error: ${response.error ?? 'Failed to get game tree'}`),
-            ]);
-          }
+          if (response.success === false) return textResult(`Error: ${response.error ?? 'Failed to get game tree'}`);
 
-          if (pathArg !== undefined && pathArg.length > 0 && response.node !== undefined) {
-            const text = format === 'json' ? JSON.stringify(response.node, null, 2) : formatGameTreeNode(response.node);
-            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
-          }
+          if (path !== undefined && path.length > 0 && response.node !== undefined)
+            return textResult(format === 'json' ? JSON.stringify(response.node, null, 2) : formatNode(response.node));
 
           if (response.nodes !== undefined) {
-            const text =
-              format === 'json'
-                ? JSON.stringify(response.nodes, null, 2)
-                : response.nodes.map(n => formatGameTreeNode(n)).join('\n');
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(text || 'No game tree data available'),
-            ]);
+            const text = renderNodes(response.nodes, format);
+            return textResult(text === '' ? 'No game tree data available' : text);
           }
 
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('No game tree data available')]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          return textResult('No game tree data available');
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -177,42 +174,28 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_properties', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; properties?: string[] } | undefined;
-        const pathArg = input?.path;
+        const path = input?.path;
 
-        if (Array.isArray(pathArg) === false || pathArg.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required (array of strings)'),
-          ]);
-        }
+        if (isPath(path) === false) return textResult('Error: path parameter is required (array of strings)');
 
         try {
           const result = await client.sendRequest<{
             success: boolean;
             properties?: PropertyEntry[];
             error?: string;
-          }>('custom/requestProperties', { 'path': pathArg, 'properties': input?.properties });
+          }>('custom/requestProperties', { path, 'properties': input?.properties });
 
-          if (result.success && result.properties !== undefined) {
-            const formatted = result.properties
-              .map(p => `${p.name}: ${p.value} (${p.valueType}${p.className ? `, ${p.className}` : ''})`)
-              .join('\n');
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(formatted || 'No properties returned'),
-            ]);
+          if (result.success === true && result.properties !== undefined) {
+            const formatted = result.properties.map(formatProperty).join('\n');
+            return textResult(formatted === '' ? 'No properties returned' : formatted);
           }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to get properties'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          return textResult(`Error: ${result.error ?? 'Failed to get properties'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -220,10 +203,8 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_property', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as
           | {
@@ -233,46 +214,32 @@ export const registerMcpTools = (
               valueType?: string;
             }
           | undefined;
+        const path = input?.path;
 
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         if (
           typeof input?.property !== 'string' ||
           typeof input?.value !== 'string' ||
           typeof input?.valueType !== 'string'
-        ) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: property, value, and valueType parameters are required'),
-          ]);
-        }
+        )
+          return textResult('Error: property, value, and valueType parameters are required');
 
         try {
           const result = await client.sendRequest<{
             success: boolean;
             error?: string;
           }>('custom/setProperty', {
-            'path': input.path,
+            path,
             'property': input.property,
             'value': input.value,
             'valueType': input.valueType,
           });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Successfully set ${input.property} to ${input.value}`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to set property'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true) return textResult(`Successfully set ${input.property} to ${input.value}`);
+          return textResult(`Error: ${result.error ?? 'Failed to set property'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -280,37 +247,22 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_teleport_player', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
-        const input = options.input as { path?: string[] } | undefined;
-
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        const path = (options.input as { path?: string[] } | undefined)?.path;
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         try {
           const result = await client.sendRequest<{
             success: boolean;
             error?: string;
-          }>('custom/teleportTo', { 'path': input!.path });
+          }>('custom/teleportTo', { path });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Successfully teleported to ${input!.path!.join('.')}`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to teleport'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true) return textResult(`Successfully teleported to ${path.join('.')}`);
+          return textResult(`Error: ${result.error ?? 'Failed to teleport'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -318,45 +270,29 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_delete_instance', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
-        const input = options.input as { path?: string[] } | undefined;
-
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        const path = (options.input as { path?: string[] } | undefined)?.path;
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         try {
           const confirmed = await vscode.window.showWarningMessage(
-            `Delete ${input!.path!.join('.')}? This cannot be undone.`,
+            `Delete ${path.join('.')}? This cannot be undone.`,
             { 'modal': true },
             'Delete',
           );
-          if (confirmed !== 'Delete')
-            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Delete cancelled by user')]);
+          if (confirmed !== 'Delete') return textResult('Delete cancelled by user');
 
           const result = await client.sendRequest<{
             success: boolean;
             error?: string;
-          }>('custom/deleteInstance', { 'path': input!.path });
+          }>('custom/deleteInstance', { path });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Successfully deleted ${input!.path!.join('.')}`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to delete instance'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true) return textResult(`Successfully deleted ${path.join('.')}`);
+          return textResult(`Error: ${result.error ?? 'Failed to delete instance'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -364,48 +300,27 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_reparent_instance', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { sourcePath?: string[]; targetPath?: string[] } | undefined;
+        const sourcePath = input?.sourcePath;
+        const targetPath = input?.targetPath;
 
-        if (Array.isArray(input?.sourcePath) === false || input!.sourcePath!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: sourcePath parameter is required'),
-          ]);
-        }
-
-        if (Array.isArray(input?.targetPath) === false || input!.targetPath!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: targetPath parameter is required'),
-          ]);
-        }
+        if (isPath(sourcePath) === false) return textResult('Error: sourcePath parameter is required');
+        if (isPath(targetPath) === false) return textResult('Error: targetPath parameter is required');
 
         try {
           const result = await client.sendRequest<{
             success: boolean;
             error?: string;
-          }>('custom/reparentInstance', {
-            'sourcePath': input!.sourcePath,
-            'targetPath': input!.targetPath,
-          });
+          }>('custom/reparentInstance', { sourcePath, targetPath });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(
-                `Successfully moved ${input!.sourcePath!.join('.')} to ${input!.targetPath!.join('.')}`,
-              ),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to reparent instance'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true)
+            return textResult(`Successfully moved ${sourcePath.join('.')} to ${targetPath.join('.')}`);
+          return textResult(`Error: ${result.error ?? 'Failed to reparent instance'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -413,18 +328,13 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_children', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
+        const path = input?.path;
 
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         const format = input?.format ?? 'tree';
 
@@ -433,22 +343,15 @@ export const registerMcpTools = (
             success: boolean;
             children?: GameTreeNode[];
             error?: string;
-          }>('custom/requestChildren', { 'path': input!.path });
+          }>('custom/requestChildren', { path });
 
-          if (result.success && result.children !== undefined) {
-            const text =
-              format === 'json'
-                ? JSON.stringify(result.children, null, 2)
-                : result.children.map(c => formatGameTreeNode(c)).join('\n');
-            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text || 'No children')]);
+          if (result.success === true && result.children !== undefined) {
+            const text = renderNodes(result.children, format);
+            return textResult(text === '' ? 'No children' : text);
           }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to get children'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          return textResult(`Error: ${result.error ?? 'Failed to get children'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -456,18 +359,11 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_script_source', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
-        const input = options.input as { path?: string[] } | undefined;
-
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        const path = (options.input as { path?: string[] } | undefined)?.path;
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         try {
           const result = await client.sendRequest<{
@@ -475,20 +371,15 @@ export const registerMcpTools = (
             source?: string;
             scriptType?: string;
             error?: string;
-          }>('custom/getScriptSource', { 'path': input!.path });
+          }>('custom/getScriptSource', { path });
 
-          if (result.success && result.source !== undefined) {
-            const header =
-              result.scriptType !== undefined ? `-- ${result.scriptType}: ${input!.path!.join('.')}\n\n` : '';
-            return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(header + result.source)]);
+          if (result.success === true && result.source !== undefined) {
+            const header = result.scriptType !== undefined ? `-- ${result.scriptType}: ${path.join('.')}\n\n` : '';
+            return textResult(header + result.source);
           }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to get script source'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          return textResult(`Error: ${result.error ?? 'Failed to get script source'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -496,10 +387,8 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_create_instance', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as
           | {
@@ -509,17 +398,11 @@ export const registerMcpTools = (
             }
           | undefined;
 
-        if (typeof input?.className !== 'string' || input.className.trim() === '') {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: className parameter is required'),
-          ]);
-        }
+        if (typeof input?.className !== 'string' || input.className.trim() === '')
+          return textResult('Error: className parameter is required');
 
-        if (Array.isArray(input?.parentPath) === false || input!.parentPath!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: parentPath parameter is required'),
-          ]);
-        }
+        const parentPath = input.parentPath;
+        if (isPath(parentPath) === false) return textResult('Error: parentPath parameter is required');
 
         try {
           const result = await client.sendRequest<{
@@ -528,24 +411,17 @@ export const registerMcpTools = (
             error?: string;
           }>('custom/createInstance', {
             'className': input.className,
-            'parentPath': input.parentPath,
+            parentPath,
             'name': input.name,
           });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(
-                `Successfully created ${result.instanceName} (${input.className}) in ${input.parentPath!.join('.')}`,
-              ),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to create instance'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true)
+            return textResult(
+              `Successfully created ${result.instanceName} (${input.className}) in ${parentPath.join('.')}`,
+            );
+          return textResult(`Error: ${result.error ?? 'Failed to create instance'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -553,38 +429,24 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_clone_instance', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
-        const input = options.input as { path?: string[] } | undefined;
-
-        if (Array.isArray(input?.path) === false || input!.path!.length === 0) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: path parameter is required'),
-          ]);
-        }
+        const path = (options.input as { path?: string[] } | undefined)?.path;
+        if (isPath(path) === false) return textResult('Error: path parameter is required');
 
         try {
           const result = await client.sendRequest<{
             success: boolean;
             cloneName?: string;
             error?: string;
-          }>('custom/cloneInstance', { 'path': input!.path });
+          }>('custom/cloneInstance', { path });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Successfully cloned ${input!.path!.join('.')} as ${result.cloneName}`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${result.error ?? 'Failed to clone instance'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true)
+            return textResult(`Successfully cloned ${path.join('.')} as ${result.cloneName}`);
+          return textResult(`Error: ${result.error ?? 'Failed to clone instance'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -592,10 +454,8 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_remote_calls', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { limit?: number } | undefined;
         const limit = input?.limit ?? 50;
@@ -614,12 +474,9 @@ export const registerMcpTools = (
             }>;
           }>('custom/getRemoteSpyCalls', { limit });
 
-          if (result.success && result.calls !== undefined) {
-            if (result.calls.length === 0) {
-              return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart('No remote calls captured. Make sure Remote Spy is enabled.'),
-              ]);
-            }
+          if (result.success === true && result.calls !== undefined) {
+            if (result.calls.length === 0)
+              return textResult('No remote calls captured. Make sure Remote Spy is enabled.');
 
             const formatted = result.calls
               .map(call => {
@@ -628,15 +485,11 @@ export const registerMcpTools = (
               })
               .join('\n\n');
 
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Recent remote calls (${result.calls.length}):\n\n${formatted}`),
-            ]);
+            return textResult(`Recent remote calls (${result.calls.length}):\n\n${formatted}`);
           }
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Failed to get remote calls')]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          return textResult('Failed to get remote calls');
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -644,17 +497,11 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_remote_spy_block_list', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
-        if (Array.isArray(input?.blocks) === false) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart('Error: blocks parameter is required (array)'),
-          ]);
-        }
+        if (Array.isArray(input?.blocks) === false) return textResult('Error: blocks parameter is required (array)');
 
         try {
           const result = await client.sendRequest<{ success: boolean; error?: string }>(
@@ -662,18 +509,10 @@ export const registerMcpTools = (
             { 'blocks': input.blocks },
           );
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(`Block list updated (${input.blocks.length} entries)`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Failed: ${result.error ?? 'Unknown error'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true) return textResult(`Block list updated (${input.blocks.length} entries)`);
+          return textResult(`Failed: ${result.error ?? 'Unknown error'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),
@@ -681,25 +520,17 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_save_instance', {
-      async invoke(options, _token) {
-        if (getConnectionStatus() === false) {
-          return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart('Error: No executor connected')]);
-        }
+      invoke: async options => {
+        if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; fileName?: string; decompile?: boolean };
         const fileName = input?.fileName ?? 'game.rbxl';
         const decompile = input?.decompile !== false;
 
-        const optionParts: string[] = [];
-        optionParts.push(`FilePath = "${escapeLuaString(fileName)}"`);
-        optionParts.push(`Decompile = ${decompile}`);
+        const parts = [`FilePath = "${escapeLua(fileName)}"`, `Decompile = ${decompile}`];
+        if (input?.path !== undefined && input.path.length > 0) parts.push(`Object = ${luaLookup(input.path)}`);
 
-        if (input?.path !== undefined && input.path.length > 0) {
-          const lookup = createLuaLookupFromPath(input.path);
-          optionParts.push(`Object = ${lookup}`);
-        }
-
-        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
+        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${parts.join(', ')}})\nif ok then return "Saved to ${escapeLua(fileName)}" else return "Error: " .. tostring(err) end`;
 
         try {
           const result = await client.sendRequest<{
@@ -708,18 +539,10 @@ export const registerMcpTools = (
             error?: { message: string };
           }>('custom/execute', { code });
 
-          if (result.success === true) {
-            return new vscode.LanguageModelToolResult([
-              new vscode.LanguageModelTextPart(result.result ?? `Save initiated to ${fileName}`),
-            ]);
-          }
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Save failed: ${result.error?.message ?? 'Unknown error'}`),
-          ]);
-        } catch (err) {
-          return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Error: ${err instanceof Error ? err.message : String(err)}`),
-          ]);
+          if (result.success === true) return textResult(result.result ?? `Save initiated to ${fileName}`);
+          return textResult(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
+        } catch (error) {
+          return errorResult(error);
         }
       },
     }),

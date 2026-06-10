@@ -13,31 +13,12 @@ import {
   WebviewViewResolveContext,
 } from 'vscode';
 
-/**
- * Represents a property entry from the executor
- */
-export interface PropertyEntry {
-  readonly name: string;
-  readonly valueType: string;
-  readonly value: string;
-  readonly className?: string;
-}
-
-/**
- * Callback for when a property value is changed
- */
-export type PropertyChangeCallback = (
-  instancePath: ReadonlyArray<string>,
-  property: string,
-  value: string,
-  valueType: string,
-) => Promise<boolean>;
+import type { PropertyChangeCallback, PropertyChangeMessage, PropertyEntry } from '@typings/properties';
 
 /**
  * Common enum values for dropdowns
  */
 const ENUM_VALUES: Record<string, string[]> = {
-  // Parts
   'Material': [
     'Plastic',
     'Wood',
@@ -91,7 +72,6 @@ const ENUM_VALUES: Record<string, string[]> = {
   'FormFactor': ['Symmetric', 'Brick', 'Plate', 'Custom'],
   'RenderFidelity': ['Automatic', 'Precise', 'Performance'],
 
-  // Text
   'Font': [
     'Legacy',
     'Arial',
@@ -142,7 +122,6 @@ const ENUM_VALUES: Record<string, string[]> = {
   'TextDirection': ['Auto', 'LeftToRight', 'RightToLeft'],
   'LineJoinMode': ['Round', 'Bevel', 'Miter'],
 
-  // UI Layout
   'SortOrder': ['LayoutOrder', 'Name', 'Custom'],
   'HorizontalAlignment': ['Center', 'Left', 'Right'],
   'VerticalAlignment': ['Center', 'Top', 'Bottom'],
@@ -150,11 +129,9 @@ const ENUM_VALUES: Record<string, string[]> = {
   'StartCorner': ['TopLeft', 'TopRight', 'BottomLeft', 'BottomRight'],
   'ItemLineAlignment': ['Automatic', 'Start', 'Center', 'End', 'Stretch'],
 
-  // Images
   'ScaleType': ['Stretch', 'Slice', 'Tile', 'Fit', 'Crop'],
   'ResamplerMode': ['Default', 'Pixelated'],
 
-  // Animation/Tweening
   'EasingStyle': [
     'Linear',
     'Sine',
@@ -172,7 +149,6 @@ const ENUM_VALUES: Record<string, string[]> = {
   'AnimationPriority': ['Idle', 'Movement', 'Action', 'Action2', 'Action3', 'Action4', 'Core'],
   'PlaybackState': ['Begin', 'Delayed', 'Playing', 'Paused', 'Completed', 'Cancelled'],
 
-  // Humanoid
   'HumanoidDisplayDistanceType': ['None', 'Viewer', 'Subject'],
   'HumanoidHealthDisplayType': ['DisplayWhenDamaged', 'AlwaysOn', 'AlwaysOff'],
   'HumanoidRigType': ['R6', 'R15'],
@@ -196,12 +172,10 @@ const ENUM_VALUES: Record<string, string[]> = {
     'None',
   ],
 
-  // Constraints
   'ActuatorType': ['None', 'Motor', 'Servo'],
   'ConstraintMode': ['Pointwise', 'OneAttachment', 'TwoAttachment'],
   'SurfaceConstraintMode': ['RightAngle', 'Perpendicular', 'Parallel'],
 
-  // Particles/Effects
   'ParticleEmitterShape': ['Box', 'Sphere', 'Cylinder', 'Disc'],
   'ParticleEmitterShapeInOut': ['Outward', 'Inward', 'InAndOut'],
   'ParticleEmitterShapeStyle': ['Volume', 'Surface'],
@@ -209,15 +183,12 @@ const ENUM_VALUES: Record<string, string[]> = {
   'ParticleFlipbookMode': ['Loop', 'OneShot', 'PingPong', 'Random'],
   'ParticleOrientation': ['FacingCamera', 'FacingCameraWorldUp', 'VelocityParallel', 'VelocityPerpendicular'],
 
-  // Lighting
   'Technology': ['Legacy', 'Voxel', 'Compatibility', 'ShadowMap', 'Future'],
   'ShadowSoftness': ['None', 'Light', 'Heavy'],
 
-  // Sound
   'RollOffMode': ['Inverse', 'Linear', 'LinearSquare', 'InverseTapered'],
   'VolumeMode': ['Normal', 'AddVolume', 'SubVolume'],
 
-  // GUI
   'AutomaticSize': ['None', 'X', 'Y', 'XY'],
   'BorderMode': ['Outline', 'Middle', 'Inset'],
   'SizeConstraint': ['RelativeXY', 'RelativeXX', 'RelativeYY'],
@@ -232,16 +203,13 @@ const ENUM_VALUES: Record<string, string[]> = {
   'AspectType': ['FitWithinMaxSize', 'ScaleWithParentSize'],
   'DominantAxis': ['Width', 'Height'],
 
-  // ProximityPrompt
   'ProximityPromptStyle': ['Default', 'Custom'],
   'ProximityPromptExclusivity': ['OnePerButton', 'OneGlobally', 'AlwaysShow'],
 
-  // Camera
   'CameraMode': ['Classic', 'LockFirstPerson'],
   'CameraType': ['Fixed', 'Watch', 'Attach', 'Track', 'Follow', 'Custom', 'Scriptable', 'Orbital'],
   'FieldOfViewMode': ['Vertical', 'Diagonal', 'MaxAxis'],
 
-  // Input
   'KeyCode': [
     'Unknown',
     'Backspace',
@@ -408,7 +376,6 @@ const ENUM_VALUES: Record<string, string[]> = {
   'ContextActionPriority': ['Low', 'Medium', 'Default', 'High'],
   'ContextActionResult': ['Sink', 'Pass'],
 
-  // Mesh
   'MeshType': [
     'Head',
     'Torso',
@@ -424,20 +391,16 @@ const ENUM_VALUES: Record<string, string[]> = {
     'FileMesh',
   ],
 
-  // Collision
   'CollisionFidelity': ['Default', 'Hull', 'Box', 'PreciseConvexDecomposition'],
   'FluidFidelity': ['Automatic', 'UseCollisionGeometry', 'UsePreciseGeometry'],
 
-  // Selection/Adornments
   'HighlightDepthMode': ['AlwaysOnTop', 'Occluded'],
   'AdornCullingMode': ['Automatic', 'Never'],
   'HandleType': ['MoveAxis', 'RotateAxis', 'ResizeAxis'],
 
-  // Network
   'ClientReplicateTarget': ['None', 'Server', 'All'],
   'PacketPriority': ['Immediate', 'High', 'Medium', 'Low', 'Idle'],
 
-  // Character Appearance
   'BodyPart': ['Head', 'Torso', 'LeftArm', 'RightArm', 'LeftLeg', 'RightLeg'],
   'BodyPartR15': [
     'Head',
@@ -488,7 +451,6 @@ const ENUM_VALUES: Record<string, string[]> = {
     'Torso',
   ],
 
-  // Misc
   'NormalId': ['Top', 'Bottom', 'Front', 'Back', 'Left', 'Right'],
   'Axis': ['X', 'Y', 'Z'],
   'InputType': ['NoInput', 'Constant', 'Sin'],
@@ -524,71 +486,71 @@ const ENUM_VALUES: Record<string, string[]> = {
 export class PropertiesWebviewProvider implements WebviewViewProvider {
   public static readonly viewType = 'rbxdev-properties';
 
-  private webviewView?: WebviewView;
+  private view?: WebviewView;
   private properties: PropertyEntry[] = [];
   private instanceName: string = '';
-  private currentPath: ReadonlyArray<string> = [];
-  private onChangeCallback?: PropertyChangeCallback;
+  private path: ReadonlyArray<string> = [];
+  private changeCallback?: PropertyChangeCallback;
 
   constructor(private readonly context: ExtensionContext) {}
 
   /**
-   * Registers a callback for property changes
+   * Registers a callback for property changes.
+   * @param callback - Invoked when the webview submits a new property value.
    */
-  onPropertyChange = (callback: PropertyChangeCallback): void => {
-    this.onChangeCallback = callback;
-  };
+  onPropertyChange = (callback: PropertyChangeCallback): void => void (this.changeCallback = callback);
 
   /**
-   * Updates the properties display
+   * Updates the properties display.
+   * @param instanceName - Display name of the selected instance.
+   * @param properties - Property entries to render.
+   * @param path - Instance path used when submitting changes.
    */
   setProperties = (instanceName: string, properties: PropertyEntry[], path: ReadonlyArray<string>): void => {
     this.instanceName = instanceName;
     this.properties = properties;
-    this.currentPath = path;
+    this.path = path;
     this.updateWebview();
   };
 
   /**
-   * Clears the properties display
+   * Clears the properties display.
    */
   clear = (): void => {
     this.instanceName = '';
     this.properties = [];
-    this.currentPath = [];
+    this.path = [];
     this.updateWebview();
   };
 
+  /**
+   * Initializes the webview when VS Code resolves the view.
+   */
   resolveWebviewView = (
     webviewView: WebviewView,
     _context: WebviewViewResolveContext,
     _token: CancellationToken,
   ): void => {
-    this.webviewView = webviewView;
+    this.view = webviewView;
 
     webviewView.webview.options = {
       'enableScripts': true,
       'localResourceRoots': [this.context.extensionUri],
     };
 
-    webviewView.webview.onDidReceiveMessage(async message => {
-      if (message.type === 'propertyChange' && this.onChangeCallback !== undefined) {
-        const success = await this.onChangeCallback(
-          this.currentPath,
-          message.property,
-          message.value,
-          message.valueType,
-        );
-        webviewView.webview.postMessage({ 'type': 'changeResult', 'property': message.property, success });
-      }
+    webviewView.webview.onDidReceiveMessage(async (message: PropertyChangeMessage) => {
+      if (message.type !== 'propertyChange') return;
+      if (this.changeCallback === undefined) return;
+      const success = await this.changeCallback(this.path, message.property, message.value, message.valueType);
+      webviewView.webview.postMessage({ 'type': 'changeResult', 'property': message.property, success });
     });
 
     this.updateWebview();
   };
 
   private updateWebview = (): void => {
-    if (this.webviewView === undefined) return;
-    this.webviewView.webview.html = this.getHtml();
+    if (this.view === undefined) return;
+    this.view.webview.html = this.getHtml();
   };
 
   private getHtml = (): string => {
@@ -596,14 +558,14 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
     const instanceName = this.instanceName;
     const nonce = this.getNonce();
 
-    const propertyRows = properties.map(prop => this.getPropertyRow(prop)).join('');
+    const propertyRows = properties.map(entry => this.getPropertyRow(entry)).join('');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.webviewView?.webview.cspSource ?? ''} data:; style-src ${this.webviewView?.webview.cspSource ?? ''} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.view?.webview.cspSource ?? ''} data:; style-src ${this.view?.webview.cspSource ?? ''} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 
   <style>
     * {
@@ -701,7 +663,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   </style>
 </head>
 <body>
-  ${instanceName ? `<div class="header">${this.escapeHtml(instanceName)}</div>` : ''}
+  ${instanceName !== '' ? `<div class="header">${this.escapeHtml(instanceName)}</div>` : ''}
   ${properties.length === 0 ? '<div class="empty">Select an instance to view properties</div>' : ''}
   <div id="properties">
     ${propertyRows}
@@ -709,27 +671,13 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function sendChange(property, value, valueType) {
+    const sendChange = (property, value, valueType) => {
       const input = document.querySelector('[data-property="' + property + '"]');
-      if (input) input.classList.add('saving');
+      if (input !== null) input.classList.add('saving');
       vscode.postMessage({ type: 'propertyChange', property, value, valueType });
-    }
+    };
 
-    window.addEventListener('message', (event) => {
-      const message = event.data;
-      if (message.type === 'changeResult') {
-        const input = document.querySelector('[data-property="' + message.property + '"]');
-        if (input) {
-          input.classList.remove('saving');
-          if (!message.success) {
-            input.classList.add('error');
-            setTimeout(() => input.classList.remove('error'), 2000);
-          }
-        }
-      }
-    });
-
-    function onColorChange(property, colorInput, textInput) {
+    const onColorChange = (property, colorInput, textInput) => {
       const hex = colorInput.value;
       const r = parseInt(hex.substr(1,2), 16) / 255;
       const g = parseInt(hex.substr(3,2), 16) / 255;
@@ -737,15 +685,26 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       const rgb = r.toFixed(3) + ', ' + g.toFixed(3) + ', ' + b.toFixed(3);
       textInput.value = rgb;
       sendChange(property, rgb, 'Color3');
-    }
+    };
 
-    function syncTextToColor(textInput, colorInput) {
+    const syncTextToColor = (textInput, colorInput) => {
       const parts = textInput.value.split(',').map(s => parseFloat(s.trim()));
-      if (parts.length === 3 && parts.every(n => !isNaN(n) && n >= 0 && n <= 1)) {
-        const hex = '#' + parts.map(n => Math.round(n * 255).toString(16).padStart(2, '0')).join('');
-        colorInput.value = hex;
+      if (parts.length !== 3) return;
+      if (parts.every(n => isNaN(n) === false && n >= 0 && n <= 1) === false) return;
+      colorInput.value = '#' + parts.map(n => Math.round(n * 255).toString(16).padStart(2, '0')).join('');
+    };
+
+    window.addEventListener('message', (event) => {
+      const message = event.data;
+      if (message.type !== 'changeResult') return;
+      const input = document.querySelector('[data-property="' + message.property + '"]');
+      if (input === null) return;
+      input.classList.remove('saving');
+      if (message.success === false) {
+        input.classList.add('error');
+        setTimeout(() => input.classList.remove('error'), 2000);
       }
-    }
+    });
   </script>
 </body>
 </html>`;
@@ -753,23 +712,23 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
 
   private getNonce = (): string => randomBytes(16).toString('base64url');
 
-  private getPropertyRow = (prop: PropertyEntry): string => {
-    const name = this.escapeHtml(prop.name);
-    const value = this.escapeHtml(prop.value);
-    const valueType = prop.valueType;
+  private getPropertyRow = (entry: PropertyEntry): string => {
+    const name = this.escapeHtml(entry.name);
+    const value = this.escapeHtml(entry.value);
+    const valueType = entry.valueType;
 
     let inputHtml = '';
 
     switch (valueType) {
       case 'boolean':
-        inputHtml = `<input type="checkbox" data-property="${name}" ${prop.value === 'true' ? 'checked' : ''}
+        inputHtml = `<input type="checkbox" data-property="${name}" ${entry.value === 'true' ? 'checked' : ''}
           onchange="sendChange('${name}', this.checked ? 'true' : 'false', 'boolean')">`;
         break;
 
       case 'Color3': {
-        const parts = prop.value.split(',').map(s => parseFloat(s.trim()));
+        const parts = entry.value.split(',').map(s => parseFloat(s.trim()));
         let hex = '#888888';
-        if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+        if (parts.length === 3 && parts.every(n => Number.isNaN(n) === false))
           hex =
             '#' +
             parts
@@ -779,7 +738,6 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
                   .padStart(2, '0'),
               )
               .join('');
-        }
         inputHtml = `<div class="color-input-group">
           <input type="color" value="${hex}" id="color-${name}"
             onchange="onColorChange('${name}', this, document.getElementById('text-${name}'))">
@@ -791,7 +749,7 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
       }
 
       case 'EnumItem': {
-        const enumMatch = prop.value.match(/^Enum\.(\w+)\.(\w+)$/);
+        const enumMatch = entry.value.match(/^Enum\.(\w+)\.(\w+)$/);
         if (enumMatch !== null && enumMatch[1] !== undefined) {
           const enumType = enumMatch[1];
           const currentValue = enumMatch[2];
@@ -804,14 +762,12 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
             inputHtml = `<select data-property="${name}" onchange="sendChange('${name}', this.value, 'EnumItem')">
               ${options}
             </select>`;
-          } else {
+          } else
             inputHtml = `<input type="text" data-property="${name}" value="${value}"
               onchange="sendChange('${name}', this.value, 'EnumItem')">`;
-          }
-        } else {
+        } else
           inputHtml = `<input type="text" data-property="${name}" value="${value}"
             onchange="sendChange('${name}', this.value, 'EnumItem')">`;
-        }
         break;
       }
 
@@ -840,11 +796,11 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
           'Nougat',
         ];
         const options = brickColors
-          .map(c => `<option value="${c}" ${c === prop.value ? 'selected' : ''}>${c}</option>`)
+          .map(c => `<option value="${c}" ${c === entry.value ? 'selected' : ''}>${c}</option>`)
           .join('');
         inputHtml = `<select data-property="${name}" onchange="sendChange('${name}', this.value, 'BrickColor')">
           ${options}
-          <option value="${value}" ${!brickColors.includes(prop.value) ? 'selected' : ''}>${value}</option>
+          <option value="${value}" ${brickColors.includes(entry.value) === false ? 'selected' : ''}>${value}</option>
         </select>`;
         break;
       }
@@ -881,12 +837,11 @@ export class PropertiesWebviewProvider implements WebviewViewProvider {
     </div>`;
   };
 
-  private escapeHtml = (text: string): string => {
-    return text
+  private escapeHtml = (text: string): string =>
+    text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
-  };
 }

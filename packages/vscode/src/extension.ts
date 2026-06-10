@@ -15,9 +15,8 @@ import {
 } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
-import { GameTreeDataProvider, type GameTreeItem, type GameTreeNode } from './gameTreeProvider';
+import { GameTreeDataProvider } from './gameTreeProvider';
 import { registerMcpTools } from './mcpTools';
-import { type PropertyEntry, type PropertyItem } from './propertiesProvider';
 import { PropertiesWebviewProvider } from './propertiesWebview';
 import {
   addBlock,
@@ -31,8 +30,13 @@ import {
   removeBlock,
   removeIgnore,
 } from './remoteSpyState';
-import type { FromWebviewMessage } from './remoteSpyWebview';
 import { RemoteSpyPanel } from './remoteSpyWebview';
+
+import type { BridgeStatus, ExecutorStatusResponse } from '@typings/bridge';
+import type { BundlerCommand, BundlerRunError } from '@typings/bundler';
+import type { GameTreeItem, GameTreeNode } from '@typings/gameTree';
+import type { PropertyEntry, PropertyItem } from '@typings/properties';
+import type { FromWebviewMessage } from '@typings/remoteSpy';
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;
@@ -41,7 +45,7 @@ let outputChannel: OutputChannel;
 let remoteSpyChannel: OutputChannel;
 let gameTreeProvider: GameTreeDataProvider;
 let propertiesProvider: PropertiesWebviewProvider;
-let lastConnectedState: boolean = false;
+let lastConnected: boolean = false;
 let lastExecutorName: string | undefined;
 let remoteSpyStatusBar: StatusBarItem;
 let bundleMode: boolean = false;
@@ -52,7 +56,7 @@ let lastClientType: string | undefined;
 const scriptDocumentPaths = new Map<string, string[]>();
 let isPollingExecutorStatus = false;
 let debugLoggingEnabled = false;
-let syncRemoteSpyStateToExecutor: () => Promise<void> = async () => {};
+let syncSpyState: () => Promise<void> = async () => {};
 
 const logDebug = (...args: unknown[]): void => {
   if (debugLoggingEnabled === false) return;
@@ -62,7 +66,14 @@ const logDebug = (...args: unknown[]): void => {
 const escapeLuaString = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"');
 
-const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
+const stripMarker = (segment: string): string =>
+  segment.includes('\0') ? segment.slice(0, segment.indexOf('\0')) : segment;
+
+const stripMarkers = (segments: ReadonlyArray<string>): string[] => segments.map(stripMarker);
+
+const formatGamePath = (segments: ReadonlyArray<string>): string => `game.${stripMarkers(segments).join('.')}`;
+
+const toLuaLookup = (segments: ReadonlyArray<string>): string => {
   const serviceName = segments[0];
   if (serviceName === undefined) return 'nil';
 
@@ -87,15 +98,6 @@ const resetBridgeUiState = (): void => {
   scriptDocumentPaths.clear();
   lastClientType = undefined;
 };
-
-type BridgeStatus = 'stopped' | 'waiting' | 'connected' | 'error';
-
-interface ExecutorStatusResponse {
-  isRunning: boolean;
-  isConnected: boolean;
-  executorName?: string;
-  clientType?: 'executor' | 'studio' | null;
-}
 
 const updateStatusBar = (status: BridgeStatus, executorName?: string, clientType?: string): void => {
   switch (status) {
@@ -132,8 +134,8 @@ const applyAutoRefreshSetting = async (): Promise<void> => {
   const intervalMs = Math.max(2000, Math.floor(rawInterval));
   try {
     await client.sendRequest('custom/setAutoRefresh', { enabled, intervalMs });
-  } catch (err) {
-    logDebug('[rbxdev-ls] setAutoRefresh request failed:', err);
+  } catch (error) {
+    logDebug('[rbxdev-ls] setAutoRefresh request failed:', error);
   }
 };
 
@@ -148,21 +150,21 @@ const pollExecutorStatus = async (): Promise<void> => {
 
     const currentClientType = response.clientType ?? undefined;
 
-    if (response.isConnected && lastConnectedState === false) {
+    if (response.isConnected && lastConnected === false) {
       const label = currentClientType === 'studio' ? 'Roblox Studio' : (response.executorName ?? 'client');
       window.showInformationMessage(`Roblox: Connected to ${label}`);
       lastExecutorName = response.executorName;
       lastClientType = currentClientType;
       commands.executeCommand('setContext', 'rbxdev-ls:bridgeConnected', true);
       commands.executeCommand('setContext', 'rbxdev-ls:clientType', currentClientType ?? 'executor');
-      void syncRemoteSpyStateToExecutor();
+      void syncSpyState();
       void applyAutoRefreshSetting();
-    } else if (response.isConnected === false && lastConnectedState) {
+    } else if (response.isConnected === false && lastConnected) {
       const label = lastClientType === 'studio' ? 'Roblox Studio' : (lastExecutorName ?? 'Client');
       window.showWarningMessage(`Roblox: ${label} disconnected`);
       resetBridgeUiState();
     }
-    lastConnectedState = response.isConnected;
+    lastConnected = response.isConnected;
 
     if (response.isConnected) {
       updateStatusBar('connected', response.executorName, currentClientType);
@@ -171,9 +173,9 @@ const pollExecutorStatus = async (): Promise<void> => {
     } else if (response.isRunning) updateStatusBar('waiting');
     else updateStatusBar('stopped');
   } catch {
-    if (lastConnectedState === true) {
+    if (lastConnected === true) {
       window.showWarningMessage(`Roblox: ${lastExecutorName ?? 'Executor'} disconnected`);
-      lastConnectedState = false;
+      lastConnected = false;
     }
     updateStatusBar('stopped');
     resetBridgeUiState();
@@ -182,40 +184,72 @@ const pollExecutorStatus = async (): Promise<void> => {
   }
 };
 
+const executeCode = async (
+  code: string,
+  successMessage: (result?: string) => string,
+  failurePrefix?: string,
+): Promise<void> => {
+  try {
+    const response = await client.sendRequest<{ success: boolean; result?: string; error?: { message: string } }>(
+      'custom/execute',
+      { code },
+    );
+
+    if (response.success) window.showInformationMessage(successMessage(response.result));
+    else
+      window.showErrorMessage(`${failurePrefix ?? 'Execution failed'}: ${response.error?.message ?? 'Unknown error'}`);
+  } catch (error) {
+    window.showErrorMessage(
+      `${failurePrefix ?? 'Execute failed'}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+};
+
+const refreshProperties = async (instancePath: ReadonlyArray<string>): Promise<void> => {
+  const result = await client.sendRequest<{ success: boolean; properties?: PropertyEntry[] }>(
+    'custom/requestProperties',
+    { 'path': instancePath },
+  );
+
+  if (result.success && result.properties !== undefined)
+    propertiesProvider.setProperties(instancePath[instancePath.length - 1] ?? '', result.properties, instancePath);
+};
+
+const recentCalls = () =>
+  remoteSpyState.calls
+    .slice(-20)
+    .reverse()
+    .map(call => ({
+      'label': call.remoteName,
+      'description': call.method,
+      'detail': call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code,
+      'luaCode': call.code,
+    }));
+
 const BUNDLER_PACKAGE = '@oneshot101/luau-bundler';
 const BUNDLER_BIN = 'luau-bundler';
-
-type BundlerCommand = {
-  command: string;
-  prefix: string[];
-  label: string;
-};
-
-type BundlerRunError = Error & {
-  code?: string | number;
-};
 
 const CMD_NOT_FOUND_EXIT_CODE = 9009;
 
 const commandShims = (command: string): string[] =>
   process.platform === 'win32' ? [`${command}.cmd`, command] : [command];
 
-const isMissingExecutableError = (err: unknown): boolean => {
-  if (err instanceof Error === false) return false;
-  const code = (err as BundlerRunError).code;
+const isMissingExecutableError = (error: unknown): boolean => {
+  if (error instanceof Error === false) return false;
+  const code = (error as BundlerRunError).code;
   if (code === 'ENOENT' || code === 'EINVAL' || code === CMD_NOT_FOUND_EXIT_CODE) return true;
-  return /ENOENT|EINVAL|is not recognized|command not found/i.test(err.message);
+  return /ENOENT|EINVAL|is not recognized|command not found/i.test(error.message);
 };
 
-const quoteShellArg = (value: string): string => (/[\s"&^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
+const quoteForShell = (value: string): string => (/[\s"&^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
-const execBundlerCommand = (candidate: BundlerCommand, args: string[], cwd: string): Promise<void> =>
+const runCandidate = (candidate: BundlerCommand, args: string[], cwd: string): Promise<void> =>
   new Promise<void>((resolve, reject) => {
     const useShell = process.platform === 'win32';
     const fullArgs = [...candidate.prefix, ...args];
     execFile(
-      useShell ? quoteShellArg(candidate.command) : candidate.command,
-      useShell ? fullArgs.map(quoteShellArg) : fullArgs,
+      useShell ? quoteForShell(candidate.command) : candidate.command,
+      useShell ? fullArgs.map(quoteForShell) : fullArgs,
       { cwd, 'windowsHide': true, 'shell': useShell },
       (error, _stdout, stderr) => {
         if (error !== null) {
@@ -231,20 +265,20 @@ const execBundlerCommand = (candidate: BundlerCommand, args: string[], cwd: stri
     );
   });
 
-const runBundlerCommand = async (candidates: BundlerCommand[], args: string[], cwd: string): Promise<void> => {
+const runBundler = async (candidates: BundlerCommand[], args: string[], cwd: string): Promise<void> => {
   const missingLaunchers: string[] = [];
 
   for (const candidate of candidates) {
     try {
-      await execBundlerCommand(candidate, args, cwd);
+      await runCandidate(candidate, args, cwd);
       return;
-    } catch (err) {
-      if (isMissingExecutableError(err)) {
+    } catch (error) {
+      if (isMissingExecutableError(error)) {
         missingLaunchers.push(candidate.label);
         continue;
       }
 
-      throw err;
+      throw error;
     }
   }
 
@@ -269,25 +303,27 @@ const resolveBundlerCommands = (context: ExtensionContext): BundlerCommand[] => 
 
   const candidates: BundlerCommand[] = [];
   const localCli = path.join(context.extensionPath, '..', 'luau-bundler', 'src', 'cli.ts');
-  if (fs.existsSync(localCli)) {
+  if (fs.existsSync(localCli))
     for (const command of commandShims('bun')) candidates.push({ command, 'prefix': [localCli], 'label': command });
-  }
 
-  for (const command of commandShims('npx')) {
+  for (const command of commandShims('npx'))
     candidates.push({ command, 'prefix': ['-y', BUNDLER_PACKAGE], 'label': command });
-  }
 
-  for (const command of commandShims('npm')) {
+  for (const command of commandShims('npm'))
     candidates.push({
       command,
       'prefix': ['exec', '-y', '--package', BUNDLER_PACKAGE, '--', BUNDLER_BIN],
       'label': `${command} exec`,
     });
-  }
 
   return candidates;
 };
 
+/**
+ * Activates the extension: starts the language client, wires up the game tree,
+ * properties panel, remote spy, status bar items, and all commands.
+ * @param context - The VS Code extension context.
+ */
 export const activate = (context: ExtensionContext): void => {
   const serverModule = context.asAbsolutePath(path.join('server', 'index.js'));
 
@@ -348,8 +384,8 @@ export const activate = (context: ExtensionContext): void => {
         );
         await client.sendRequest('custom/requestGameTree');
       } else window.showErrorMessage(`Move failed: ${result.error ?? 'Unknown error'}`);
-    } catch (err) {
-      window.showErrorMessage(`Move failed: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (error) {
+      window.showErrorMessage(`Move failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
@@ -372,8 +408,8 @@ export const activate = (context: ExtensionContext): void => {
       );
       if (result.success && result.children !== undefined) return result.children;
       return undefined;
-    } catch (err) {
-      logDebug('[rbxdev-ls] Children request error:', err);
+    } catch (error) {
+      logDebug('[rbxdev-ls] Children request error:', error);
       return undefined;
     }
   });
@@ -386,7 +422,7 @@ export const activate = (context: ExtensionContext): void => {
   remoteSpyPanel = new RemoteSpyPanel(context);
   context.subscriptions.push({ 'dispose': () => remoteSpyPanel.dispose() });
 
-  const sendBlockListToExecutor = async (): Promise<void> => {
+  const pushBlockList = async (): Promise<void> => {
     try {
       await client.sendRequest('custom/setRemoteSpyBlockList', {
         'blocks': remoteSpyState.blockList,
@@ -396,20 +432,24 @@ export const activate = (context: ExtensionContext): void => {
     }
   };
 
-  syncRemoteSpyStateToExecutor = async (): Promise<void> => {
+  syncSpyState = async (): Promise<void> => {
     try {
       await client.sendRequest('custom/setRemoteSpyEnabled', { 'enabled': remoteSpyEnabled });
     } catch {
       /* noop */
     }
 
-    await sendBlockListToExecutor();
+    await pushBlockList();
   };
+
+  const pushSpyState = (): void => remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+
+  const callAt = (index?: number) => (index === undefined ? undefined : remoteSpyState.calls[index]);
 
   remoteSpyPanel.onMessage(async (message: FromWebviewMessage) => {
     switch (message.type) {
       case 'toggleSpy': {
-        if (lastConnectedState === false) return window.showErrorMessage('No executor connected');
+        if (lastConnected === false) return window.showErrorMessage('No executor connected');
 
         const result = await client.sendRequest<{
           success: boolean;
@@ -418,19 +458,18 @@ export const activate = (context: ExtensionContext): void => {
         }>('custom/setRemoteSpyEnabled', { 'enabled': message.enabled === true });
         if (result.success) {
           remoteSpyEnabled = result.enabled === true;
-          if (remoteSpyEnabled) remoteSpyStatusBar.text = '$(eye) Spy ON';
-          else remoteSpyStatusBar.text = '$(eye-closed) Spy OFF';
-          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+          remoteSpyStatusBar.text = remoteSpyEnabled ? '$(eye) Spy ON' : '$(eye-closed) Spy OFF';
+          pushSpyState();
         }
         break;
       }
       case 'pause':
         remoteSpyState.paused = true;
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        pushSpyState();
         break;
       case 'resume':
         remoteSpyState.paused = false;
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        pushSpyState();
         break;
       case 'clear':
         clearCalls(remoteSpyState);
@@ -440,84 +479,77 @@ export const activate = (context: ExtensionContext): void => {
         if (message.index !== undefined) remoteSpyState.selectedIndex = message.index;
         break;
       case 'copyCode': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         await env.clipboard.writeText(call.code);
         window.showInformationMessage(`Copied: ${call.remoteName}`);
         break;
       }
       case 'copyPath': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
-        const pathStr = call.remotePath.join('.');
-        await env.clipboard.writeText(pathStr);
-        window.showInformationMessage(`Copied path: ${pathStr}`);
+        const remotePath = call.remotePath.join('.');
+        await env.clipboard.writeText(remotePath);
+        window.showInformationMessage(`Copied path: ${remotePath}`);
         break;
       }
       case 'copyArgs': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         await env.clipboard.writeText(call.arguments);
         window.showInformationMessage(`Copied arguments`);
         break;
       }
       case 'ignoreByPath': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         addIgnore(remoteSpyState, { 'type': 'path', 'value': call.remotePath.join('.') });
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        pushSpyState();
         break;
       }
       case 'ignoreByName': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         addIgnore(remoteSpyState, { 'type': 'name', 'value': call.remoteName });
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        pushSpyState();
         break;
       }
       case 'blockByPath': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         addBlock(remoteSpyState, { 'type': 'path', 'value': call.remotePath.join('.') });
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
-        await sendBlockListToExecutor();
+        pushSpyState();
+        await pushBlockList();
         break;
       }
       case 'blockByName': {
-        if (message.index === undefined) return;
-        const call = remoteSpyState.calls[message.index];
+        const call = callAt(message.index);
         if (call === undefined) return;
         addBlock(remoteSpyState, { 'type': 'name', 'value': call.remoteName });
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
-        await sendBlockListToExecutor();
+        pushSpyState();
+        await pushBlockList();
         break;
       }
       case 'clearIgnores':
         clearIgnores(remoteSpyState);
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+        pushSpyState();
         break;
       case 'clearBlocks':
         clearBlocks(remoteSpyState);
-        remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
-        await sendBlockListToExecutor();
+        pushSpyState();
+        await pushBlockList();
         break;
       case 'removeIgnore':
         if (message.entry !== undefined) {
           removeIgnore(remoteSpyState, message.entry);
-          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
+          pushSpyState();
         }
         break;
       case 'removeBlock':
         if (message.entry !== undefined) {
           removeBlock(remoteSpyState, message.entry);
-          remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
-          await sendBlockListToExecutor();
+          pushSpyState();
+          await pushBlockList();
         }
         break;
     }
@@ -554,38 +586,29 @@ export const activate = (context: ExtensionContext): void => {
       });
 
       if (result.success) {
-        const propsResult = await client.sendRequest<{
-          success: boolean;
-          properties?: PropertyEntry[];
-        }>('custom/requestProperties', { 'path': instancePath });
-        if (propsResult.success && propsResult.properties !== undefined) {
-          propertiesProvider.setProperties(
-            instancePath[instancePath.length - 1] ?? '',
-            propsResult.properties,
-            instancePath,
-          );
-        }
+        await refreshProperties(instancePath);
         return true;
-      } else {
-        window.showErrorMessage(`Failed to set ${property}: ${result.error ?? 'Unknown error'}`);
-        return false;
       }
-    } catch (err) {
-      window.showErrorMessage(`Failed to set ${property}: ${err instanceof Error ? err.message : String(err)}`);
+
+      window.showErrorMessage(`Failed to set ${property}: ${result.error ?? 'Unknown error'}`);
+      return false;
+    } catch (error) {
+      window.showErrorMessage(`Failed to set ${property}: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   });
 
-  const convertRobloxPathToFile = (robloxPath: string, line?: number): string => {
+  const toFilePath = (robloxPath: string, line?: number): string => {
+    const withLine = (value: string): string => (line !== undefined ? `${value}:${line}` : value);
+
     const workspaceFolders = workspace.workspaceFolders;
-    if (workspaceFolders === undefined || workspaceFolders.length === 0)
-      return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    if (workspaceFolders === undefined || workspaceFolders.length === 0) return withLine(robloxPath);
 
     const workspaceRoots = workspaceFolders.map(folder => folder.uri.fsPath);
 
     const pathParts = robloxPath.replace(/^game\./, '').split('.');
 
-    const serviceMap: Record<string, string> = {
+    const serviceDirs: Record<string, string> = {
       'ServerScriptService': 'src/server',
       'ServerStorage': 'src/server/storage',
       'ReplicatedStorage': 'src/shared',
@@ -598,14 +621,14 @@ export const activate = (context: ExtensionContext): void => {
     };
 
     const service = pathParts[0];
-    if (service === undefined) return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    if (service === undefined) return withLine(robloxPath);
 
-    const basePath = serviceMap[service];
-    if (basePath === undefined) return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    const basePath = serviceDirs[service];
+    if (basePath === undefined) return withLine(robloxPath);
 
     const scriptPath = pathParts.slice(1).join('/');
     for (const workspaceRoot of workspaceRoots) {
-      const possiblePaths = [
+      const candidates = [
         path.join(workspaceRoot, basePath, `${scriptPath}.server.luau`),
         path.join(workspaceRoot, basePath, `${scriptPath}.client.luau`),
         path.join(workspaceRoot, basePath, `${scriptPath}.luau`),
@@ -616,16 +639,16 @@ export const activate = (context: ExtensionContext): void => {
         path.join(workspaceRoot, basePath, scriptPath, 'init.lua'),
       ];
 
-      for (const filePath of possiblePaths) {
+      for (const filePath of candidates) {
         try {
-          if (fs.existsSync(filePath)) return line !== undefined ? `${filePath}:${line}` : filePath;
+          if (fs.existsSync(filePath)) return withLine(filePath);
         } catch {
           /* noop */
         }
       }
     }
 
-    return line !== undefined ? `${robloxPath}:${line}` : robloxPath;
+    return withLine(robloxPath);
   };
 
   const formatStackLine = (stackLine: string): string => {
@@ -636,7 +659,7 @@ export const activate = (context: ExtensionContext): void => {
       if (match !== null && match[1] !== undefined && match[2] !== undefined) {
         const robloxPath = match[1];
         const line = parseInt(match[2], 10);
-        const filePath = convertRobloxPathToFile(robloxPath, line);
+        const filePath = toFilePath(robloxPath, line);
 
         return stackLine.replace(`${robloxPath}:${line}`, filePath);
       }
@@ -646,7 +669,7 @@ export const activate = (context: ExtensionContext): void => {
   };
 
   client.start().then(() => {
-    registerMcpTools(context, client, () => lastConnectedState);
+    registerMcpTools(context, client, () => lastConnected);
 
     client.onNotification(
       'custom/log',
@@ -669,10 +692,9 @@ export const activate = (context: ExtensionContext): void => {
     client.onNotification('custom/gameTreeUpdate', (nodes: GameTreeNode[]) => {
       logDebug('[rbxdev-ls] Game tree update received:', nodes.length, 'services');
 
-      if (nodes.length > 0 && nodes[0]?.children && nodes[0].children.length > 0) {
-        const firstChild = nodes[0].children[0];
-        logDebug('[rbxdev-ls] First child sample:', firstChild?.name, 'hasChildren:', firstChild?.hasChildren);
-      }
+      const firstChild = nodes[0]?.children?.[0];
+      if (firstChild !== undefined)
+        logDebug('[rbxdev-ls] First child sample:', firstChild.name, 'hasChildren:', firstChild.hasChildren);
       gameTreeProvider.refresh(nodes);
     });
 
@@ -706,32 +728,30 @@ export const activate = (context: ExtensionContext): void => {
   });
 
   context.subscriptions.push(
-    workspace.onDidSaveTextDocument(async doc => {
-      const scriptPath = scriptDocumentPaths.get(doc.uri.toString());
+    workspace.onDidSaveTextDocument(async document => {
+      const scriptPath = scriptDocumentPaths.get(document.uri.toString());
       if (scriptPath === undefined) return;
       if (lastClientType !== 'studio') return;
-      if (lastConnectedState === false) return;
+      if (lastConnected === false) return;
 
       try {
         const result = await client.sendRequest<{ success: boolean; error?: string }>('custom/setScriptSource', {
           'path': scriptPath,
-          'source': doc.getText(),
+          'source': document.getText(),
         });
 
         if (result.success)
           window.setStatusBarMessage(`$(check) Pushed to Studio: ${scriptPath[scriptPath.length - 1]}`, 3000);
         else window.showErrorMessage(`Push to Studio failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Push to Studio failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Push to Studio failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
   );
 
   context.subscriptions.push(
     workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('rbxdev-ls.autoRefreshGameTree')) {
-        void applyAutoRefreshSetting();
-      }
+      if (e.affectsConfiguration('rbxdev-ls.autoRefreshGameTree')) void applyAutoRefreshSetting();
     }),
   );
 
@@ -742,13 +762,10 @@ export const activate = (context: ExtensionContext): void => {
   context.subscriptions.push(statusBarItem);
 
   const updateExecuteButton = (): void => {
-    if (bundleMode === true) {
-      executeButton.text = '$(package) Bundle & Execute';
-      executeButton.tooltip = 'Bundle & Execute in Roblox (Ctrl+Shift+E)';
-    } else {
-      executeButton.text = '$(play) Roblox Execute';
-      executeButton.tooltip = 'Execute code in Roblox (Ctrl+Shift+E)';
-    }
+    executeButton.text = bundleMode ? '$(package) Bundle & Execute' : '$(play) Roblox Execute';
+    executeButton.tooltip = bundleMode
+      ? 'Bundle & Execute in Roblox (Ctrl+Shift+E)'
+      : 'Execute code in Roblox (Ctrl+Shift+E)';
   };
   executeButton = window.createStatusBarItem(StatusBarAlignment.Right, 101);
   executeButton.command = 'rbxdev-ls.execute';
@@ -764,12 +781,12 @@ export const activate = (context: ExtensionContext): void => {
   context.subscriptions.push(remoteSpyStatusBar);
 
   const initBundlerConfig = async (workspaceRoot: string): Promise<boolean> => {
-    const srcInput = await window.showInputBox({
+    const sourceInput = await window.showInputBox({
       'prompt': 'Source directory (relative to workspace root)',
       'value': 'src',
       'placeHolder': 'src',
     });
-    if (srcInput === undefined) return false;
+    if (sourceInput === undefined) return false;
 
     const outputInput = await window.showInputBox({
       'prompt': 'Output file path (relative to workspace root)',
@@ -785,19 +802,19 @@ export const activate = (context: ExtensionContext): void => {
     });
     if (entryInput === undefined) return false;
 
-    const config = { 'src': srcInput, 'output': outputInput, 'entry': entryInput };
+    const config = { 'src': sourceInput, 'output': outputInput, 'entry': entryInput };
     const configPath = path.join(workspaceRoot, 'luau-bundler.config.json');
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
 
-    const srcPath = path.join(workspaceRoot, srcInput);
-    if (fs.existsSync(srcPath) === false) {
-      fs.mkdirSync(srcPath, { 'recursive': true });
-      const entryFile = path.join(srcPath, `${entryInput}.luau`);
+    const sourcePath = path.join(workspaceRoot, sourceInput);
+    if (fs.existsSync(sourcePath) === false) {
+      fs.mkdirSync(sourcePath, { 'recursive': true });
+      const entryFile = path.join(sourcePath, `${entryInput}.luau`);
       if (fs.existsSync(entryFile) === false)
         fs.writeFileSync(entryFile, `-- ${entryInput}.luau\nprint("Hello from bundled script!")\n`);
     }
 
-    window.showInformationMessage(`Created luau-bundler.config.json and ${srcInput}/${entryInput}.luau`);
+    window.showInformationMessage(`Created luau-bundler.config.json and ${sourceInput}/${entryInput}.luau`);
     return true;
   };
 
@@ -805,38 +822,34 @@ export const activate = (context: ExtensionContext): void => {
     const workspaceRoot = getWorkspaceFolderPath();
     if (workspaceRoot === undefined) return void window.showErrorMessage('No workspace folder open');
 
-    let srcDir = 'src';
+    let sourceDir = 'src';
     let outputFile = 'dist/out.lua';
     let entry = 'init';
     let project: string | undefined;
 
     const configPath = path.join(workspaceRoot, 'luau-bundler.config.json');
-    if (fs.existsSync(configPath)) {
+    const loadConfig = (): void => {
       try {
-        const bundlerConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (typeof bundlerConfig.src === 'string') srcDir = bundlerConfig.src;
-        if (typeof bundlerConfig.output === 'string') outputFile = bundlerConfig.output;
-        if (typeof bundlerConfig.entry === 'string') entry = bundlerConfig.entry;
-        if (typeof bundlerConfig.project === 'string') project = bundlerConfig.project;
+        const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (typeof parsed.src === 'string') sourceDir = parsed.src;
+        if (typeof parsed.output === 'string') outputFile = parsed.output;
+        if (typeof parsed.entry === 'string') entry = parsed.entry;
+        if (typeof parsed.project === 'string') project = parsed.project;
       } catch {
         /* noop */
       }
-    } else {
+    };
+
+    if (fs.existsSync(configPath)) loadConfig();
+    else {
       const created = await initBundlerConfig(workspaceRoot);
       if (created === false) return;
-      try {
-        const bundlerConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (typeof bundlerConfig.src === 'string') srcDir = bundlerConfig.src;
-        if (typeof bundlerConfig.output === 'string') outputFile = bundlerConfig.output;
-        if (typeof bundlerConfig.entry === 'string') entry = bundlerConfig.entry;
-      } catch {
-        /* noop */
-      }
+      loadConfig();
     }
 
     const bundlerCommands = resolveBundlerCommands(context);
-    const srcArgs = project !== undefined ? ['--project', project] : ['--src', srcDir];
-    const bundlerArgs = [...srcArgs, '--out', outputFile, '--entry', entry];
+    const sourceArgs = project !== undefined ? ['--project', project] : ['--src', sourceDir];
+    const bundlerArgs = [...sourceArgs, '--out', outputFile, '--entry', entry];
     const outputPath = path.join(workspaceRoot, outputFile);
 
     try {
@@ -846,29 +859,17 @@ export const activate = (context: ExtensionContext): void => {
           'title': 'Bundling...',
           'cancellable': false,
         },
-        () => runBundlerCommand(bundlerCommands, bundlerArgs, workspaceRoot),
+        () => runBundler(bundlerCommands, bundlerArgs, workspaceRoot),
       );
-    } catch (err) {
-      window.showErrorMessage(`Bundle failed: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (error) {
+      window.showErrorMessage(`Bundle failed: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
 
     if (fs.existsSync(outputPath) === false)
       return void window.showErrorMessage(`Bundle output not found: ${outputFile}`);
 
-    const code = fs.readFileSync(outputPath, 'utf-8');
-
-    try {
-      const result = await client.sendRequest<{ success: boolean; result?: string; error?: { message: string } }>(
-        'custom/execute',
-        { code },
-      );
-
-      if (result.success) window.showInformationMessage('Bundle executed successfully');
-      else window.showErrorMessage(`Execution failed: ${result.error?.message ?? 'Unknown error'}`);
-    } catch (err) {
-      window.showErrorMessage(`Execute failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    await executeCode(fs.readFileSync(outputPath, 'utf-8'), () => 'Bundle executed successfully');
   };
 
   context.subscriptions.push(
@@ -878,21 +879,9 @@ export const activate = (context: ExtensionContext): void => {
       const editor = window.activeTextEditor;
       if (editor === undefined) return window.showErrorMessage('No active editor');
 
-      const code = editor.document.getText();
-      try {
-        const result = await client.sendRequest<{ success: boolean; result?: string; error?: { message: string } }>(
-          'custom/execute',
-          { code },
-        );
-
-        if (result.success)
-          window.showInformationMessage(
-            result.result !== undefined ? `Executed: ${result.result}` : 'Code executed successfully',
-          );
-        else window.showErrorMessage(`Execution failed: ${result.error?.message ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Execute failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      await executeCode(editor.document.getText(), result =>
+        result !== undefined ? `Executed: ${result}` : 'Code executed successfully',
+      );
     }),
 
     commands.registerCommand('rbxdev-ls.executeNormal', async () => {
@@ -905,56 +894,32 @@ export const activate = (context: ExtensionContext): void => {
       const editor = window.activeTextEditor;
       if (editor === undefined) return window.showErrorMessage('No active editor');
 
-      const selection = editor.selection;
-      const code = editor.document.getText(selection);
-
+      const code = editor.document.getText(editor.selection);
       if (code.trim().length === 0) return window.showErrorMessage('No code selected');
 
-      try {
-        const result = await client.sendRequest<{ success: boolean; result?: string; error?: { message: string } }>(
-          'custom/execute',
-          { code },
-        );
-
-        if (result.success) window.showInformationMessage('Selection executed successfully');
-        else window.showErrorMessage(`Execution failed: ${result.error?.message ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Execute failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      await executeCode(code, () => 'Selection executed successfully');
     }),
 
     commands.registerCommand('rbxdev-ls.toggleBridge', async () => {
       try {
         await client.sendRequest('custom/toggleBridge');
         await pollExecutorStatus();
-      } catch (err) {
-        window.showErrorMessage(`Toggle failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Toggle failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
     commands.registerCommand('rbxdev-ls.copyPath', (item: GameTreeItem) => {
-      const pathStr = `game.${item.path
-        .map(s => {
-          const i = s.indexOf('\0');
-          return i >= 0 ? s.substring(0, i) : s;
-        })
-        .join('.')}`;
-      env.clipboard.writeText(pathStr);
-      window.showInformationMessage(`Copied: ${pathStr}`);
+      const gamePath = formatGamePath(item.path);
+      env.clipboard.writeText(gamePath);
+      window.showInformationMessage(`Copied: ${gamePath}`);
     }),
 
     commands.registerCommand('rbxdev-ls.insertPath', async (item: GameTreeItem) => {
       const editor = window.activeTextEditor;
       if (editor === undefined) return window.showErrorMessage('No active editor');
-      const pathStr = `game.${item.path
-        .map(s => {
-          const i = s.indexOf('\0');
-          return i >= 0 ? s.substring(0, i) : s;
-        })
-        .join('.')}`;
-      await editor.edit(editBuilder => {
-        editBuilder.insert(editor.selection.active, pathStr);
-      });
+      const gamePath = formatGamePath(item.path);
+      await editor.edit(editBuilder => editBuilder.insert(editor.selection.active, gamePath));
     }),
 
     commands.registerCommand('rbxdev-ls.insertService', async (item: GameTreeItem) => {
@@ -964,21 +929,17 @@ export const activate = (context: ExtensionContext): void => {
       if (serviceName === undefined) return;
       const escapedServiceName = escapeLuaString(serviceName);
       let serviceIdentifier = serviceName;
-      if (!/^[A-Za-z_]/.test(serviceIdentifier)) {
-        serviceIdentifier = 'service_' + serviceIdentifier;
-      }
+      if (/^[A-Za-z_]/.test(serviceIdentifier) === false) serviceIdentifier = 'service_' + serviceIdentifier;
       serviceIdentifier = serviceIdentifier.replace(/[^A-Za-z0-9_]/g, '_');
       const code = `local ${serviceIdentifier} = game:GetService("${escapedServiceName}")\n`;
-      await editor.edit(editBuilder => {
-        editBuilder.insert(editor.selection.active, code);
-      });
+      await editor.edit(editBuilder => editBuilder.insert(editor.selection.active, code));
     }),
 
     commands.registerCommand('rbxdev-ls.refreshGameTree', async () => {
       try {
         await client.sendRequest('custom/requestGameTree');
-      } catch (err) {
-        window.showErrorMessage(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1021,13 +982,10 @@ export const activate = (context: ExtensionContext): void => {
             'value': item.value,
             'placeHolder': 'r, g, b (e.g., "0.5, 0.8, 1")',
             'validateInput': v => {
-              if (!/^-?\d*\.?\d+\s*,\s*-?\d*\.?\d+\s*,\s*-?\d*\.?\d+$/.test(v.trim())) {
+              if (/^-?\d*\.?\d+\s*,\s*-?\d*\.?\d+\s*,\s*-?\d*\.?\d+$/.test(v.trim()) === false)
                 return 'Enter 3 numbers separated by commas';
-              }
               const parts = v.split(',').map(s => parseFloat(s.trim()));
-              if (parts.some(n => isNaN(n) || n < 0 || n > 1)) {
-                return 'Values must be between 0 and 1';
-              }
+              if (parts.some(n => isNaN(n) || n < 0 || n > 1)) return 'Values must be between 0 and 1';
               return undefined;
             },
           });
@@ -1236,7 +1194,7 @@ export const activate = (context: ExtensionContext): void => {
         });
       }
 
-      if (newValue === undefined) return; // User cancelled
+      if (newValue === undefined) return;
 
       try {
         const result = await client.sendRequest<{ success: boolean; error?: string }>('custom/setProperty', {
@@ -1246,21 +1204,10 @@ export const activate = (context: ExtensionContext): void => {
           'valueType': item.valueType,
         });
 
-        if (result.success) {
-          const propsResult = await client.sendRequest<{
-            success: boolean;
-            properties?: PropertyEntry[];
-          }>('custom/requestProperties', { 'path': item.instancePath });
-          if (propsResult.success && propsResult.properties !== undefined) {
-            propertiesProvider.setProperties(
-              item.instancePath[item.instancePath.length - 1] ?? '',
-              propsResult.properties,
-              item.instancePath,
-            );
-          }
-        } else window.showErrorMessage(`Failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+        if (result.success) await refreshProperties(item.instancePath);
+        else window.showErrorMessage(`Failed: ${result.error ?? 'Unknown error'}`);
+      } catch (error) {
+        window.showErrorMessage(`Failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1272,8 +1219,8 @@ export const activate = (context: ExtensionContext): void => {
 
         if (result.success) window.showInformationMessage(`Teleported to ${item.name}`);
         else window.showErrorMessage(`Teleport failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Teleport failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Teleport failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1322,10 +1269,7 @@ export const activate = (context: ExtensionContext): void => {
 
       if (selected.action === 'workspace') {
         const workspaceRoot = getWorkspaceFolderPath();
-        if (workspaceRoot === undefined) {
-          window.showErrorMessage('No workspace folder open');
-          return;
-        }
+        if (workspaceRoot === undefined) return window.showErrorMessage('No workspace folder open');
 
         const vscodeDir = path.join(workspaceRoot, '.vscode');
         const mcpJsonPath = path.join(vscodeDir, 'mcp.json');
@@ -1345,8 +1289,8 @@ export const activate = (context: ExtensionContext): void => {
 
           fs.writeFileSync(mcpJsonPath, JSON.stringify(existingConfig, null, 2));
 
-          const doc = await workspace.openTextDocument(mcpJsonPath);
-          await window.showTextDocument(doc);
+          const document = await workspace.openTextDocument(mcpJsonPath);
+          await window.showTextDocument(document);
 
           window
             .showInformationMessage(
@@ -1356,8 +1300,10 @@ export const activate = (context: ExtensionContext): void => {
             .then(action => {
               if (action === 'Open Copilot Chat') commands.executeCommand('workbench.action.chat.open');
             });
-        } catch (err) {
-          window.showErrorMessage(`Failed to create mcp.json: ${err instanceof Error ? err.message : String(err)}`);
+        } catch (error) {
+          window.showErrorMessage(
+            `Failed to create mcp.json: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       } else if (selected.action === 'user') {
         await commands.executeCommand('workbench.action.openSettingsJson');
@@ -1398,8 +1344,8 @@ export const activate = (context: ExtensionContext): void => {
           window.showInformationMessage(`Deleted ${item.name}`);
           await client.sendRequest('custom/requestGameTree');
         } else window.showErrorMessage(`Delete failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Delete failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1430,10 +1376,7 @@ export const activate = (context: ExtensionContext): void => {
             logDebug('[rbxdev-ls] Script source result:', result.success, result.error);
 
             if (result.success && result.source !== undefined) {
-              const cleanPath = item.path.map(s => {
-                const i = s.indexOf('\0');
-                return i >= 0 ? s.substring(0, i) : s;
-              });
+              const cleanPath = stripMarkers(item.path);
               const scriptsDir = path.join(context.globalStorageUri.fsPath, 'studio-scripts');
               const scriptDir = path.join(scriptsDir, ...cleanPath.slice(0, -1));
               const scriptName = cleanPath[cleanPath.length - 1] ?? 'script';
@@ -1442,15 +1385,17 @@ export const activate = (context: ExtensionContext): void => {
               if (fs.existsSync(scriptDir) === false) fs.mkdirSync(scriptDir, { 'recursive': true });
               fs.writeFileSync(scriptFile, result.source, 'utf-8');
 
-              const doc = await workspace.openTextDocument(scriptFile);
-              await window.showTextDocument(doc);
-              scriptDocumentPaths.set(doc.uri.toString(), [...item.path]);
+              const document = await workspace.openTextDocument(scriptFile);
+              await window.showTextDocument(document);
+              scriptDocumentPaths.set(document.uri.toString(), [...item.path]);
             } else window.showErrorMessage(`Failed to get script source: ${result.error ?? 'Unknown error'}`);
           },
         );
-      } catch (err) {
-        console.error('[rbxdev-ls] viewScript error:', err);
-        window.showErrorMessage(`Failed to get script source: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        console.error('[rbxdev-ls] viewScript error:', error);
+        window.showErrorMessage(
+          `Failed to get script source: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }),
 
@@ -1540,8 +1485,8 @@ export const activate = (context: ExtensionContext): void => {
           window.showInformationMessage(`Created ${result.instanceName} in ${item.name}`);
           await client.sendRequest('custom/requestGameTree');
         } else window.showErrorMessage(`Create failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Create failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Create failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1557,8 +1502,8 @@ export const activate = (context: ExtensionContext): void => {
           window.showInformationMessage(`Cloned ${item.name} as ${result.cloneName}`);
           await client.sendRequest('custom/requestGameTree');
         } else window.showErrorMessage(`Clone failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Clone failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Clone failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1613,17 +1558,16 @@ export const activate = (context: ExtensionContext): void => {
     }),
 
     commands.registerCommand('rbxdev-ls.toggleRemoteSpy', async () => {
-      if (lastConnectedState === false) return window.showErrorMessage('No executor connected');
+      if (lastConnected === false) return window.showErrorMessage('No executor connected');
 
       try {
         const status = await client.sendRequest<{ isEnabled: boolean }>('custom/getRemoteSpyStatus');
-        const newEnabled = status.isEnabled === false;
 
         const result = await client.sendRequest<{
           success: boolean;
           enabled?: boolean;
           error?: string;
-        }>('custom/setRemoteSpyEnabled', { 'enabled': newEnabled });
+        }>('custom/setRemoteSpyEnabled', { 'enabled': status.isEnabled === false });
 
         if (result.success) {
           remoteSpyEnabled = result.enabled === true;
@@ -1638,8 +1582,8 @@ export const activate = (context: ExtensionContext): void => {
           }
           remoteSpyPanel.sendFullState(remoteSpyState, remoteSpyEnabled);
         } else window.showErrorMessage(`Failed to toggle Remote Spy: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Remote Spy error: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Remote Spy error: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1663,8 +1607,8 @@ export const activate = (context: ExtensionContext): void => {
             filter === '' ? 'Remote Spy filter cleared' : `Remote Spy filter set to: ${filter}`,
           );
         else window.showErrorMessage(`Failed to set filter: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Filter error: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Filter error: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
 
@@ -1676,20 +1620,7 @@ export const activate = (context: ExtensionContext): void => {
     commands.registerCommand('rbxdev-ls.copyLastRemoteCall', async () => {
       if (remoteSpyState.calls.length === 0) return window.showWarningMessage('No remote calls captured yet');
 
-      const items = remoteSpyState.calls
-        .slice(-20)
-        .reverse()
-        .map(call => {
-          const preview = call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code;
-          return {
-            'label': `${call.remoteName}`,
-            'description': call.method,
-            'detail': preview,
-            'luaCode': call.code,
-          };
-        });
-
-      const selected = await window.showQuickPick(items, {
+      const selected = await window.showQuickPick(recentCalls(), {
         'title': 'Copy Remote Call',
         'placeHolder': 'Select a remote call to copy',
       });
@@ -1706,29 +1637,14 @@ export const activate = (context: ExtensionContext): void => {
 
       if (remoteSpyState.calls.length === 0) return window.showWarningMessage('No remote calls captured yet');
 
-      const items = remoteSpyState.calls
-        .slice(-20)
-        .reverse()
-        .map(call => {
-          const preview = call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code;
-          return {
-            'label': `${call.remoteName}`,
-            'description': call.method,
-            'detail': preview,
-            'luaCode': call.code,
-          };
-        });
-
-      const selected = await window.showQuickPick(items, {
+      const selected = await window.showQuickPick(recentCalls(), {
         'title': 'Insert Remote Call',
         'placeHolder': 'Select a remote call to insert',
       });
 
       if (selected === undefined) return;
 
-      await editor.edit(editBuilder => {
-        editBuilder.insert(editor.selection.active, selected.luaCode);
-      });
+      await editor.edit(editBuilder => editBuilder.insert(editor.selection.active, selected.luaCode));
     }),
 
     commands.registerCommand('rbxdev-ls.copyQuickRemote', async () => {
@@ -1742,7 +1658,7 @@ export const activate = (context: ExtensionContext): void => {
     }),
 
     commands.registerCommand('rbxdev-ls.saveGame', async () => {
-      if (lastConnectedState === false) return window.showErrorMessage('No executor connected');
+      if (lastConnected === false) return window.showErrorMessage('No executor connected');
 
       const fileName = await window.showInputBox({
         'title': 'Save Game',
@@ -1768,33 +1684,20 @@ export const activate = (context: ExtensionContext): void => {
       optionParts.push(`Decompile = ${decompile}`);
       if (noscripts === true) optionParts.push('NilInstances = false');
       if (excludeServices.length > 0) {
-        const classList = excludeServices.map(c => `"${escapeLuaString(c)}"`).join(', ');
-        optionParts.push(`ExcludeClassNames = {${classList}}`);
+        const classNames = excludeServices.map(c => `"${escapeLuaString(c)}"`).join(', ');
+        optionParts.push(`ExcludeClassNames = {${classNames}}`);
       }
 
       const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
 
       await window.withProgress(
         { 'location': ProgressLocation.Notification, 'title': `Saving game to ${fileName}...`, 'cancellable': false },
-        async () => {
-          try {
-            const result = await client.sendRequest<{
-              success: boolean;
-              result?: string;
-              error?: { message: string };
-            }>('custom/execute', { code });
-
-            if (result.success) window.showInformationMessage(result.result ?? `Saved to ${fileName}`);
-            else window.showErrorMessage(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
-          } catch (err) {
-            window.showErrorMessage(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        },
+        () => executeCode(code, result => result ?? `Saved to ${fileName}`, 'Save failed'),
       );
     }),
 
     commands.registerCommand('rbxdev-ls.saveInstance', async (item: GameTreeItem) => {
-      if (lastConnectedState === false) return window.showErrorMessage('No executor connected');
+      if (lastConnected === false) return window.showErrorMessage('No executor connected');
       if (item === undefined) return window.showErrorMessage('No instance selected');
 
       const defaultName = `${item.name}.rbxm`;
@@ -1820,12 +1723,7 @@ export const activate = (context: ExtensionContext): void => {
       const config = workspace.getConfiguration('rbxdev-ls');
       const decompile = config.get<boolean>('saveInstance.decompile', true);
 
-      const cleanPath = item.path.map(s => {
-        const i = s.indexOf('\0');
-        return i >= 0 ? s.substring(0, i) : s;
-      });
-
-      const lookup = createLuaLookupFromPath(cleanPath);
+      const lookup = toLuaLookup(stripMarkers(item.path));
       const safeFileName = escapeLuaString(fileName);
       const safeItemName = escapeLuaString(item.name);
 
@@ -1833,20 +1731,7 @@ export const activate = (context: ExtensionContext): void => {
 
       await window.withProgress(
         { 'location': ProgressLocation.Notification, 'title': `Saving ${item.name}...`, 'cancellable': false },
-        async () => {
-          try {
-            const result = await client.sendRequest<{
-              success: boolean;
-              result?: string;
-              error?: { message: string };
-            }>('custom/execute', { code });
-
-            if (result.success) window.showInformationMessage(result.result ?? `Saved ${item.name}`);
-            else window.showErrorMessage(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
-          } catch (err) {
-            window.showErrorMessage(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        },
+        () => executeCode(code, result => result ?? `Saved ${item.name}`, 'Save failed'),
       );
     }),
 
@@ -1862,8 +1747,7 @@ export const activate = (context: ExtensionContext): void => {
       if (lastClientType !== 'studio')
         return window.showErrorMessage('Push to Studio is only available when connected to Roblox Studio');
 
-      const docUri = editor.document.uri.toString();
-      const scriptPath = scriptDocumentPaths.get(docUri);
+      const scriptPath = scriptDocumentPaths.get(editor.document.uri.toString());
       if (scriptPath === undefined)
         return window.showErrorMessage(
           'This document was not opened from the Game Tree. Open a script via the Game Tree first.',
@@ -1878,8 +1762,8 @@ export const activate = (context: ExtensionContext): void => {
         if (result.success)
           window.setStatusBarMessage(`$(check) Pushed to Studio: ${scriptPath[scriptPath.length - 1]}`, 3000);
         else window.showErrorMessage(`Push failed: ${result.error ?? 'Unknown error'}`);
-      } catch (err) {
-        window.showErrorMessage(`Push failed: ${err instanceof Error ? err.message : String(err)}`);
+      } catch (error) {
+        window.showErrorMessage(`Push failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }),
   );
@@ -1892,6 +1776,9 @@ export const activate = (context: ExtensionContext): void => {
   logDebug('rbxdev-ls extension activated');
 };
 
+/**
+ * Deactivates the extension, stopping the language client if it was started.
+ */
 export const deactivate = async (): Promise<void> => {
   if (client !== undefined) await client.stop();
 };

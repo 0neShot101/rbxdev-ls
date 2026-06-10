@@ -5,25 +5,7 @@
 
 import { Event, EventEmitter, ThemeIcon, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from 'vscode';
 
-/**
- * Represents a property entry from the executor
- */
-export interface PropertyEntry {
-  readonly name: string;
-  readonly valueType: string;
-  readonly value: string;
-  readonly className?: string;
-}
-
-/**
- * Represents a property item in the tree
- */
-export interface PropertyItem {
-  readonly name: string;
-  readonly value: string;
-  readonly valueType: string;
-  readonly instancePath: ReadonlyArray<string>;
-}
+import type { PropertyEntry, PropertyItem } from '@typings/properties';
 
 /**
  * TreeDataProvider for displaying instance properties
@@ -80,10 +62,10 @@ export class PropertiesDataProvider implements TreeDataProvider<PropertyItem> {
   getChildren = (element?: PropertyItem): PropertyItem[] => {
     if (element !== undefined) return [];
 
-    return this.properties.map(prop => ({
-      'name': prop.name,
-      'value': prop.value,
-      'valueType': prop.valueType,
+    return this.properties.map(property => ({
+      'name': property.name,
+      'value': property.value,
+      'valueType': property.valueType,
       'instancePath': this.currentPath,
     }));
   };

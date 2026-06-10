@@ -18,64 +18,31 @@ import {
   Uri,
 } from 'vscode';
 
-/**
- * Represents a node in the Roblox game tree hierarchy
- */
-export interface GameTreeNode {
-  readonly name: string;
-  readonly className: string;
-  readonly children?: ReadonlyArray<GameTreeNode>;
-  readonly hasChildren?: boolean; // For lazy loading - indicates unexpanded children exist
-}
-
-/**
- * Represents a tree item with path information for context menu operations
- */
-export interface GameTreeItem {
-  readonly name: string;
-  readonly className: string;
-  readonly path: ReadonlyArray<string>;
-  readonly children?: ReadonlyArray<GameTreeNode>;
-  readonly hasChildren?: boolean; // For lazy loading
-  readonly isService: boolean;
-}
+import type {
+  GameTreeItem,
+  GameTreeNode,
+  ReparentCallback,
+  RequestChildrenCallback,
+  SearchOptions,
+} from '@typings/gameTree';
 
 /** MIME type for game tree drag and drop */
 const GAME_TREE_MIME_TYPE = 'application/vnd.code.tree.rbxdev-gametree';
 
-/**
- * Callback type for handling reparent operations
- */
-export type ReparentCallback = (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>) => Promise<void>;
-
-/**
- * Callback type for requesting children of a node (lazy loading)
- */
-export type RequestChildrenCallback = (path: ReadonlyArray<string>) => Promise<ReadonlyArray<GameTreeNode> | undefined>;
-
-/**
- * Search options for filtering the game tree
- */
-export interface SearchOptions {
-  readonly query: string;
-  readonly searchByName: boolean;
-  readonly searchByClass: boolean;
-}
+/** Class names rendered and context-keyed as scripts in the tree. */
+const SCRIPT_CLASSES = ['Script', 'LocalScript', 'ModuleScript'];
 
 /** Map of class names to icon file names */
 const CLASS_ICON_MAP: Record<string, string> = {
-  // Scripts
   'Script': 'script',
   'LocalScript': 'localscript',
   'ModuleScript': 'modulescript',
 
-  // Containers
   'Folder': 'folder',
   'Model': 'model',
   'Configuration': 'configuration',
   'Actor': 'model',
 
-  // Parts
   'Part': 'part',
   'MeshPart': 'meshpart',
   'UnionOperation': 'union',
@@ -88,7 +55,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'TrussPart': 'trusspart',
   'SkateboardPlatform': 'part',
 
-  // Services - Core
   'Workspace': 'workspace',
   'Terrain': 'workspace',
   'Camera': 'camera',
@@ -106,12 +72,10 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'SoundService': 'sound',
   'Teams': 'players',
 
-  // Services - Timing & Runtime
   'RunService': 'clock',
   'TweenService': 'clock',
   'Debris': 'clock',
 
-  // Services - Network & API
   'HttpService': 'network',
   'HttpRbxApiService': 'network',
   'MarketplaceService': 'network',
@@ -120,14 +84,12 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'DataStoreService': 'database',
   'MemoryStoreService': 'database',
 
-  // Services - Chat & Social
   'Chat': 'chat',
   'TextChatService': 'chat',
   'SocialService': 'chat',
   'FriendService': 'chat',
   'GroupService': 'chat',
 
-  // Services - Input
   'UserInputService': 'gamepad',
   'ContextActionService': 'gamepad',
   'VRService': 'gamepad',
@@ -137,16 +99,13 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'ControllerService': 'gamepad',
   'TextBoxService': 'textlabel',
 
-  // Services - Security & Policy
   'PolicyService': 'shield',
   'PermissionsService': 'shield',
   'UGCValidationService': 'shield',
 
-  // Services - Localization & Text
   'LocalizationService': 'globe',
   'TextService': 'globe',
 
-  // Services - Content & Data Providers
   'ContentProvider': 'database',
   'MeshContentProvider': 'database',
   'SolidModelContentProvider': 'database',
@@ -156,30 +115,25 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'AssetService': 'database',
   'InsertService': 'database',
 
-  // Services - Badge & Analytics
   'BadgeService': 'badge',
   'GamePassService': 'badge',
   'PointsService': 'badge',
   'AnalyticsService': 'badge',
 
-  // Services - Physics & Simulation
   'PhysicsService': 'cube',
   'CollectionService': 'cube',
   'PathfindingService': 'cube',
   'JointsService': 'cube',
   'MaterialService': 'cube',
 
-  // Services - Video & Media
   'VideoCaptureService': 'video',
   'VideoService': 'video',
 
-  // Services - Plugins & Studio
   'PluginManagementService': 'plugin',
   'DraggerService': 'plugin',
   'HeightmapImporterService': 'plugin',
   'UIDragDetectorService': 'plugin',
 
-  // Services - System & Internal
   'LogService': 'gear',
   'MicroProfilerService': 'gear',
   'TestService': 'gear',
@@ -205,7 +159,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'GuidRegistryService': 'gear',
   'Stats': 'gear',
 
-  // Lighting
   'PointLight': 'lighting',
   'SpotLight': 'lighting',
   'SurfaceLight': 'lighting',
@@ -217,7 +170,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'DepthOfFieldEffect': 'depthoffield',
   'SunRaysEffect': 'sunrays',
 
-  // Sound
   'Sound': 'sound',
   'SoundGroup': 'sound',
   'ChorusSoundEffect': 'sound',
@@ -230,7 +182,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'ReverbSoundEffect': 'sound',
   'TremoloSoundEffect': 'sound',
 
-  // GUI - Containers
   'ScreenGui': 'screengui',
   'SurfaceGui': 'surfacegui',
   'BillboardGui': 'billboardgui',
@@ -241,7 +192,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'CanvasGroup': 'frame',
   'ViewportFrame': 'viewportframe',
 
-  // GUI - Elements
   'TextLabel': 'textlabel',
   'TextButton': 'textlabel',
   'TextBox': 'textlabel',
@@ -249,32 +199,27 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'ImageButton': 'image',
   'VideoFrame': 'image',
 
-  // GUI - Layout
   'UIListLayout': 'uilayout',
   'UIGridLayout': 'uilayout',
   'UITableLayout': 'uilayout',
   'UIPageLayout': 'uilayout',
 
-  // GUI - Constraints
   'UIAspectRatioConstraint': 'uiconstraint',
   'UISizeConstraint': 'uiconstraint',
   'UITextSizeConstraint': 'uiconstraint',
 
-  // GUI - Modifiers
   'UICorner': 'uiconstraint',
   'UIGradient': 'uiconstraint',
   'UIPadding': 'uiconstraint',
   'UIScale': 'uiconstraint',
   'UIStroke': 'uiconstraint',
 
-  // Remote/Bindable
   'RemoteEvent': 'remoteevent',
   'BindableEvent': 'remoteevent',
   'RemoteFunction': 'remotefunction',
   'BindableFunction': 'remotefunction',
   'UnreliableRemoteEvent': 'remoteevent',
 
-  // Values
   'IntValue': 'intvalue',
   'NumberValue': 'intvalue',
   'BoolValue': 'boolvalue',
@@ -288,7 +233,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'IntConstrainedValue': 'intvalue',
   'DoubleConstrainedValue': 'intvalue',
 
-  // Animation
   'Animation': 'animation',
   'AnimationController': 'animation',
   'AnimationTrack': 'animation',
@@ -297,7 +241,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'KeyframeSequence': 'animation',
   'Pose': 'animation',
 
-  // Character
   'Humanoid': 'humanoid',
   'HumanoidDescription': 'humanoid',
   'Accessory': 'accessory',
@@ -308,7 +251,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'BodyColors': 'color3value',
   'CharacterMesh': 'meshpart',
 
-  // Effects
   'ParticleEmitter': 'particleemitter',
   'Fire': 'particleemitter',
   'Smoke': 'particleemitter',
@@ -317,17 +259,14 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'Beam': 'beam',
   'Trail': 'trail',
 
-  // Appearance
   'Decal': 'decal',
   'Texture': 'texture',
   'SurfaceAppearance': 'texture',
   'MaterialVariant': 'texture',
 
-  // Physics - Attachments
   'Attachment': 'attachment',
   'Bone': 'attachment',
 
-  // Physics - Welds/Joints
   'Weld': 'weld',
   'WeldConstraint': 'weld',
   'ManualWeld': 'weld',
@@ -340,7 +279,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'RotateV': 'motor',
   'VelocityMotor': 'motor',
 
-  // Physics - Constraints
   'AlignOrientation': 'constraint',
   'AlignPosition': 'constraint',
   'AngularVelocity': 'constraint',
@@ -360,7 +298,6 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'VectorForce': 'constraint',
   'NoCollisionConstraint': 'constraint',
 
-  // Physics - Body Movers (Legacy)
   'BodyForce': 'bodyforce',
   'BodyGyro': 'bodyforce',
   'BodyPosition': 'bodyvelocity',
@@ -369,12 +306,10 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'BodyThrust': 'bodyforce',
   'RocketPropulsion': 'bodyforce',
 
-  // Interaction
   'ClickDetector': 'clickdetector',
   'ProximityPrompt': 'proximityprompt',
   'DragDetector': 'clickdetector',
 
-  // Selection/Highlight
   'Highlight': 'highlight',
   'SelectionBox': 'selectionbox',
   'SelectionSphere': 'selectionbox',
@@ -386,39 +321,31 @@ const CLASS_ICON_MAP: Record<string, string> = {
   'SphereHandleAdornment': 'selectionbox',
   'WireframeHandleAdornment': 'selectionbox',
 
-  // Tools
   'Tool': 'tool',
   'HopperBin': 'tool',
   'BackpackItem': 'tool',
 
-  // Teams
   'Team': 'team',
 
-  // Player related
   'Player': 'player',
   'Backpack': 'backpack',
   'PlayerScripts': 'folder',
   'PlayerMouse': 'clickdetector',
   'Character': 'character',
 
-  // Meshes
   'BlockMesh': 'blockmesh',
   'CylinderMesh': 'cylindermesh',
   'SpecialMesh': 'specialmesh',
   'FileMesh': 'specialmesh',
   'EditableMesh': 'meshpart',
 
-  // Starter
   'StarterGear': 'startergear',
 
-  // Touch
   'TouchTransmitter': 'touchtransmitter',
 
-  // Dialog
   'Dialog': 'dialog',
   'DialogChoice': 'dialog',
 
-  // Misc
   'ForceField': 'forcefield',
   'DataModel': 'workspace',
 };
@@ -543,33 +470,25 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       const matchesName = this.searchOptions!.searchByName && node.name.toLowerCase().includes(query);
       const matchesClass = this.searchOptions!.searchByClass && node.className.toLowerCase().includes(query);
 
-      if (matchesName || matchesClass) {
+      if (matchesName || matchesClass)
         results.push({
           'name': node.name,
           'className': node.className,
           'path': path,
-          'children': undefined, // Flat results, no children
+          'children': undefined,
           'hasChildren': false,
           'isService': isService,
         });
-      }
 
-      if (node.children !== undefined) {
-        for (const child of node.children) {
-          searchNode(child, [...path, child.name], false);
-        }
-      }
+      if (node.children !== undefined)
+        for (const child of node.children) searchNode(child, [...path, child.name], false);
     };
 
-    for (const node of this.rootNodes) {
-      searchNode(node, [node.name], true);
-    }
+    for (const node of this.rootNodes) searchNode(node, [node.name], true);
 
     for (const [pathKey, children] of this.childrenCache) {
       const basePath = JSON.parse(pathKey) as string[];
-      for (const child of children) {
-        searchNode(child, [...basePath, child.name], false);
-      }
+      for (const child of children) searchNode(child, [...basePath, child.name], false);
     }
 
     this.searchResults = results;
@@ -580,11 +499,16 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    */
   private static cleanPathForDisplay = (pathSegments: ReadonlyArray<string>): string =>
     pathSegments
-      .map(s => {
-        const nullIdx = s.indexOf('\0');
-        return nullIdx >= 0 ? s.substring(0, nullIdx) : s;
+      .map(segment => {
+        const nullIndex = segment.indexOf('\0');
+        return nullIndex >= 0 ? segment.substring(0, nullIndex) : segment;
       })
       .join('.');
+
+  private static contextValueFor = (element: GameTreeItem): string => {
+    if (element.isService) return 'service';
+    return SCRIPT_CLASSES.includes(element.className) ? 'script' : 'instance';
+  };
 
   getTreeItem = (element: GameTreeItem): TreeItem => {
     const displayPath = GameTreeDataProvider.cleanPathForDisplay(element.path);
@@ -593,10 +517,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       const item = new TreeItem(element.name, TreeItemCollapsibleState.None);
       item.description = `${element.className} — game.${displayPath}`;
       item.tooltip = `${element.className}\nPath: game.${displayPath}`;
-
-      const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
-      item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
-
+      item.contextValue = GameTreeDataProvider.contextValueFor(element);
       item.iconPath = this.getIconForClass(element.className);
       return item;
     }
@@ -608,10 +529,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     );
     item.description = element.className;
     item.tooltip = `${element.className}\nPath: game.${displayPath}`;
-
-    const isScript = ['Script', 'LocalScript', 'ModuleScript'].includes(element.className);
-    item.contextValue = element.isService ? 'service' : isScript ? 'script' : 'instance';
-
+    item.contextValue = GameTreeDataProvider.contextValueFor(element);
     item.iconPath = this.getIconForClass(element.className);
     return item;
   };
@@ -626,18 +544,16 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     isService = false,
   ): GameTreeItem[] => {
     const nameFrequency = new Map<string, number>();
-    for (const child of children) {
-      nameFrequency.set(child.name, (nameFrequency.get(child.name) ?? 0) + 1);
-    }
+    for (const child of children) nameFrequency.set(child.name, (nameFrequency.get(child.name) ?? 0) + 1);
 
     const nameIndex = new Map<string, number>();
 
     return children.map(child => {
-      const freq = nameFrequency.get(child.name)!;
-      const idx = nameIndex.get(child.name) ?? 0;
-      nameIndex.set(child.name, idx + 1);
+      const frequency = nameFrequency.get(child.name)!;
+      const index = nameIndex.get(child.name) ?? 0;
+      nameIndex.set(child.name, index + 1);
 
-      const pathSegment = freq > 1 ? `${child.name}\0${idx}` : child.name;
+      const pathSegment = frequency > 1 ? `${child.name}\0${index}` : child.name;
 
       return {
         'name': child.name,
@@ -651,26 +567,16 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   getChildren = async (element?: GameTreeItem): Promise<GameTreeItem[]> => {
-    if (this.searchOptions !== undefined) {
-      if (element === undefined) {
-        return this.searchResults;
-      }
-      return [];
-    }
+    if (this.searchOptions !== undefined) return element === undefined ? this.searchResults : [];
 
-    if (element === undefined) {
-      return this.mapChildrenToItems(this.rootNodes, [], true);
-    }
+    if (element === undefined) return this.mapChildrenToItems(this.rootNodes, [], true);
 
-    if (element.children !== undefined && element.children.length > 0) {
+    if (element.children !== undefined && element.children.length > 0)
       return this.mapChildrenToItems(element.children, element.path);
-    }
 
     const pathKey = JSON.stringify(element.path);
     const cachedChildren = this.childrenCache.get(pathKey);
-    if (cachedChildren !== undefined) {
-      return this.mapChildrenToItems(cachedChildren, element.path);
-    }
+    if (cachedChildren !== undefined) return this.mapChildrenToItems(cachedChildren, element.path);
 
     if (element.hasChildren === true && this.requestChildrenCallback !== undefined) {
       const fetchedChildren = await this.requestChildrenCallback(element.path);
@@ -720,15 +626,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Checks if target is a parent of or the same as source
    */
   private isParentOrSelf = (sourcePath: ReadonlyArray<string>, targetPath: ReadonlyArray<string>): boolean => {
-    if (sourcePath.length === targetPath.length) {
-      return sourcePath.every((segment, i) => segment === targetPath[i]);
-    }
-
-    if (targetPath.length > sourcePath.length) {
-      return sourcePath.every((segment, i) => segment === targetPath[i]);
-    }
-
-    return false;
+    if (targetPath.length < sourcePath.length) return false;
+    return sourcePath.every((segment, i) => segment === targetPath[i]);
   };
 
   /**
@@ -759,19 +658,17 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       if (existingNode === undefined) return newNode;
 
       if (newNode.children !== undefined && newNode.children.length > 0) {
-        if (existingNode.children !== undefined && existingNode.children.length > 0) {
+        if (existingNode.children !== undefined && existingNode.children.length > 0)
           return {
             'name': newNode.name,
             'className': newNode.className,
             'children': this.mergeNodeTrees(existingNode.children, newNode.children),
           };
-        }
         return newNode;
       }
 
-      if (newNode.hasChildren === true && existingNode.children !== undefined && existingNode.children.length > 0) {
+      if (newNode.hasChildren === true && existingNode.children !== undefined && existingNode.children.length > 0)
         return existingNode;
-      }
 
       return newNode;
     });
