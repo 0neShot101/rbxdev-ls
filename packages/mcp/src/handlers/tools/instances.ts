@@ -3,7 +3,7 @@ import { hasCapability } from 'rbxdev-server';
 import { createLuaLookupFromPath, escapeLuaString } from '@mcp/utils/lua';
 import { bridgeCall, NOT_CONNECTED, errorResult, requirePath, textResult } from '@mcp/utils/results';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 const buildSaveInstanceCode = (args: { path?: string[]; fileName?: string; decompile?: boolean }): string => {
   const fileName = args.fileName ?? 'game.rbxl';

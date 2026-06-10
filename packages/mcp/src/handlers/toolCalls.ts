@@ -7,7 +7,7 @@ import { gameTreeToolHandlers } from '@mcp/handlers/tools/gameTree';
 import { instanceToolHandlers } from '@mcp/handlers/tools/instances';
 import { remoteSpyToolHandlers } from '@mcp/handlers/tools/remoteSpy';
 import { scriptToolHandlers } from '@mcp/handlers/tools/scripts';
-import type { ToolHandlerMap } from '@mcp/handlers/tools/shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 const toolHandlers: ToolHandlerMap = {
   ...bridgeToolHandlers,

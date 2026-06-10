@@ -2,7 +2,7 @@ import { hasCapability } from 'rbxdev-server';
 
 import { bridgeCall, errorResult, NOT_CONNECTED, requirePath, textResult } from '@mcp/utils/results';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 export const scriptToolHandlers: ToolHandlerMap = {
   'get_script_source': async (args, { bridge }) => {

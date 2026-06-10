@@ -3,7 +3,7 @@ import { hasCapability } from 'rbxdev-server';
 import { bridgeCall, NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
 import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 export const remoteSpyToolHandlers: ToolHandlerMap = {
   'get_remote_calls': async (args, { bridge }) => {
