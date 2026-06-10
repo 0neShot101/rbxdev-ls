@@ -192,30 +192,43 @@ type BundlerCommand = {
 };
 
 type BundlerRunError = Error & {
-  code?: string;
+  code?: string | number;
 };
 
-const commandShims = (command: string): string[] => (process.platform === 'win32' ? [`${command}.cmd`, command] : [command]);
+const CMD_NOT_FOUND_EXIT_CODE = 9009;
+
+const commandShims = (command: string): string[] =>
+  process.platform === 'win32' ? [`${command}.cmd`, command] : [command];
 
 const isMissingExecutableError = (err: unknown): boolean => {
   if (err instanceof Error === false) return false;
   const code = (err as BundlerRunError).code;
-  return code === 'ENOENT' || err.message.includes('ENOENT');
+  if (code === 'ENOENT' || code === 'EINVAL' || code === CMD_NOT_FOUND_EXIT_CODE) return true;
+  return /ENOENT|EINVAL|is not recognized|command not found/i.test(err.message);
 };
+
+const quoteShellArg = (value: string): string => (/[\s"&^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
 
 const execBundlerCommand = (candidate: BundlerCommand, args: string[], cwd: string): Promise<void> =>
   new Promise<void>((resolve, reject) => {
-    execFile(candidate.command, [...candidate.prefix, ...args], { cwd, 'windowsHide': true }, (error, _stdout, stderr) => {
-      if (error !== null) {
-        const message = stderr.trim() !== '' ? stderr.trim() : error.message;
-        const runError = new Error(message) as BundlerRunError;
-        if (typeof error.code === 'string') runError.code = error.code;
-        reject(runError);
-        return;
-      }
+    const useShell = process.platform === 'win32';
+    const fullArgs = [...candidate.prefix, ...args];
+    execFile(
+      useShell ? quoteShellArg(candidate.command) : candidate.command,
+      useShell ? fullArgs.map(quoteShellArg) : fullArgs,
+      { cwd, 'windowsHide': true, 'shell': useShell },
+      (error, _stdout, stderr) => {
+        if (error !== null) {
+          const message = stderr.trim() !== '' ? stderr.trim() : error.message;
+          const runError = new Error(message) as BundlerRunError;
+          if (typeof error.code === 'string' || typeof error.code === 'number') runError.code = error.code;
+          reject(runError);
+          return;
+        }
 
-      resolve();
-    });
+        resolve();
+      },
+    );
   });
 
 const runBundlerCommand = async (candidates: BundlerCommand[], args: string[], cwd: string): Promise<void> => {
@@ -251,7 +264,8 @@ const runBundlerCommand = async (candidates: BundlerCommand[], args: string[], c
 const resolveBundlerCommands = (context: ExtensionContext): BundlerCommand[] => {
   const config = workspace.getConfiguration('rbxdev-ls');
   const customPath = config.get<string>('bundler.path', '');
-  if (customPath !== '' && fs.existsSync(customPath)) return [{ 'command': customPath, 'prefix': [], 'label': customPath }];
+  if (customPath !== '' && fs.existsSync(customPath))
+    return [{ 'command': customPath, 'prefix': [], 'label': customPath }];
 
   const candidates: BundlerCommand[] = [];
   const localCli = path.join(context.extensionPath, '..', 'luau-bundler', 'src', 'cli.ts');
@@ -832,8 +846,7 @@ export const activate = (context: ExtensionContext): void => {
           'title': 'Bundling...',
           'cancellable': false,
         },
-        () =>
-          runBundlerCommand(bundlerCommands, bundlerArgs, workspaceRoot),
+        () => runBundlerCommand(bundlerCommands, bundlerArgs, workspaceRoot),
       );
     } catch (err) {
       window.showErrorMessage(`Bundle failed: ${err instanceof Error ? err.message : String(err)}`);
