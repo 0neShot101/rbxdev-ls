@@ -1,6 +1,6 @@
 {
   "name": "@oneshot101/rbxdev-mcp",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "MCP server for connecting AI tools (Claude, Cursor, etc.) to live Roblox game instances",
   "main": "dist/index.js",
   "types": "types/index.d.ts",
