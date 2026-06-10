@@ -13,3 +13,12 @@ export type BundlerCommand = {
 export type BundlerRunError = Error & {
   code?: string | number;
 };
+
+/** Inputs needed to resolve launcher candidates without touching the VS Code API. */
+export type BundlerResolveOptions = {
+  customPath: string;
+  extensionPath: string;
+};
+
+/** Runs a single launcher candidate; injectable so tests can fake spawning. */
+export type CandidateRunner = (candidate: BundlerCommand, args: string[], cwd: string) => Promise<void>;

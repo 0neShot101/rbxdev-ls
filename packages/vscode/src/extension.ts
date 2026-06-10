@@ -1,4 +1,3 @@
-import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,6 +14,7 @@ import {
 } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
+import { resolveBundlerCommands, runBundler } from './bundlerLauncher';
 import { GameTreeDataProvider } from './gameTreeProvider';
 import { registerMcpTools } from './mcpTools';
 import { PropertiesWebviewProvider } from './propertiesWebview';
@@ -33,7 +33,6 @@ import {
 import { RemoteSpyPanel } from './remoteSpyWebview';
 
 import type { BridgeStatus, ExecutorStatusResponse } from '@typings/bridge';
-import type { BundlerCommand, BundlerRunError } from '@typings/bundler';
 import type { GameTreeItem, GameTreeNode } from '@typings/gameTree';
 import type { PropertyEntry, PropertyItem } from '@typings/properties';
 import type { FromWebviewMessage } from '@typings/remoteSpy';
@@ -225,99 +224,6 @@ const recentCalls = () =>
       'detail': call.code.includes('\n') ? (call.code.split('\n').pop() ?? call.code) : call.code,
       'luaCode': call.code,
     }));
-
-const BUNDLER_PACKAGE = '@oneshot101/luau-bundler';
-const BUNDLER_BIN = 'luau-bundler';
-
-const CMD_NOT_FOUND_EXIT_CODE = 9009;
-
-const commandShims = (command: string): string[] =>
-  process.platform === 'win32' ? [`${command}.cmd`, command] : [command];
-
-const isMissingExecutableError = (error: unknown): boolean => {
-  if (error instanceof Error === false) return false;
-  const code = (error as BundlerRunError).code;
-  if (code === 'ENOENT' || code === 'EINVAL' || code === CMD_NOT_FOUND_EXIT_CODE) return true;
-  return /ENOENT|EINVAL|is not recognized|command not found/i.test(error.message);
-};
-
-const quoteForShell = (value: string): string => (/[\s"&^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value);
-
-const runCandidate = (candidate: BundlerCommand, args: string[], cwd: string): Promise<void> =>
-  new Promise<void>((resolve, reject) => {
-    const useShell = process.platform === 'win32';
-    const fullArgs = [...candidate.prefix, ...args];
-    execFile(
-      useShell ? quoteForShell(candidate.command) : candidate.command,
-      useShell ? fullArgs.map(quoteForShell) : fullArgs,
-      { cwd, 'windowsHide': true, 'shell': useShell },
-      (error, _stdout, stderr) => {
-        if (error !== null) {
-          const message = stderr.trim() !== '' ? stderr.trim() : error.message;
-          const runError = new Error(message) as BundlerRunError;
-          if (typeof error.code === 'string' || typeof error.code === 'number') runError.code = error.code;
-          reject(runError);
-          return;
-        }
-
-        resolve();
-      },
-    );
-  });
-
-const runBundler = async (candidates: BundlerCommand[], args: string[], cwd: string): Promise<void> => {
-  const missingLaunchers: string[] = [];
-
-  for (const candidate of candidates) {
-    try {
-      await runCandidate(candidate, args, cwd);
-      return;
-    } catch (error) {
-      if (isMissingExecutableError(error)) {
-        missingLaunchers.push(candidate.label);
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  throw new Error(
-    `Could not find a bundler launcher (${missingLaunchers.join(', ')}). Install Node.js/npm or set rbxdev-ls.bundler.path to a luau-bundler executable.`,
-  );
-};
-
-/**
- * Resolves bundler commands. Priority order:
- * 1. User-configured custom path (rbxdev-ls.bundler.path setting)
- * 2. Local workspace copy (../luau-bundler/src/cli.ts via bun, for development)
- * 3. Published package via npx/npm exec (for end users)
- * @param context - The VS Code extension context.
- * @returns Ordered command candidates and their prefix args.
- */
-const resolveBundlerCommands = (context: ExtensionContext): BundlerCommand[] => {
-  const config = workspace.getConfiguration('rbxdev-ls');
-  const customPath = config.get<string>('bundler.path', '');
-  if (customPath !== '' && fs.existsSync(customPath))
-    return [{ 'command': customPath, 'prefix': [], 'label': customPath }];
-
-  const candidates: BundlerCommand[] = [];
-  const localCli = path.join(context.extensionPath, '..', 'luau-bundler', 'src', 'cli.ts');
-  if (fs.existsSync(localCli))
-    for (const command of commandShims('bun')) candidates.push({ command, 'prefix': [localCli], 'label': command });
-
-  for (const command of commandShims('npx'))
-    candidates.push({ command, 'prefix': ['-y', BUNDLER_PACKAGE], 'label': command });
-
-  for (const command of commandShims('npm'))
-    candidates.push({
-      command,
-      'prefix': ['exec', '-y', '--package', BUNDLER_PACKAGE, '--', BUNDLER_BIN],
-      'label': `${command} exec`,
-    });
-
-  return candidates;
-};
 
 /**
  * Activates the extension: starts the language client, wires up the game tree,
@@ -847,7 +753,10 @@ export const activate = (context: ExtensionContext): void => {
       loadConfig();
     }
 
-    const bundlerCommands = resolveBundlerCommands(context);
+    const bundlerCommands = resolveBundlerCommands({
+      'customPath': workspace.getConfiguration('rbxdev-ls').get<string>('bundler.path', ''),
+      'extensionPath': context.extensionPath,
+    });
     const sourceArgs = project !== undefined ? ['--project', project] : ['--src', sourceDir];
     const bundlerArgs = [...sourceArgs, '--out', outputFile, '--entry', entry];
     const outputPath = path.join(workspaceRoot, outputFile);
