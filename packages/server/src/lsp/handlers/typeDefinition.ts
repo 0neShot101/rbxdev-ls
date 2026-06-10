@@ -43,7 +43,7 @@ export const collectTypeDeclarations = (chunk: Chunk): Map<string, TypeDeclarati
           break;
 
         case 'ExportStatement':
-          if (stmt.declaration.kind === 'TypeAlias') {
+          if (stmt.declaration.kind === 'TypeAlias')
             declarations.set(stmt.declaration.name.name, {
               'name': stmt.declaration.name.name,
               'line': stmt.declaration.name.range.start.line - 1,
@@ -51,7 +51,6 @@ export const collectTypeDeclarations = (chunk: Chunk): Map<string, TypeDeclarati
               'endLine': stmt.declaration.name.range.end.line - 1,
               'endCharacter': stmt.declaration.name.range.end.column - 1,
             });
-          }
           break;
 
         case 'IfStatement':
@@ -111,7 +110,7 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
     const typeDeclarations = collectTypeDeclarations(document.ast);
 
     const directTypeDecl = typeDeclarations.get(word);
-    if (directTypeDecl !== undefined) {
+    if (directTypeDecl !== undefined)
       return {
         'uri': params.textDocument.uri,
         'range': {
@@ -119,7 +118,6 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
           'end': { 'line': directTypeDecl.endLine, 'character': directTypeDecl.endCharacter },
         },
       };
-    }
 
     if (document.typeCheckResult !== undefined) {
       const symbolType = document.typeCheckResult.allSymbols.get(word);
@@ -127,7 +125,7 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
         const typeName = getTypeName(symbolType);
         if (typeName !== undefined) {
           const typeDecl = typeDeclarations.get(typeName);
-          if (typeDecl !== undefined) {
+          if (typeDecl !== undefined)
             return {
               'uri': params.textDocument.uri,
               'range': {
@@ -135,12 +133,11 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
                 'end': { 'line': typeDecl.endLine, 'character': typeDecl.endCharacter },
               },
             };
-          }
         }
 
         const typeStr = typeToString(symbolType);
         const typeRefDecl = typeDeclarations.get(typeStr);
-        if (typeRefDecl !== undefined) {
+        if (typeRefDecl !== undefined)
           return {
             'uri': params.textDocument.uri,
             'range': {
@@ -148,7 +145,6 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
               'end': { 'line': typeRefDecl.endLine, 'character': typeRefDecl.endCharacter },
             },
           };
-        }
       }
     }
 
@@ -157,7 +153,7 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
       'visitTypeReference': node => {
         if (node.name === word) {
           const typeDecl = typeDeclarations.get(node.name);
-          if (typeDecl !== undefined) {
+          if (typeDecl !== undefined)
             foundLocation = {
               'uri': params.textDocument.uri,
               'range': {
@@ -165,7 +161,6 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
                 'end': { 'line': typeDecl.endLine, 'character': typeDecl.endCharacter },
               },
             };
-          }
         }
       },
     });

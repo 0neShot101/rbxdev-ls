@@ -68,57 +68,46 @@ export const setupImplementationHandler = (connection: Connection, documentManag
         for (let i = 0; i < node.names.length; i++) {
           const typeAnnotation = node.types[i];
           if (typeAnnotation === undefined) continue;
-          if (typeAnnotation.kind === 'TypeReference' && typeAnnotation.name === word) {
+          if (typeAnnotation.kind === 'TypeReference' && typeAnnotation.name === word)
             locations.push({
               'uri': params.textDocument.uri,
               'range': convertRange(node.names[i]!.range),
             });
-          }
         }
       },
 
       'visitLocalFunction': node => {
-        for (const param of node.func.params) {
-          if (param.type !== undefined && param.type.kind === 'TypeReference' && param.type.name === word) {
-            if (param.name !== undefined) {
+        for (const param of node.func.params)
+          if (param.type !== undefined && param.type.kind === 'TypeReference' && param.type.name === word)
+            if (param.name !== undefined)
               locations.push({
                 'uri': params.textDocument.uri,
                 'range': convertRange(param.name.range),
               });
-            }
-          }
-        }
 
-        if (node.func.returnType !== undefined) {
-          if (node.func.returnType.kind === 'TypeReference' && node.func.returnType.name === word) {
+        if (node.func.returnType !== undefined)
+          if (node.func.returnType.kind === 'TypeReference' && node.func.returnType.name === word)
             locations.push({
               'uri': params.textDocument.uri,
               'range': convertRange(node.name.range),
             });
-          }
-        }
       },
 
       'visitFunctionDeclaration': node => {
-        for (const param of node.func.params) {
-          if (param.type !== undefined && param.type.kind === 'TypeReference' && param.type.name === word) {
-            if (param.name !== undefined) {
+        for (const param of node.func.params)
+          if (param.type !== undefined && param.type.kind === 'TypeReference' && param.type.name === word)
+            if (param.name !== undefined)
               locations.push({
                 'uri': params.textDocument.uri,
                 'range': convertRange(param.name.range),
               });
-            }
-          }
-        }
 
-        if (node.func.returnType !== undefined) {
-          if (node.func.returnType.kind === 'TypeReference' && node.func.returnType.name === word) {
+        if (node.func.returnType !== undefined)
+          if (node.func.returnType.kind === 'TypeReference' && node.func.returnType.name === word)
             locations.push({
               'uri': params.textDocument.uri,
               'range': convertRange(node.name.base.range),
             });
-          }
-        }
       },
     });
 

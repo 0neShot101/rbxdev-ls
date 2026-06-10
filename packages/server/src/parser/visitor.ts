@@ -208,9 +208,7 @@ export const walkStatement = (stmt: Statement, visitor: Visitor): void => {
         walkExpression(clause.condition, visitor);
         for (const s of clause.body) walkStatement(s, visitor);
       }
-      if (stmt.elseBody !== undefined) {
-        for (const s of stmt.elseBody) walkStatement(s, visitor);
-      }
+      if (stmt.elseBody !== undefined) for (const s of stmt.elseBody) walkStatement(s, visitor);
       break;
 
     case 'WhileStatement':
@@ -338,11 +336,8 @@ export const walkExpression = (expr: Expression, visitor: Visitor): void => {
       break;
 
     case 'InterpolatedString':
-      for (const part of expr.parts) {
-        if (part.kind === 'InterpolatedExpression') {
-          walkExpression(part.expression, visitor);
-        }
-      }
+      for (const part of expr.parts)
+        if (part.kind === 'InterpolatedExpression') walkExpression(part.expression, visitor);
       break;
 
     case 'ParenthesizedExpression':
@@ -386,9 +381,7 @@ export const walkType = (type: TypeAnnotation, visitor: Visitor): void => {
       break;
 
     case 'TypeReference':
-      if (type.typeArgs !== undefined) {
-        for (const arg of type.typeArgs) walkType(arg, visitor);
-      }
+      if (type.typeArgs !== undefined) for (const arg of type.typeArgs) walkType(arg, visitor);
       break;
   }
 };
@@ -397,11 +390,7 @@ export const walkType = (type: TypeAnnotation, visitor: Visitor): void => {
 export const walk = (chunk: Chunk, visitor: Visitor): void => {
   visit(chunk, visitor);
 
-  for (const comment of chunk.comments) {
-    visit(comment, visitor);
-  }
+  for (const comment of chunk.comments) visit(comment, visitor);
 
-  for (const stmt of chunk.body) {
-    walkStatement(stmt, visitor);
-  }
+  for (const stmt of chunk.body) walkStatement(stmt, visitor);
 };

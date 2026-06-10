@@ -48,14 +48,13 @@ export const collectTypeAliases = (chunk: Chunk): TypeAliasInfo[] => {
           break;
 
         case 'ExportStatement':
-          if (stmt.declaration.kind === 'TypeAlias') {
+          if (stmt.declaration.kind === 'TypeAlias')
             aliases.push({
               'name': stmt.declaration.name.name,
               'range': convertRange(stmt.range),
               'selectionRange': convertRange(stmt.declaration.name.range),
               'type': stmt.declaration.type,
             });
-          }
           break;
 
         case 'IfStatement':
@@ -131,11 +130,8 @@ export const setupTypeHierarchyHandler = (connection: Connection, documentManage
     const aliases = collectTypeAliases(document.ast);
     const { line, character } = params.position;
 
-    for (const alias of aliases) {
-      if (positionInRange(line, character, alias.range)) {
-        return [aliasToItem(alias, params.textDocument.uri)];
-      }
-    }
+    for (const alias of aliases)
+      if (positionInRange(line, character, alias.range)) return [aliasToItem(alias, params.textDocument.uri)];
 
     return null;
   });

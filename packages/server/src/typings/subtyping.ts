@@ -26,19 +26,12 @@ export const isSubtype = (sub: LuauType, sup: LuauType, ctx: SubtypeContext = de
 
   if (typesEqual(subResolved, supResolved)) return true;
 
-  if (subResolved.kind === 'TypeReference' && supResolved.kind === 'Table') {
-    return true;
-  }
-  if (subResolved.kind === 'Table' && supResolved.kind === 'TypeReference') {
-    return true;
-  }
-  if (subResolved.kind === 'TypeReference' && supResolved.kind === 'TypeReference') {
+  if (subResolved.kind === 'TypeReference' && supResolved.kind === 'Table') return true;
+  if (subResolved.kind === 'Table' && supResolved.kind === 'TypeReference') return true;
+  if (subResolved.kind === 'TypeReference' && supResolved.kind === 'TypeReference')
     if (subResolved.name === supResolved.name) return true;
-  }
 
-  if (ctx.mode !== 'strict') {
-    if (subResolved.kind === 'Any' || supResolved.kind === 'Any') return true;
-  }
+  if (ctx.mode !== 'strict') if (subResolved.kind === 'Any' || supResolved.kind === 'Any') return true;
 
   if (supResolved.kind === 'Any') return true;
   if (supResolved.kind === 'Unknown') return true;
@@ -48,71 +41,47 @@ export const isSubtype = (sub: LuauType, sup: LuauType, ctx: SubtypeContext = de
 
   if (subResolved.kind === 'Primitive' && subResolved.name === 'nil') {
     if (supResolved.kind === 'Optional') return true;
-    if (supResolved.kind === 'Union') {
-      return supResolved.types.some(t => t.kind === 'Primitive' && t.name === 'nil');
-    }
+    if (supResolved.kind === 'Union') return supResolved.types.some(t => t.kind === 'Primitive' && t.name === 'nil');
   }
 
   if (subResolved.kind === 'Optional') {
-    if (supResolved.kind === 'Optional') {
-      return isSubtype(subResolved.type, supResolved.type, ctx);
-    }
+    if (supResolved.kind === 'Optional') return isSubtype(subResolved.type, supResolved.type, ctx);
     if (supResolved.kind === 'Union') {
       const hasNil = supResolved.types.some(t => t.kind === 'Primitive' && t.name === 'nil');
       if (hasNil) {
         const nonNilTypes = supResolved.types.filter(t => t.kind !== 'Primitive' || t.name !== 'nil');
-        if (nonNilTypes.length === 1) {
-          return isSubtype(subResolved.type, nonNilTypes[0]!, ctx);
-        }
+        if (nonNilTypes.length === 1) return isSubtype(subResolved.type, nonNilTypes[0]!, ctx);
         return isSubtype(subResolved.type, { 'kind': 'Union', 'types': nonNilTypes }, ctx);
       }
     }
   }
 
-  if (subResolved.kind === 'Union') {
-    return subResolved.types.every(t => isSubtype(t, supResolved, ctx));
-  }
+  if (subResolved.kind === 'Union') return subResolved.types.every(t => isSubtype(t, supResolved, ctx));
 
-  if (supResolved.kind === 'Union') {
-    return supResolved.types.some(t => isSubtype(subResolved, t, ctx));
-  }
+  if (supResolved.kind === 'Union') return supResolved.types.some(t => isSubtype(subResolved, t, ctx));
 
-  if (supResolved.kind === 'Intersection') {
-    return supResolved.types.every(t => isSubtype(subResolved, t, ctx));
-  }
+  if (supResolved.kind === 'Intersection') return supResolved.types.every(t => isSubtype(subResolved, t, ctx));
 
-  if (subResolved.kind === 'Intersection') {
-    return subResolved.types.some(t => isSubtype(t, supResolved, ctx));
-  }
+  if (subResolved.kind === 'Intersection') return subResolved.types.some(t => isSubtype(t, supResolved, ctx));
 
   if (subResolved.kind === 'Literal') {
-    if (supResolved.kind === 'Primitive') {
-      return subResolved.baseType === supResolved.name;
-    }
-    if (supResolved.kind === 'Literal') {
-      return subResolved.value === supResolved.value;
-    }
+    if (supResolved.kind === 'Primitive') return subResolved.baseType === supResolved.name;
+    if (supResolved.kind === 'Literal') return subResolved.value === supResolved.value;
   }
 
-  if (subResolved.kind === 'Function' && supResolved.kind === 'Function') {
+  if (subResolved.kind === 'Function' && supResolved.kind === 'Function')
     return isFunctionSubtype(subResolved, supResolved, ctx);
-  }
 
-  if (subResolved.kind === 'Table' && supResolved.kind === 'Table') {
+  if (subResolved.kind === 'Table' && supResolved.kind === 'Table')
     return isTableSubtype(subResolved, supResolved, ctx);
-  }
 
-  if (subResolved.kind === 'Class' && supResolved.kind === 'Class') {
-    return isClassSubtype(subResolved, supResolved);
-  }
+  if (subResolved.kind === 'Class' && supResolved.kind === 'Class') return isClassSubtype(subResolved, supResolved);
 
-  if (ctx.mode !== 'strict' && subResolved.kind === 'Table' && supResolved.kind === 'Class') {
+  if (ctx.mode !== 'strict' && subResolved.kind === 'Table' && supResolved.kind === 'Class')
     return isTableSubtypeOfClass(subResolved, supResolved, ctx);
-  }
 
-  if (subResolved.kind === 'Variadic' && supResolved.kind === 'Variadic') {
+  if (subResolved.kind === 'Variadic' && supResolved.kind === 'Variadic')
     return isSubtype(subResolved.type, supResolved.type, ctx);
-  }
 
   if (subResolved.kind === 'Generic' && supResolved.kind === 'Generic') {
     if (isSubtype(subResolved.base, supResolved.base, ctx) === false) return false;
@@ -162,17 +131,16 @@ const isTableSubtype = (sub: TableType, sup: TableType, ctx: SubtypeContext): bo
     if (isSubtype(subProp.type, supProp.type, ctx) === false) return false;
   }
 
-  if (sup.indexer !== undefined) {
-    if (sub.indexer === undefined) {
+  if (sup.indexer !== undefined)
+    if (sub.indexer === undefined)
       for (const [key, subProp] of sub.properties) {
         if (sup.properties.has(key)) continue;
         if (isSubtype(subProp.type, sup.indexer.valueType, ctx) === false) return false;
       }
-    } else {
+    else {
       if (isSubtype(sub.indexer.keyType, sup.indexer.keyType, ctx) === false) return false;
       if (isSubtype(sub.indexer.valueType, sup.indexer.valueType, ctx) === false) return false;
     }
-  }
 
   return true;
 };
@@ -214,11 +182,8 @@ export const isAssignable = (source: LuauType, target: LuauType, ctx: SubtypeCon
     const sourceResolved = resolveType(source);
     const targetResolved = resolveType(target);
 
-    if (sourceResolved.kind === 'Primitive' && sourceResolved.name === 'number') {
-      if (targetResolved.kind === 'Primitive' && targetResolved.name === 'string') {
-        return true;
-      }
-    }
+    if (sourceResolved.kind === 'Primitive' && sourceResolved.name === 'number')
+      if (targetResolved.kind === 'Primitive' && targetResolved.name === 'string') return true;
 
     const isSourceNumber =
       (sourceResolved.kind === 'Primitive' && sourceResolved.name === 'number') ||

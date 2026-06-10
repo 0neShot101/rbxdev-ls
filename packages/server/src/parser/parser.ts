@@ -100,12 +100,11 @@ const consume = (state: ParserState, kind: TokenKind, message: string): Token =>
 };
 
 const match = (state: ParserState, ...kinds: TokenKind[]): boolean => {
-  for (const kind of kinds) {
+  for (const kind of kinds)
     if (check(state, kind)) {
       advance(state);
       return true;
     }
-  }
   return false;
 };
 
@@ -307,11 +306,8 @@ const parseTableExpression = (state: ParserState): Expression => {
   while (check(state, TokenKind.RightBrace) === false && isAtEnd(state) === false) {
     fields.push(parseTableField(state));
 
-    if (check(state, TokenKind.Comma) || check(state, TokenKind.Semicolon)) {
-      advance(state);
-    } else {
-      break;
-    }
+    if (check(state, TokenKind.Comma) || check(state, TokenKind.Semicolon)) advance(state);
+    else break;
   }
 
   const end = consume(state, TokenKind.RightBrace, 'Expected }');
@@ -556,7 +552,7 @@ const parseIfExpression = (state: ParserState): Expression => {
 const parseSuffixExpression = (state: ParserState): Expression => {
   let expr = parsePrimaryExpression(state);
 
-  while (true) {
+  while (true)
     if (check(state, TokenKind.Dot)) {
       advance(state);
       const property = isIdentifierLike(state) ? parseIdentifierLike(state) : parseIdentifier(state);
@@ -608,10 +604,7 @@ const parseSuffixExpression = (state: ParserState): Expression => {
         type,
         'range': createRange(expr.range.start, type.range.end),
       };
-    } else {
-      break;
-    }
-  }
+    } else break;
 
   return expr;
 };
@@ -629,9 +622,7 @@ const parseCallArguments = (state: ParserState): Expression[] => {
     ];
   }
 
-  if (check(state, TokenKind.LeftBrace)) {
-    return [parseTableExpression(state)];
-  }
+  if (check(state, TokenKind.LeftBrace)) return [parseTableExpression(state)];
 
   consume(state, TokenKind.LeftParen, 'Expected (');
 
@@ -737,11 +728,9 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
       expression,
       'range': createRange(start.start, end.end),
     };
-  } else if (check(state, TokenKind.LeftParen)) {
-    type = parseFunctionOrParenType(state);
-  } else if (check(state, TokenKind.LeftBrace)) {
-    type = parseTableType(state);
-  } else if (check(state, TokenKind.Vararg)) {
+  } else if (check(state, TokenKind.LeftParen)) type = parseFunctionOrParenType(state);
+  else if (check(state, TokenKind.LeftBrace)) type = parseTableType(state);
+  else if (check(state, TokenKind.Vararg)) {
     advance(state);
     const inner = parsePrimaryType(state);
     type = {
@@ -778,9 +767,8 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
       'typeArgs': undefined,
       'range': createRange(start.start, start.end),
     };
-  } else if (check(state, TokenKind.Identifier)) {
-    type = parseTypeReference(state);
-  } else {
+  } else if (check(state, TokenKind.Identifier)) type = parseTypeReference(state);
+  else {
     state.errors.push({
       'message': `Unexpected token in type: ${TokenKindName.get(current(state).kind) ?? 'Unknown'}`,
       'range': createRange(start.start, start.end),
@@ -851,9 +839,7 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       consume(state, TokenKind.Colon, 'Expected :');
       thisType = parseTypeAnnotation(state);
 
-      if (check(state, TokenKind.Comma)) {
-        advance(state);
-      }
+      if (check(state, TokenKind.Comma)) advance(state);
       continue;
     }
 
@@ -877,9 +863,7 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       paramName = advance(state).value;
       advance(state);
       paramType = parseTypeAnnotation(state);
-    } else {
-      paramType = parseTypeAnnotation(state);
-    }
+    } else paramType = parseTypeAnnotation(state);
 
     params.push({
       'kind': 'FunctionTypeParam',
@@ -908,7 +892,7 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  if (params.length === 0) {
+  if (params.length === 0)
     return {
       'kind': 'TypeReference',
       'name': 'nil',
@@ -916,23 +900,20 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       'typeArgs': undefined,
       'range': createRange(start.start, current(state).start),
     };
-  }
 
-  if (params.length === 1 && params[0]!.name === undefined) {
+  if (params.length === 1 && params[0]!.name === undefined)
     return {
       'kind': 'ParenthesizedType',
       'type': params[0]!.type,
       'range': createRange(start.start, current(state).start),
     };
-  }
 
-  if (params.length > 1 && params[0] !== undefined) {
+  if (params.length > 1 && params[0] !== undefined)
     return {
       'kind': 'ParenthesizedType',
       'type': params[0].type,
       'range': createRange(start.start, current(state).start),
     };
-  }
 
   state.errors.push({
     'message': 'Expected -> for function type',
@@ -992,11 +973,8 @@ const parseTableType = (state: ParserState): TypeAnnotation => {
       };
     }
 
-    if (check(state, TokenKind.Comma) || check(state, TokenKind.Semicolon)) {
-      advance(state);
-    } else {
-      break;
-    }
+    if (check(state, TokenKind.Comma) || check(state, TokenKind.Semicolon)) advance(state);
+    else break;
   }
 
   const end = consume(state, TokenKind.RightBrace, 'Expected }');
@@ -1035,9 +1013,7 @@ const parseStatement = (state: ParserState): Statement => {
       advance(state);
       return { 'kind': 'ContinueStatement', 'range': createRange(token.start, token.end) };
     case TokenKind.Type:
-      if (checkAhead(state, 1, TokenKind.Identifier)) {
-        return parseTypeAliasStatement(state);
-      }
+      if (checkAhead(state, 1, TokenKind.Identifier)) return parseTypeAliasStatement(state);
       return parseExpressionStatement(state);
     case TokenKind.Export:
       return parseExportStatement(state);
@@ -1088,17 +1064,13 @@ const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFuncti
     if (check(state, TokenKind.Colon)) {
       advance(state);
       types.push(parseTypeAnnotation(state));
-    } else {
-      types.push(undefined);
-    }
+    } else types.push(undefined);
   } while (match(state, TokenKind.Comma));
 
   const values: Expression[] = [];
-  if (match(state, TokenKind.Assign)) {
-    do {
-      values.push(parseExpression(state));
-    } while (match(state, TokenKind.Comma));
-  }
+  if (match(state, TokenKind.Assign))
+    do values.push(parseExpression(state));
+    while (match(state, TokenKind.Comma));
 
   return {
     'kind': 'LocalDeclaration',
@@ -1284,9 +1256,8 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
   consume(state, TokenKind.In, 'Expected in');
 
   const iterators: Expression[] = [];
-  do {
-    iterators.push(parseExpression(state));
-  } while (match(state, TokenKind.Comma));
+  do iterators.push(parseExpression(state));
+  while (match(state, TokenKind.Comma));
 
   consume(state, TokenKind.Do, 'Expected do');
   const body = parseBlock(state);
@@ -1320,11 +1291,9 @@ const parseReturnStatement = (state: ParserState): ReturnStatement => {
 
   const values: Expression[] = [];
 
-  if (isAtEnd(state) === false && RETURN_END_TOKENS.has(current(state).kind) === false) {
-    do {
-      values.push(parseExpression(state));
-    } while (match(state, TokenKind.Comma));
-  }
+  if (isAtEnd(state) === false && RETURN_END_TOKENS.has(current(state).kind) === false)
+    do values.push(parseExpression(state));
+    while (match(state, TokenKind.Comma));
 
   return {
     'kind': 'ReturnStatement',
@@ -1382,9 +1351,8 @@ const parseExpressionStatement = (state: ParserState): Statement => {
     consume(state, TokenKind.Assign, 'Expected =');
 
     const values: Expression[] = [];
-    do {
-      values.push(parseExpression(state));
-    } while (match(state, TokenKind.Comma));
+    do values.push(parseExpression(state));
+    while (match(state, TokenKind.Comma));
 
     return {
       'kind': 'Assignment',
@@ -1408,13 +1376,12 @@ const parseExpressionStatement = (state: ParserState): Statement => {
     };
   }
 
-  if (expr.kind === 'CallExpression' || expr.kind === 'MethodCallExpression') {
+  if (expr.kind === 'CallExpression' || expr.kind === 'MethodCallExpression')
     return {
       'kind': 'CallStatement',
       'expression': expr,
       'range': expr.range,
     };
-  }
 
   state.errors.push({
     'message': 'Expression is not a valid statement',
@@ -1445,9 +1412,7 @@ const parseBlock = (state: ParserState): Statement[] => {
   const statements: Statement[] = [];
 
   while (isAtEnd(state) === false && BLOCK_END_TOKENS.has(current(state).kind) === false) {
-    while (check(state, TokenKind.Semicolon)) {
-      advance(state);
-    }
+    while (check(state, TokenKind.Semicolon)) advance(state);
 
     if (isAtEnd(state) || BLOCK_END_TOKENS.has(current(state).kind)) break;
 
@@ -1470,21 +1435,13 @@ const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocCo
 
     if (token.kind === TokenKind.Comment && token.value.startsWith('---')) {
       const nextNonTrivia = state.allTokens.slice(i + 1).find(t => isTrivia(t.kind) === false);
-      if (nextNonTrivia !== undefined && nextNonTrivia.start.offset === tokenOffset) {
-        docCommentLines.push(token.value);
-      } else if (docCommentLines.length > 0) {
+      if (nextNonTrivia !== undefined && nextNonTrivia.start.offset === tokenOffset) docCommentLines.push(token.value);
+      else if (docCommentLines.length > 0) {
         const lastDocLine = state.allTokens[i - 1];
-        if (
-          lastDocLine !== undefined &&
-          lastDocLine.kind === TokenKind.Comment &&
-          lastDocLine.value.startsWith('---')
-        ) {
+        if (lastDocLine !== undefined && lastDocLine.kind === TokenKind.Comment && lastDocLine.value.startsWith('---'))
           docCommentLines.push(token.value);
-        }
       }
-    } else if (token.kind !== TokenKind.Whitespace && token.kind !== TokenKind.Newline) {
-      docCommentLines.length = 0;
-    }
+    } else if (token.kind !== TokenKind.Whitespace && token.kind !== TokenKind.Newline) docCommentLines.length = 0;
   }
 
   if (docCommentLines.length === 0) return undefined;
@@ -1523,9 +1480,7 @@ export const parse = (source: string): ParseResult => {
   const body: Statement[] = [];
 
   while (isAtEnd(state) === false) {
-    while (check(state, TokenKind.Semicolon)) {
-      advance(state);
-    }
+    while (check(state, TokenKind.Semicolon)) advance(state);
 
     if (isAtEnd(state)) break;
 

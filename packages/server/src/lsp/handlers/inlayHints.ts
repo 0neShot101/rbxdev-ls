@@ -50,21 +50,17 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
             }
           }
 
-          for (const value of stmt.values) {
-            if (value.kind === 'FunctionExpression') {
-              processStatements(value.body);
-            }
-          }
+          for (const value of stmt.values) if (value.kind === 'FunctionExpression') processStatements(value.body);
           break;
         }
 
         case 'LocalFunction': {
-          for (const param of stmt.func.params) {
+          for (const param of stmt.func.params)
             if (param.name !== undefined && param.type === undefined) {
               const symbolType = allSymbols.get(param.name.name);
               if (symbolType !== undefined && symbolType.kind !== 'Any' && symbolType.kind !== 'Unknown') {
                 const typeStr = typeToString(symbolType);
-                if (typeStr.length <= 30 && typeStr !== 'any') {
+                if (typeStr.length <= 30 && typeStr !== 'any')
                   hints.push({
                     'position': {
                       'line': param.name.range.end.line - 1,
@@ -75,21 +71,19 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
                     'paddingLeft': false,
                     'paddingRight': false,
                   });
-                }
               }
             }
-          }
           processStatements(stmt.func.body);
           break;
         }
 
         case 'FunctionDeclaration': {
-          for (const param of stmt.func.params) {
+          for (const param of stmt.func.params)
             if (param.name !== undefined && param.type === undefined) {
               const symbolType = allSymbols.get(param.name.name);
               if (symbolType !== undefined && symbolType.kind !== 'Any' && symbolType.kind !== 'Unknown') {
                 const typeStr = typeToString(symbolType);
-                if (typeStr.length <= 30 && typeStr !== 'any') {
+                if (typeStr.length <= 30 && typeStr !== 'any')
                   hints.push({
                     'position': {
                       'line': param.name.range.end.line - 1,
@@ -100,10 +94,8 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
                     'paddingLeft': false,
                     'paddingRight': false,
                   });
-                }
               }
             }
-          }
           processStatements(stmt.func.body);
           break;
         }
@@ -130,12 +122,8 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
 
         case 'IfStatement': {
           processStatements(stmt.thenBody);
-          for (const clause of stmt.elseifClauses) {
-            processStatements(clause.body);
-          }
-          if (stmt.elseBody !== undefined) {
-            processStatements(stmt.elseBody);
-          }
+          for (const clause of stmt.elseifClauses) processStatements(clause.body);
+          if (stmt.elseBody !== undefined) processStatements(stmt.elseBody);
           break;
         }
 

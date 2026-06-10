@@ -30,34 +30,27 @@ export const collectDeclarations = (chunk: Chunk): Map<string, SymbolLocation[]>
     for (const stmt of statements) {
       switch (stmt.kind) {
         case 'LocalDeclaration':
-          for (const name of stmt.names) {
-            addDeclaration(name.name, name);
-          }
-          for (const value of stmt.values) {
+          for (const name of stmt.names) addDeclaration(name.name, name);
+          for (const value of stmt.values)
             if (value.kind === 'FunctionExpression') {
-              for (const param of value.params) {
+              for (const param of value.params)
                 if (param.name !== undefined) addDeclaration(param.name.name, param.name);
-              }
               processStatements(value.body);
             }
-          }
           break;
 
         case 'LocalFunction':
           addDeclaration(stmt.name.name, stmt.name);
-          for (const param of stmt.func.params) {
+          for (const param of stmt.func.params)
             if (param.name !== undefined) addDeclaration(param.name.name, param.name);
-          }
           processStatements(stmt.func.body);
           break;
 
         case 'FunctionDeclaration':
-          if (stmt.name.path.length === 0 && stmt.name.method === undefined) {
+          if (stmt.name.path.length === 0 && stmt.name.method === undefined)
             addDeclaration(stmt.name.base.name, stmt.name.base);
-          }
-          for (const param of stmt.func.params) {
+          for (const param of stmt.func.params)
             if (param.name !== undefined) addDeclaration(param.name.name, param.name);
-          }
           processStatements(stmt.func.body);
           break;
 
@@ -71,17 +64,13 @@ export const collectDeclarations = (chunk: Chunk): Map<string, SymbolLocation[]>
           break;
 
         case 'ForGeneric':
-          for (const v of stmt.variables) {
-            addDeclaration(v.name, v);
-          }
+          for (const v of stmt.variables) addDeclaration(v.name, v);
           processStatements(stmt.body);
           break;
 
         case 'IfStatement':
           processStatements(stmt.thenBody);
-          for (const clause of stmt.elseifClauses) {
-            processStatements(clause.body);
-          }
+          for (const clause of stmt.elseifClauses) processStatements(clause.body);
           if (stmt.elseBody !== undefined) processStatements(stmt.elseBody);
           break;
 
@@ -92,9 +81,7 @@ export const collectDeclarations = (chunk: Chunk): Map<string, SymbolLocation[]>
           break;
 
         case 'ExportStatement':
-          if (stmt.declaration.kind === 'TypeAlias') {
-            addDeclaration(stmt.declaration.name.name, stmt.declaration.name);
-          }
+          if (stmt.declaration.kind === 'TypeAlias') addDeclaration(stmt.declaration.name.name, stmt.declaration.name);
           break;
       }
     }
@@ -135,11 +122,7 @@ export const findBestDeclaration = (
   if (locations === undefined || locations.length === 0) return undefined;
 
   let best: SymbolLocation | undefined;
-  for (const loc of locations) {
-    if (loc.line <= usageLine) {
-      if (best === undefined || loc.line > best.line) best = loc;
-    }
-  }
+  for (const loc of locations) if (loc.line <= usageLine) if (best === undefined || loc.line > best.line) best = loc;
 
   return best ?? locations[0];
 };

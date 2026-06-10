@@ -1,16 +1,16 @@
 import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
+import type { Scope, Symbol } from '@typings/environment';
 import type { DocumentManager } from '@typings/lsp';
 import type { DocComment } from '@typings/parser';
-import type { Symbol, Scope } from '@typings/environment';
 import type { FunctionType } from '@typings/types';
 import type {
   Connection,
+  ParameterInformation,
   SignatureHelp,
   SignatureHelpParams,
   SignatureInformation,
-  ParameterInformation,
 } from 'vscode-languageserver';
 
 /**
@@ -30,12 +30,10 @@ export const createSignatureInfo = (
     let documentation: string | undefined;
     if (docComment !== undefined) {
       const docParam = docComment.params.find(dp => dp.name === paramName);
-      if (docParam !== undefined && docParam.description !== undefined) {
-        documentation = docParam.description;
-      }
+      if (docParam !== undefined && docParam.description !== undefined) documentation = docParam.description;
     }
 
-    if (documentation !== undefined) {
+    if (documentation !== undefined)
       return {
         label,
         'documentation': {
@@ -43,7 +41,6 @@ export const createSignatureInfo = (
           'value': documentation,
         },
       };
-    }
     return { label };
   });
 
@@ -54,20 +51,12 @@ export const createSignatureInfo = (
   let documentation: string | undefined;
   if (docComment !== undefined) {
     const docParts: string[] = [];
-    if (docComment.description !== undefined) {
-      docParts.push(docComment.description);
-    }
-    if (docComment.deprecated !== undefined) {
-      docParts.push(`\n\n**@deprecated** ${docComment.deprecated}`);
-    }
-    if (docParts.length > 0) {
-      documentation = docParts.join('');
-    }
-  } else if (func.description !== undefined) {
-    documentation = func.description;
-  }
+    if (docComment.description !== undefined) docParts.push(docComment.description);
+    if (docComment.deprecated !== undefined) docParts.push(`\n\n**@deprecated** ${docComment.deprecated}`);
+    if (docParts.length > 0) documentation = docParts.join('');
+  } else if (func.description !== undefined) documentation = func.description;
 
-  if (documentation !== undefined) {
+  if (documentation !== undefined)
     return {
       label,
       'parameters': params,
@@ -76,7 +65,6 @@ export const createSignatureInfo = (
         'value': documentation,
       },
     };
-  }
 
   return {
     label,
@@ -107,13 +95,9 @@ export const countCommas = (text: string): number => {
       continue;
     }
 
-    if (char === '(' || char === '[' || char === '{') {
-      depth++;
-    } else if (char === ')' || char === ']' || char === '}') {
-      depth--;
-    } else if (char === ',' && depth === 0) {
-      count++;
-    }
+    if (char === '(' || char === '[' || char === '{') depth++;
+    else if (char === ')' || char === ']' || char === '}') depth--;
+    else if (char === ',' && depth === 0) count++;
   }
 
   return count;

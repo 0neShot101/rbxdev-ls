@@ -207,9 +207,8 @@ export const convertRobloxApiToTypes = (
         };
         if (deprecation.deprecated) {
           (prop as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined) {
+          if (deprecation.deprecationMessage !== undefined)
             (prop as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-          }
         }
         classData.properties.set(member.Name, prop);
       }
@@ -222,9 +221,8 @@ export const convertRobloxApiToTypes = (
         };
         if (deprecation.deprecated) {
           (method as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined) {
+          if (deprecation.deprecationMessage !== undefined)
             (method as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-          }
         }
         classData.methods.set(member.Name, method);
       }
@@ -242,9 +240,8 @@ export const convertRobloxApiToTypes = (
         };
         if (deprecation.deprecated) {
           (eventProp as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined) {
+          if (deprecation.deprecationMessage !== undefined)
             (eventProp as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-          }
         }
         classData.properties.set(member.Name, eventProp);
       }
@@ -259,9 +256,8 @@ export const convertRobloxApiToTypes = (
         };
         if (deprecation.deprecated) {
           (callbackProp as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined) {
+          if (deprecation.deprecationMessage !== undefined)
             (callbackProp as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-          }
         }
         classData.properties.set(member.Name, callbackProp);
       }
@@ -281,7 +277,7 @@ export const convertRobloxApiToTypes = (
     classes.set(name, classType);
   }
 
-  for (const [name, data] of classDataMap) {
+  for (const [name, data] of classDataMap)
     if (data.superclassName !== '<<<ROOT>>>') {
       const classType = classes.get(name);
       const superType = classes.get(data.superclassName);
@@ -290,23 +286,20 @@ export const convertRobloxApiToTypes = (
         superType !== undefined &&
         classType.kind === 'Class' &&
         superType.kind === 'Class'
-      ) {
+      )
         (classType as { superclass: LuauType | undefined }).superclass = superType;
-      }
     }
-  }
 
   injectRemoteMethods(classes, dataTypes);
 
   for (const enumDef of api.Enums) {
     const enumItems = new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>();
-    for (const item of enumDef.Items) {
+    for (const item of enumDef.Items)
       enumItems.set(item.Name, {
         'type': { 'kind': 'Literal', 'value': item.Value, 'baseType': 'number' },
         'readonly': true,
         'optional': false,
       });
-    }
     enums.set(enumDef.Name, createTableType(enumItems));
   }
 

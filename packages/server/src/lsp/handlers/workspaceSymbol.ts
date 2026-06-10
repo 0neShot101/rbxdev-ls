@@ -118,12 +118,10 @@ const collectStatementSymbols = (
 
     case 'IfStatement':
       for (const s of stmt.thenBody) collectStatementSymbols(s, uri, containerName, symbols);
-      for (const clause of stmt.elseifClauses) {
+      for (const clause of stmt.elseifClauses)
         for (const s of clause.body) collectStatementSymbols(s, uri, containerName, symbols);
-      }
-      if (stmt.elseBody !== undefined) {
+      if (stmt.elseBody !== undefined)
         for (const s of stmt.elseBody) collectStatementSymbols(s, uri, containerName, symbols);
-      }
       break;
 
     case 'WhileStatement':
@@ -166,9 +164,8 @@ export const setupWorkspaceSymbolHandler = (connection: Connection, documentMana
       seen.add(doc.uri);
 
       const symbols = collectWorkspaceSymbols(doc.ast, doc.uri);
-      for (const symbol of symbols) {
+      for (const symbol of symbols)
         if (query.length === 0 || symbol.name.toLowerCase().includes(query)) results.push(symbol);
-      }
     }
 
     const moduleIndex = documentManager.getModuleIndex();
@@ -176,9 +173,8 @@ export const setupWorkspaceSymbolHandler = (connection: Connection, documentMana
       const fileUri = url.pathToFileURL(moduleInfo.filePath).toString();
       if (seen.has(fileUri)) continue;
 
-      for (const exp of moduleInfo.exports) {
+      for (const exp of moduleInfo.exports)
         if (query.length === 0 || exp.name.toLowerCase().includes(query)) results.push(exportToSymbol(exp));
-      }
     }
 
     return results;

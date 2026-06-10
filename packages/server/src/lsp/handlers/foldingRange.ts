@@ -21,11 +21,9 @@ const collectExpressionFolds = (expr: Expression, ranges: FoldingRange[]): void 
 
     case 'TableExpression':
       addRange(ranges, expr.range.start.line, expr.range.end.line);
-      for (const field of expr.fields) {
-        if (field.kind === 'TableFieldValue' || field.kind === 'TableFieldKey' || field.kind === 'TableFieldIndex') {
+      for (const field of expr.fields)
+        if (field.kind === 'TableFieldValue' || field.kind === 'TableFieldKey' || field.kind === 'TableFieldIndex')
           collectExpressionFolds(field.value, ranges);
-        }
-      }
       break;
 
     case 'CallExpression':
@@ -71,9 +69,8 @@ const collectExpressionFolds = (expr: Expression, ranges: FoldingRange[]): void 
       break;
 
     case 'InterpolatedString':
-      for (const part of expr.parts) {
+      for (const part of expr.parts)
         if (part.kind === 'InterpolatedExpression') collectExpressionFolds(part.expression, ranges);
-      }
       break;
   }
 };
@@ -156,9 +153,8 @@ const collectStatementFolds = (stmt: Statement, ranges: FoldingRange[]): void =>
 export const collectFoldingRanges = (chunk: Chunk): FoldingRange[] => {
   const ranges: FoldingRange[] = [];
 
-  for (const comment of chunk.comments) {
+  for (const comment of chunk.comments)
     addRange(ranges, comment.range.start.line, comment.range.end.line, FoldingRangeKind.Comment);
-  }
 
   collectBodyFolds(chunk.body, ranges);
   return ranges;

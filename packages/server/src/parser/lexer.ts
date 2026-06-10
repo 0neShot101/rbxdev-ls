@@ -28,9 +28,7 @@ const advance = (state: LexerState): string => {
   if (isNewline(char)) {
     state.line++;
     state.column = 1;
-  } else {
-    state.column++;
-  }
+  } else state.column++;
   return char;
 };
 
@@ -40,9 +38,7 @@ const scanWhitespace = (state: LexerState): Token => {
   const start = currentPosition(state);
   const startOffset = state.offset;
 
-  while (isWhitespace(peek(state))) {
-    advance(state);
-  }
+  while (isWhitespace(peek(state))) advance(state);
 
   const value = state.source.slice(startOffset, state.offset);
   return createToken(TokenKind.Whitespace, value, start, currentPosition(state));
@@ -61,9 +57,7 @@ const scanSingleLineComment = (state: LexerState): Token => {
   advance(state);
   advance(state);
 
-  while (peek(state) !== '\0' && isNewline(peek(state)) === false) {
-    advance(state);
-  }
+  while (peek(state) !== '\0' && isNewline(peek(state)) === false) advance(state);
 
   const value = state.source.slice(startOffset, state.offset);
   return createToken(TokenKind.Comment, value, start, currentPosition(state));
@@ -152,17 +146,11 @@ const scanNumber = (state: LexerState): Token => {
 
   if (peek(state) === '.') {
     advance(state);
-    while (isDigit(peek(state)) || peek(state) === '_') {
-      advance(state);
-    }
+    while (isDigit(peek(state)) || peek(state) === '_') advance(state);
     if (peek(state) === 'e' || peek(state) === 'E') {
       advance(state);
-      if (peek(state) === '+' || peek(state) === '-') {
-        advance(state);
-      }
-      while (isDigit(peek(state)) || peek(state) === '_') {
-        advance(state);
-      }
+      if (peek(state) === '+' || peek(state) === '-') advance(state);
+      while (isDigit(peek(state)) || peek(state) === '_') advance(state);
     }
     const value = state.source.slice(startOffset, state.offset);
     return createToken(TokenKind.Number, value, start, currentPosition(state));
@@ -175,9 +163,7 @@ const scanNumber = (state: LexerState): Token => {
       advance(state);
       advance(state);
 
-      while (isHexDigit(peek(state)) || peek(state) === '_') {
-        advance(state);
-      }
+      while (isHexDigit(peek(state)) || peek(state) === '_') advance(state);
 
       const value = state.source.slice(startOffset, state.offset);
       return createToken(TokenKind.Number, value, start, currentPosition(state));
@@ -187,37 +173,27 @@ const scanNumber = (state: LexerState): Token => {
       advance(state);
       advance(state);
 
-      while (isBinaryDigit(peek(state)) || peek(state) === '_') {
-        advance(state);
-      }
+      while (isBinaryDigit(peek(state)) || peek(state) === '_') advance(state);
 
       const value = state.source.slice(startOffset, state.offset);
       return createToken(TokenKind.Number, value, start, currentPosition(state));
     }
   }
 
-  while (isDigit(peek(state)) || peek(state) === '_') {
-    advance(state);
-  }
+  while (isDigit(peek(state)) || peek(state) === '_') advance(state);
 
   if (peek(state) === '.' && isDigit(peek(state, 1))) {
     advance(state);
 
-    while (isDigit(peek(state)) || peek(state) === '_') {
-      advance(state);
-    }
+    while (isDigit(peek(state)) || peek(state) === '_') advance(state);
   }
 
   if (peek(state) === 'e' || peek(state) === 'E') {
     advance(state);
 
-    if (peek(state) === '+' || peek(state) === '-') {
-      advance(state);
-    }
+    if (peek(state) === '+' || peek(state) === '-') advance(state);
 
-    while (isDigit(peek(state)) || peek(state) === '_') {
-      advance(state);
-    }
+    while (isDigit(peek(state)) || peek(state) === '_') advance(state);
   }
 
   const value = state.source.slice(startOffset, state.offset);
@@ -230,18 +206,13 @@ const scanString = (state: LexerState, quote: string): Token => {
 
   advance(state);
 
-  while (peek(state) !== '\0' && peek(state) !== quote && isNewline(peek(state)) === false) {
+  while (peek(state) !== '\0' && peek(state) !== quote && isNewline(peek(state)) === false)
     if (peek(state) === '\\') {
       advance(state);
       if (peek(state) !== '\0') advance(state);
-    } else {
-      advance(state);
-    }
-  }
+    } else advance(state);
 
-  if (peek(state) === quote) {
-    advance(state);
-  }
+  if (peek(state) === quote) advance(state);
 
   const value = state.source.slice(startOffset, state.offset);
   return createToken(TokenKind.String, value, start, currentPosition(state));
@@ -259,7 +230,7 @@ const scanInterpolatedString = (state: LexerState): Token => {
 
   advance(state);
 
-  while (peek(state) !== '\0' && peek(state) !== '`') {
+  while (peek(state) !== '\0' && peek(state) !== '`')
     if (peek(state) === '\\') {
       advance(state);
       if (peek(state) !== '\0') advance(state);
@@ -272,14 +243,9 @@ const scanInterpolatedString = (state: LexerState): Token => {
         if (braceDepth > 0) advance(state);
       }
       if (peek(state) === '}') advance(state);
-    } else {
-      advance(state);
-    }
-  }
+    } else advance(state);
 
-  if (peek(state) === '`') {
-    advance(state);
-  }
+  if (peek(state) === '`') advance(state);
 
   const value = state.source.slice(startOffset, state.offset);
   return createToken(TokenKind.InterpolatedString, value, start, currentPosition(state));
@@ -289,16 +255,12 @@ const scanIdentifierOrKeyword = (state: LexerState): Token => {
   const start = currentPosition(state);
   const startOffset = state.offset;
 
-  while (isAlphaNumeric(peek(state))) {
-    advance(state);
-  }
+  while (isAlphaNumeric(peek(state))) advance(state);
 
   const value = state.source.slice(startOffset, state.offset);
   const keyword = Keywords.get(value);
 
-  if (keyword !== undefined) {
-    return createToken(keyword, value, start, currentPosition(state));
-  }
+  if (keyword !== undefined) return createToken(keyword, value, start, currentPosition(state));
 
   return createToken(TokenKind.Identifier, value, start, currentPosition(state));
 };
@@ -307,9 +269,7 @@ const scanPunctuation = (state: LexerState): Token => {
   const start = currentPosition(state);
   const char = peek(state);
 
-  if (char === '.' && isDigit(peek(state, 1))) {
-    return scanNumber(state);
-  }
+  if (char === '.' && isDigit(peek(state, 1))) return scanNumber(state);
 
   const twoChar = char + peek(state, 1);
 
@@ -474,9 +434,7 @@ export const createLexer = (source: string): Lexer => {
   };
 
   const tokenize = function* (): Generator<Token> {
-    while (state.offset < source.length) {
-      yield scanToken(state);
-    }
+    while (state.offset < source.length) yield scanToken(state);
 
     yield createToken(TokenKind.EOF, '', currentPosition(state), currentPosition(state));
   };

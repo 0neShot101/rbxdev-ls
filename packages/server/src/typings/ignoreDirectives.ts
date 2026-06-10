@@ -55,20 +55,15 @@ export const parseIgnoreDirectives = (comments: ReadonlyArray<Comment>, totalLin
 
       case DIRECTIVE_ENABLE:
         if (disableStartLine !== undefined) {
-          for (let line = disableStartLine; line <= commentLine; line++) {
-            ignoredLines.add(line);
-          }
+          for (let line = disableStartLine; line <= commentLine; line++) ignoredLines.add(line);
           disableStartLine = undefined;
         }
         break;
     }
   }
 
-  if (disableStartLine !== undefined) {
-    for (let line = disableStartLine; line <= totalLines; line++) {
-      ignoredLines.add(line);
-    }
-  }
+  if (disableStartLine !== undefined)
+    for (let line = disableStartLine; line <= totalLines; line++) ignoredLines.add(line);
 
   return { ignoredLines };
 };

@@ -96,9 +96,7 @@ export const startServer = (state: ServerState): void => {
       } catch {
         workspacePath = params.rootUri.replace('file:///', '').replace('file://', '');
       }
-    } else if (params.rootPath !== undefined && params.rootPath !== null) {
-      workspacePath = params.rootPath;
-    }
+    } else if (params.rootPath !== undefined && params.rootPath !== null) workspacePath = params.rootPath;
 
     return createInitializeResult(params);
   });
@@ -136,14 +134,12 @@ export const startServer = (state: ServerState): void => {
       documentManager.initializeWorkspace(workspacePath);
 
       const rojoState = documentManager.getRojoState();
-      if (rojoState?.project !== undefined) {
+      if (rojoState?.project !== undefined)
         connection.console.log(`Workspace tree source: Rojo project (${rojoState.project.name})`);
-      } else if (rojoState?.projectPath !== undefined && rojoState.projectPath.endsWith('sourcemap.json')) {
+      else if (rojoState?.projectPath !== undefined && rojoState.projectPath.endsWith('sourcemap.json')) {
         connection.console.log(`Workspace tree source: sourcemap.json (${rojoState.projectPath})`);
         setupSourcemapWatcher(rojoState.projectPath);
-      } else {
-        connection.console.log('Workspace tree source: fallback directory scan');
-      }
+      } else connection.console.log('Workspace tree source: fallback directory scan');
 
       const moduleIndex = documentManager.getModuleIndex();
       connection.console.log(`Indexed ${moduleIndex.size} modules`);

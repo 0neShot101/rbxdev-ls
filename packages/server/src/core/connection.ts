@@ -18,11 +18,10 @@ export const createInitializeResult = (params: InitializeParams): InitializeResu
     'serverInfo': { 'name': 'rbxdev-ls', 'version': '0.1.0' },
   };
 
-  if (params.capabilities.workspace?.workspaceFolders === true) {
+  if (params.capabilities.workspace?.workspaceFolders === true)
     result.capabilities.workspace = {
       'workspaceFolders': { 'supported': true, 'changeNotifications': true },
     };
-  }
 
   return result;
 };

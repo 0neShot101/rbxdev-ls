@@ -1,8 +1,8 @@
 import { DiagnosticSeverity, DiagnosticTag } from 'vscode-languageserver';
 
 import type { LiveGameModel } from '@typings/bridge';
-import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { TypeDiagnostic } from '@typings/checker';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { Connection, Diagnostic as LspDiagnostic, TextDocuments } from 'vscode-languageserver';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -44,11 +44,8 @@ const existsInLiveGameTree = (propertyName: string, liveGameModel: LiveGameModel
   if (liveGameModel.services.size === 0) return false;
 
   for (const [, service] of liveGameModel.services) {
-    if (service.children !== undefined) {
-      for (const child of service.children) {
-        if (child.name === propertyName) return true;
-      }
-    }
+    if (service.children !== undefined)
+      for (const child of service.children) if (child.name === propertyName) return true;
     if (findChildInTree(service, propertyName)) return true;
   }
 

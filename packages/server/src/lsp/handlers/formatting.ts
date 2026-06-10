@@ -94,19 +94,13 @@ export const basicFormat = (code: string): string => {
       continue;
     }
 
-    if (decreaseIndent.test(trimmed)) {
-      indent = Math.max(0, indent - 1);
-    }
+    if (decreaseIndent.test(trimmed)) indent = Math.max(0, indent - 1);
 
     result.push(indentStr.repeat(indent) + trimmed);
 
-    if (increaseIndent.test(trimmed) && trimmed.includes(' end') === false) {
-      indent++;
-    }
+    if (increaseIndent.test(trimmed) && trimmed.includes(' end') === false) indent++;
 
-    if (decreaseIncrease.test(trimmed)) {
-      indent++;
-    }
+    if (decreaseIncrease.test(trimmed)) indent++;
 
     if (trimmed.endsWith('end') && trimmed.includes('function')) {
       /* noop */
@@ -138,13 +132,9 @@ export const setupFormattingHandler = (
 
     let formattedText: string | undefined;
 
-    if (styluaAvailable) {
-      formattedText = await formatWithStyLua(originalText);
-    }
+    if (styluaAvailable) formattedText = await formatWithStyLua(originalText);
 
-    if (formattedText === undefined) {
-      formattedText = basicFormat(originalText);
-    }
+    if (formattedText === undefined) formattedText = basicFormat(originalText);
 
     if (formattedText === originalText) return [];
 
@@ -168,24 +158,18 @@ export const setupFormattingHandler = (
 
     const originalText = document.getText();
 
-    if (styluaAvailable === undefined) {
-      styluaAvailable = await checkStyLuaAvailable();
-    }
+    if (styluaAvailable === undefined) styluaAvailable = await checkStyLuaAvailable();
 
     if (styluaAvailable) {
       const lines = originalText.split('\n');
       let byteOffset = 0;
-      for (let i = 0; i < params.range.start.line; i++) {
-        byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
-      }
+      for (let i = 0; i < params.range.start.line; i++) byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       const rangeStart =
         byteOffset +
         Buffer.byteLength((lines[params.range.start.line] ?? '').slice(0, params.range.start.character), 'utf8');
 
       byteOffset = 0;
-      for (let i = 0; i < params.range.end.line; i++) {
-        byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
-      }
+      for (let i = 0; i < params.range.end.line; i++) byteOffset += Buffer.byteLength(lines[i] ?? '', 'utf8') + 1;
       const rangeEnd =
         byteOffset +
         Buffer.byteLength((lines[params.range.end.line] ?? '').slice(0, params.range.end.character), 'utf8');

@@ -320,13 +320,12 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
 
     for (const serviceName of GAME_SERVICES) {
       const serviceClass = classes.get(serviceName);
-      if (serviceClass !== undefined) {
+      if (serviceClass !== undefined)
         gameProperties.set(serviceName, {
           'type': serviceClass,
           'readonly': true,
           'security': 'None',
         });
-      }
     }
 
     const gameType: LuauType = {
@@ -354,7 +353,7 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
   globals.set('_VERSION', StringType);
 
   const instanceClass = classes.get('Instance');
-  if (instanceClass !== undefined) {
+  if (instanceClass !== undefined)
     globals.set(
       'Instance',
       createTableType(
@@ -392,7 +391,6 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
         ]),
       ),
     );
-  }
 
   const vector3Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector3' };
   const vector2Type: LuauType = { 'kind': 'TypeReference', 'name': 'Vector2' };
@@ -1930,15 +1928,12 @@ const createRobloxGlobals = (classes: Map<string, LuauType>, enums: Map<string, 
 
   for (const serviceName of directGlobalServices) {
     const serviceClass = classes.get(serviceName);
-    if (serviceClass !== undefined) {
-      globals.set(serviceName, serviceClass);
-    }
+    if (serviceClass !== undefined) globals.set(serviceName, serviceClass);
   }
 
   const enumNamespace = new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>();
-  for (const [name, enumType] of enums) {
+  for (const [name, enumType] of enums)
     enumNamespace.set(name, { 'type': enumType, 'readonly': true, 'optional': false });
-  }
   globals.set('Enum', createTableType(enumNamespace));
 
   return globals;
@@ -1959,14 +1954,11 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
     robloxEnums = converted.enums;
     robloxDataTypes = converted.dataTypes;
 
-    for (const [name, classType] of robloxClasses) {
-      if (classType.kind === 'Class') {
-        (env.classes as Map<string, LuauType>).set(name, classType);
-      }
-    }
+    for (const [name, classType] of robloxClasses)
+      if (classType.kind === 'Class') (env.classes as Map<string, LuauType>).set(name, classType);
 
     const robloxGlobals = createRobloxGlobals(robloxClasses, robloxEnums);
-    for (const [name, type] of robloxGlobals) {
+    for (const [name, type] of robloxGlobals)
       env.globalScope.symbols.set(name, {
         'kind': 'Variable',
         'declarationLocation': undefined,
@@ -1975,7 +1967,6 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
         type,
         'mutable': false,
       });
-    }
   }
 
   addLuauBuiltins(env);
@@ -1983,7 +1974,7 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
   const suncApi = loadedDefs.sunc ?? getDefaultSuncApi();
   const suncTypes = convertSuncApiToTypes(suncApi);
 
-  for (const [name, type] of suncTypes.globals) {
+  for (const [name, type] of suncTypes.globals)
     env.globalScope.symbols.set(name, {
       'kind': 'Function',
       'declarationLocation': undefined,
@@ -1992,7 +1983,6 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
       type,
       'mutable': false,
     });
-  }
 
   for (const [name, type] of suncTypes.namespaces) {
     const existing = env.globalScope.symbols.get(name);
@@ -2001,10 +1991,8 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
         string,
         { type: LuauType; readonly: boolean; optional: boolean }
       >;
-      for (const [propName, prop] of type.properties) {
-        existingProps.set(propName, prop);
-      }
-    } else {
+      for (const [propName, prop] of type.properties) existingProps.set(propName, prop);
+    } else
       env.globalScope.symbols.set(name, {
         'kind': 'Variable',
         'declarationLocation': undefined,
@@ -2013,7 +2001,6 @@ export const buildGlobalEnvironment = (defs?: LoadedDefinitions): GlobalEnvironm
         type,
         'mutable': false,
       });
-    }
   }
 
   addLuarmorGlobals(env);
@@ -2027,7 +2014,7 @@ export const createEmptyGlobalEnvironment = (): GlobalEnvironment => {
   const env = createTypeEnvironment();
 
   const stdLibs = createAllStdLibraries();
-  for (const [name, type] of stdLibs) {
+  for (const [name, type] of stdLibs)
     env.globalScope.symbols.set(name, {
       'kind': 'Variable',
       'declarationLocation': undefined,
@@ -2036,10 +2023,9 @@ export const createEmptyGlobalEnvironment = (): GlobalEnvironment => {
       type,
       'mutable': false,
     });
-  }
 
   const globalFunctions = createGlobalFunctions();
-  for (const [name, type] of globalFunctions) {
+  for (const [name, type] of globalFunctions)
     env.globalScope.symbols.set(name, {
       'kind': 'Function',
       'declarationLocation': undefined,
@@ -2048,7 +2034,6 @@ export const createEmptyGlobalEnvironment = (): GlobalEnvironment => {
       type,
       'mutable': false,
     });
-  }
 
   return { env, 'robloxClasses': new Map(), 'robloxEnums': new Map(), 'robloxDataTypes': new Map() };
 };

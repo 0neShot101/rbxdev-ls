@@ -55,19 +55,14 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
   };
 
   const broadcastToProxies = (rawData: string): void => {
-    for (const proxy of proxyClients) {
-      if (proxy.readyState === WebSocket.OPEN) proxy.send(rawData);
-    }
+    for (const proxy of proxyClients) if (proxy.readyState === WebSocket.OPEN) proxy.send(rawData);
   };
 
   const sendProxyMessage = (message: ProxyStatusChangeMessage | ProxyWelcomeMessage): void =>
     broadcastToProxies(JSON.stringify(message));
 
   const closeHttpServer = (callback?: () => void): void => {
-    if (httpServer === undefined) {
-      callback?.();
-      return;
-    }
+    if (httpServer === undefined) return callback?.();
 
     const httpServerToClose = httpServer;
     httpServer = undefined;
@@ -79,9 +74,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       pendingStartPort = undefined;
       callback?.();
 
-      if (restartPort !== undefined) {
-        start(restartPort);
-      }
+      if (restartPort !== undefined) start(restartPort);
     });
   };
 
@@ -232,14 +225,8 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
         try {
           const parsed: unknown = JSON.parse(raw);
-          if (isProxyWelcome(parsed)) {
-            handleProxyWelcome(parsed);
-            return;
-          }
-          if (isProxyStatusChange(parsed)) {
-            handleProxyStatusChange(parsed);
-            return;
-          }
+          if (isProxyWelcome(parsed)) return handleProxyWelcome(parsed);
+          if (isProxyStatusChange(parsed)) return handleProxyStatusChange(parsed);
         } catch {
           /* not valid JSON */
         }
@@ -312,10 +299,8 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
           try {
             const parsed = JSON.parse(raw);
-            if (typeof parsed === 'object' && parsed !== null && parsed.type === 'proxyHandshake') {
-              handleProxyConnection(ws);
-              return;
-            }
+            if (typeof parsed === 'object' && parsed !== null && parsed.type === 'proxyHandshake')
+              return handleProxyConnection(ws);
           } catch {
             /* not valid JSON, treat as executor */
           }

@@ -107,9 +107,7 @@ const emitModule = (lines: string[], moduleId: string, source: string, passVarar
     lines.push('\t\treturn (function(...)');
     for (const line of source.split('\n')) lines.push(line === '' ? '' : '\t\t\t' + line);
     lines.push('\t\tend)(unpack(_vararg))');
-  } else {
-    for (const line of source.split('\n')) lines.push(line === '' ? '' : '\t\t' + line);
-  }
+  } else for (const line of source.split('\n')) lines.push(line === '' ? '' : '\t\t' + line);
 
   lines.push('\tend,');
   lines.push('}');

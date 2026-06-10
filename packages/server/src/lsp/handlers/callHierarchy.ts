@@ -127,9 +127,7 @@ export const collectCallSites = (
   const sites: Array<CallSite & { readonly containingFunction: string | undefined }> = [];
 
   const findContainingFunction = (line: number): string | undefined => {
-    for (const func of functions) {
-      if (line >= func.range.start.line && line <= func.range.end.line) return func.name;
-    }
+    for (const func of functions) if (line >= func.range.start.line && line <= func.range.end.line) return func.name;
     return undefined;
   };
 
@@ -170,9 +168,8 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
     const functions = collectCallHierarchyFunctions(document.ast.body);
     const pos = { 'line': params.position.line, 'character': params.position.character };
 
-    for (const func of functions) {
+    for (const func of functions)
       if (positionInRange(pos, func.range)) return [functionToItem(func, params.textDocument.uri)];
-    }
 
     return null;
   });
@@ -201,12 +198,12 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
       const results: CallHierarchyIncomingCall[] = [];
       for (const [containerName, ranges] of grouped) {
         const callerFunc = functions.find(f => f.name === containerName);
-        if (callerFunc !== undefined) {
+        if (callerFunc !== undefined)
           results.push({
             'from': functionToItem(callerFunc, data.uri),
             'fromRanges': ranges,
           });
-        } else if (containerName === '<module>') {
+        else if (containerName === '<module>')
           results.push({
             'from': {
               'name': '<module>',
@@ -217,7 +214,6 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
             },
             'fromRanges': ranges,
           });
-        }
       }
 
       return results;
@@ -270,12 +266,12 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
       const results: CallHierarchyOutgoingCall[] = [];
       for (const [calledName, ranges] of callSites) {
         const calledFunc = functions.find(f => f.name === calledName);
-        if (calledFunc !== undefined) {
+        if (calledFunc !== undefined)
           results.push({
             'to': functionToItem(calledFunc, data.uri),
             'fromRanges': ranges,
           });
-        } else {
+        else
           results.push({
             'to': {
               'name': calledName,
@@ -286,7 +282,6 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
             },
             'fromRanges': ranges,
           });
-        }
       }
 
       return results;

@@ -822,19 +822,16 @@ export const convertSuncApiToTypes = (
   const globals = new Map<string, LuauType>();
   const namespaces = new Map<string, LuauType>();
 
-  for (const func of api.functions) {
-    globals.set(func.name, convertSuncFunction(func));
-  }
+  for (const func of api.functions) globals.set(func.name, convertSuncFunction(func));
 
   for (const ns of api.namespaces) {
     const nsFuncs = new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>();
-    for (const func of ns.functions) {
+    for (const func of ns.functions)
       nsFuncs.set(func.name, {
         'type': convertSuncFunction(func),
         'readonly': true,
         'optional': false,
       });
-    }
     namespaces.set(ns.name, createTableType(nsFuncs));
   }
 
@@ -1391,9 +1388,7 @@ export const convertSuncApiToTypes = (
     },
   ];
 
-  for (const g of additionalGlobals) {
-    globals.set(g.name, g.type);
-  }
+  for (const g of additionalGlobals) globals.set(g.name, g.type);
 
   const synNamespace = createTableType(
     new Map([
