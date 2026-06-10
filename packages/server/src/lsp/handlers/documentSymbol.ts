@@ -23,13 +23,18 @@ const ensureContained = (
   return selection;
 };
 
+const pushSymbol = (symbols: DocumentSymbol[], symbol: DocumentSymbol): void => {
+  if (symbol.name === '') return;
+  symbols.push(symbol);
+};
+
 const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
   for (const param of func.params) {
     if (param.name !== undefined) {
       const paramFull = convertRange(param.range);
-      symbols.push({
+      pushSymbol(symbols, {
         'name': param.name.name,
         'kind': SymbolKind.Variable,
         'range': paramFull,
@@ -70,7 +75,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
           symbol.children = collectFunctionSymbols(value as FunctionExpression);
         }
 
-        symbols.push(symbol);
+        pushSymbol(symbols, symbol);
       }
       break;
     }
@@ -84,7 +89,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'selectionRange': ensureContained(convertRange(stmt.name.range), funcFull),
         'children': collectFunctionSymbols(stmt.func),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
@@ -105,7 +110,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'selectionRange': ensureContained(convertRange(stmt.name.base.range), funcDeclFull),
         'children': collectFunctionSymbols(stmt.func),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
@@ -117,7 +122,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'range': typeFull,
         'selectionRange': ensureContained(convertRange(stmt.name.range), typeFull),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
@@ -157,7 +162,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
     }
 
     case 'ForNumeric': {
-      symbols.push({
+      pushSymbol(symbols, {
         'name': stmt.variable.name,
         'kind': SymbolKind.Variable,
         'range': convertRange(stmt.variable.range),
@@ -171,7 +176,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
 
     case 'ForGeneric': {
       for (const v of stmt.variables) {
-        symbols.push({
+        pushSymbol(symbols, {
           'name': v.name,
           'kind': SymbolKind.Variable,
           'range': convertRange(v.range),
