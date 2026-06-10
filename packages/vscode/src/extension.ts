@@ -14,6 +14,10 @@ import {
 } from 'vscode';
 import { LanguageClient, LanguageClientOptions, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 
+import type { BridgeStatus, ExecutorStatusResponse } from '@typings/bridge';
+import type { GameTreeItem, GameTreeNode } from '@typings/gameTree';
+import type { PropertyEntry, PropertyItem } from '@typings/properties';
+import type { FromWebviewMessage } from '@typings/remoteSpy';
 import { resolveBundlerCommands, runBundler } from './bundlerLauncher';
 import { GameTreeDataProvider } from './gameTreeProvider';
 import { registerMcpTools } from './mcpTools';
@@ -31,11 +35,6 @@ import {
   removeIgnore,
 } from './remoteSpyState';
 import { RemoteSpyPanel } from './remoteSpyWebview';
-
-import type { BridgeStatus, ExecutorStatusResponse } from '@typings/bridge';
-import type { GameTreeItem, GameTreeNode } from '@typings/gameTree';
-import type { PropertyEntry, PropertyItem } from '@typings/properties';
-import type { FromWebviewMessage } from '@typings/remoteSpy';
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;

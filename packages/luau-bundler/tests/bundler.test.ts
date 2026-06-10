@@ -1,8 +1,8 @@
-import { parse } from '@parser/parser';
-import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { afterAll, describe, expect, test } from 'bun:test';
+import { parse } from '@parser/parser';
 
 import { bundle, resolveRojoProject } from '../src/bundler';
 

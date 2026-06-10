@@ -12,6 +12,7 @@ module.exports = {
   },
   'globals': {
     'Bun': 'readonly',
+    'NodeJS': 'readonly',
     'console': 'readonly',
     'process': 'readonly',
   },

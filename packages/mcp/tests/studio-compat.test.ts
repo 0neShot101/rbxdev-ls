@@ -1,6 +1,6 @@
 import { createBridgeCore, hasCapability, resolveCapabilities, type BridgeCapability } from 'rbxdev-server';
-import { tools } from '../src/server';
 import { describe, expect, test } from 'bun:test';
+import { tools } from '../src/server';
 
 const noop = (): void => {};
 

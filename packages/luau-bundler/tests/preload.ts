@@ -4,9 +4,9 @@
  * to be imported from source when validating bundler output.
  */
 
-import { plugin } from 'bun';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
+import { plugin } from 'bun';
 
 const serverSrc = join(import.meta.dir, '..', '..', 'server', 'src');
 

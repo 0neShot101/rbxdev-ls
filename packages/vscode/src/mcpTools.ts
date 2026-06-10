@@ -85,7 +85,7 @@ export const registerMcpTools = (
 ): void => {
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_bridge_status', {
-      invoke: async () => {
+      'invoke': async () => {
         try {
           const response = await client.sendRequest<{
             isRunning: boolean;
@@ -113,7 +113,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_execute_code', {
-      invoke: async options => {
+      'invoke': async options => {
         const code = (options.input as { code?: string })?.code;
         if (typeof code !== 'string' || code.trim() === '') return textResult('Error: code parameter is required');
 
@@ -141,7 +141,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_game_tree', {
-      invoke: async options => {
+      'invoke': async options => {
         const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
         const path = input?.path;
         const format = input?.format ?? 'tree';
@@ -174,7 +174,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_properties', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; properties?: string[] } | undefined;
@@ -203,7 +203,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_property', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as
@@ -247,7 +247,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_teleport_player', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const path = (options.input as { path?: string[] } | undefined)?.path;
@@ -270,7 +270,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_delete_instance', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const path = (options.input as { path?: string[] } | undefined)?.path;
@@ -300,7 +300,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_reparent_instance', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { sourcePath?: string[]; targetPath?: string[] } | undefined;
@@ -328,7 +328,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_children', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
@@ -359,7 +359,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_script_source', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const path = (options.input as { path?: string[] } | undefined)?.path;
@@ -387,7 +387,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_create_instance', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as
@@ -429,7 +429,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_clone_instance', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const path = (options.input as { path?: string[] } | undefined)?.path;
@@ -454,7 +454,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_get_remote_calls', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { limit?: number } | undefined;
@@ -497,7 +497,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_set_remote_spy_block_list', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
@@ -520,7 +520,7 @@ export const registerMcpTools = (
 
   context.subscriptions.push(
     vscode.lm.registerTool('rbxdev_save_instance', {
-      invoke: async options => {
+      'invoke': async options => {
         if (isConnected() === false) return textResult('Error: No executor connected');
 
         const input = options.input as { path?: string[]; fileName?: string; decompile?: boolean };
