@@ -172,7 +172,7 @@ export const setupLinkedEditingRangeHandler = (connection: Connection, documentM
       const match = entry.references.find(
         ref => ref.line === line && character >= ref.character && character <= ref.endCharacter,
       );
-      if (match !== undefined) {
+      if (match !== undefined)
         return {
           'ranges': entry.references.map(loc => ({
             'start': { 'line': loc.line, 'character': loc.character },
@@ -180,7 +180,6 @@ export const setupLinkedEditingRangeHandler = (connection: Connection, documentM
           })),
           'wordPattern': '[a-zA-Z_]\\w*',
         };
-      }
     }
 
     return null;

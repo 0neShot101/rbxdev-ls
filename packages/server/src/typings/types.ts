@@ -120,12 +120,8 @@ export const createFunctionType = (
     'isVariadic': options?.isVariadic ?? false,
   };
 
-  if (options?.description !== undefined) {
-    (result as { description?: string }).description = options.description;
-  }
-  if (options?.example !== undefined) {
-    (result as { example?: string }).example = options.example;
-  }
+  if (options?.description !== undefined) (result as { description?: string }).description = options.description;
+  if (options?.example !== undefined) (result as { example?: string }).example = options.example;
 
   return result;
 };
@@ -280,13 +276,9 @@ export const createUnionType = (types: ReadonlyArray<LuauType>): LuauType => {
   if (types.length === 1) return types[0]!;
 
   const flattened: LuauType[] = [];
-  for (const t of types) {
-    if (t.kind === 'Union') {
-      flattened.push(...t.types);
-    } else {
-      flattened.push(t);
-    }
-  }
+  for (const t of types)
+    if (t.kind === 'Union') flattened.push(...t.types);
+    else flattened.push(t);
 
   const unique = flattened.filter((t, i) => {
     if (t.kind === 'Never') return false;
@@ -307,13 +299,9 @@ export const createIntersectionType = (types: ReadonlyArray<LuauType>): LuauType
   if (types.length === 1) return types[0]!;
 
   const flattened: LuauType[] = [];
-  for (const t of types) {
-    if (t.kind === 'Intersection') {
-      flattened.push(...t.types);
-    } else {
-      flattened.push(t);
-    }
-  }
+  for (const t of types)
+    if (t.kind === 'Intersection') flattened.push(...t.types);
+    else flattened.push(t);
 
   if (flattened.some(t => t.kind === 'Never')) return NeverType;
 
@@ -536,12 +524,9 @@ export const typeToString = (type: LuauType): string => {
     }
 
     case 'Table': {
-      if (resolved.isArray && resolved.indexer !== undefined) {
-        return `{${typeToString(resolved.indexer.valueType)}}`;
-      }
-      if (resolved.properties.size === 0 && resolved.indexer !== undefined) {
+      if (resolved.isArray && resolved.indexer !== undefined) return `{${typeToString(resolved.indexer.valueType)}}`;
+      if (resolved.properties.size === 0 && resolved.indexer !== undefined)
         return `{[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}}`;
-      }
       const props = Array.from(resolved.properties.entries())
         .map(([k, v]) => `${k}: ${typeToString(v.type)}`)
         .join(', ');

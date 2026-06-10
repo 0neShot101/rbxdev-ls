@@ -3,7 +3,7 @@ import { hasCapability } from 'rbxdev-server';
 import { createLuaLookupFromPath, escapeLuaString } from '@mcp/utils/lua';
 import { bridgeCall, NOT_CONNECTED, errorResult, requirePath, textResult } from '@mcp/utils/results';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 const buildSaveInstanceCode = (args: { path?: string[]; fileName?: string; decompile?: boolean }): string => {
   const fileName = args.fileName ?? 'game.rbxl';
@@ -13,9 +13,8 @@ const buildSaveInstanceCode = (args: { path?: string[]; fileName?: string; decom
   optionParts.push(`FilePath = "${escapeLuaString(fileName)}"`);
   optionParts.push(`Decompile = ${decompile}`);
 
-  if (args.path !== undefined && args.path.length > 0) {
+  if (args.path !== undefined && args.path.length > 0)
     optionParts.push(`Object = ${createLuaLookupFromPath(args.path)}`);
-  }
 
   return `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
 };

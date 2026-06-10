@@ -1,3 +1,4 @@
+import type { ColorMatch } from '@typings/handlers';
 import type { Connection, TextDocuments } from 'vscode-languageserver';
 import type {
   ColorInformation,
@@ -6,7 +7,6 @@ import type {
   DocumentColorParams,
 } from 'vscode-languageserver-protocol';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
-import type { ColorMatch } from '@typings/handlers';
 
 /**
  * Finds all Color3 constructor calls in source code and extracts their color values.
@@ -76,12 +76,11 @@ const offsetToPosition = (content: string, offset: number): { line: number; char
   let line = 0;
   let character = 0;
 
-  for (let i = 0; i < offset && i < content.length; i++) {
+  for (let i = 0; i < offset && i < content.length; i++)
     if (content[i] === '\n') {
       line++;
       character = 0;
     } else character++;
-  }
 
   return { line, character };
 };

@@ -16,9 +16,7 @@ import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 const countLines = (content: string): number => {
   let count = 1;
-  for (let i = 0; i < content.length; i++) {
-    if (content[i] === '\n') count++;
-  }
+  for (let i = 0; i < content.length; i++) if (content[i] === '\n') count++;
   return count;
 };
 
@@ -44,9 +42,7 @@ export const createDocumentManager = (): DocumentManager => {
   const getClassMap = (): Map<string, import('@typings/types').ClassType> => {
     if (cachedClassMap === undefined) {
       cachedClassMap = new Map();
-      for (const [name, type] of globalEnv.robloxClasses) {
-        if (type.kind === 'Class') cachedClassMap.set(name, type);
-      }
+      for (const [name, type] of globalEnv.robloxClasses) if (type.kind === 'Class') cachedClassMap.set(name, type);
     }
     return cachedClassMap;
   };
@@ -104,19 +100,15 @@ export const createDocumentManager = (): DocumentManager => {
             const properties = new Map<string, PropertyType>();
             for (const exp of info.exports) {
               let propType: LuauType = AnyType;
-              if (exp.kind === 'function') {
-                if (exp.signature !== undefined) {
+              if (exp.kind === 'function')
+                if (exp.signature !== undefined)
                   propType = createFunctionType(
                     exp.signature.params.map(p => ({ 'name': p.name, 'type': p.type, 'optional': p.optional })),
                     exp.signature.returnType,
                     { 'isVariadic': exp.signature.isVariadic },
                   );
-                } else {
-                  propType = createFunctionType([], AnyType);
-                }
-              } else if (exp.kind === 'table') {
-                propType = createTableType(new Map());
-              }
+                else propType = createFunctionType([], AnyType);
+              else if (exp.kind === 'table') propType = createTableType(new Map());
               properties.set(exp.name, { 'type': propType, 'readonly': true, 'optional': false });
             }
             return createTableType(properties);
@@ -132,9 +124,7 @@ export const createDocumentManager = (): DocumentManager => {
         requireResolver,
       });
 
-      if (parseErrors.length === 0) {
-        typeErrors = typeCheckResult.diagnostics.slice();
-      }
+      if (parseErrors.length === 0) typeErrors = typeCheckResult.diagnostics.slice();
     }
 
     const previousDoc = documents.get(uri);
@@ -143,9 +133,8 @@ export const createDocumentManager = (): DocumentManager => {
       typeCheckResult.allSymbols.size === 0 &&
       previousDoc?.typeCheckResult !== undefined &&
       previousDoc.typeCheckResult.allSymbols.size > 0
-    ) {
+    )
       typeCheckResult = previousDoc.typeCheckResult;
-    }
 
     const parsed: ParsedDocument = {
       uri,

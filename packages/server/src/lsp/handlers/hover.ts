@@ -1,13 +1,13 @@
 import { getCommonChildType } from '@definitions/commonChildren';
-import type { ExecutorBridge } from '@typings/bridge';
 import { formatDocCommentForDisplay } from '@parser/docComment';
+import type { ExecutorBridge } from '@typings/bridge';
 import type { DocComment } from '@typings/parser';
 import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
+import type { Scope } from '@typings/environment';
 import type { ClassMemberLookupResult, DeprecationInfo, MemberAccessInfo } from '@typings/handlers';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
-import type { Scope } from '@typings/environment';
 import type { ClassMethod, ClassProperty, ClassType, FunctionType, LuauType, TableType } from '@typings/types';
 import type { Connection, Hover, HoverParams } from 'vscode-languageserver';
 
@@ -90,16 +90,12 @@ const formatFunctionDocFull = (name: string, func: FunctionType): string => {
 export const formatClassDoc = (cls: ClassType): string => {
   const lines = [`class ${cls.name}`];
 
-  if (cls.superclass !== undefined) {
-    lines[0] += ` extends ${cls.superclass.name}`;
-  }
+  if (cls.superclass !== undefined) lines[0] += ` extends ${cls.superclass.name}`;
 
   const propCount = cls.properties.size;
   const methodCount = cls.methods.size;
 
-  if (propCount > 0 || methodCount > 0) {
-    lines.push(`  ${propCount} properties, ${methodCount} methods`);
-  }
+  if (propCount > 0 || methodCount > 0) lines.push(`  ${propCount} properties, ${methodCount} methods`);
 
   return lines.join('\n');
 };
@@ -138,9 +134,8 @@ export const formatTypeDoc = (name: string, type: LuauType, deprecation?: Deprec
 };
 
 const formatTypeDocFull = (name: string, type: LuauType): string => {
-  if (type.kind === 'Function' && (type.description !== undefined || type.example !== undefined)) {
+  if (type.kind === 'Function' && (type.description !== undefined || type.example !== undefined))
     return formatFunctionDocFull(name, type);
-  }
 
   return '```lua\n' + formatTypeDoc(name, type) + '\n```';
 };
@@ -151,9 +146,7 @@ const formatSymbolWithDocComment = (name: string, type: LuauType, docComment: Do
 
   if (docComment !== undefined) {
     const docMarkdown = formatDocCommentForDisplay(docComment);
-    if (docMarkdown.length > 0) {
-      markdown += '\n\n---\n\n' + docMarkdown;
-    }
+    if (docMarkdown.length > 0) markdown += '\n\n---\n\n' + docMarkdown;
   }
 
   return markdown;
@@ -285,9 +278,8 @@ const lookupClassMember = (
 
   if (getSuperclassName !== undefined) {
     const commonChildType = getCommonChildType(cls.name, memberName, getSuperclassName);
-    if (commonChildType !== undefined) {
+    if (commonChildType !== undefined)
       return { 'kind': 'commonChild', 'childName': memberName, 'childTypeName': commonChildType };
-    }
   }
 
   return undefined;
@@ -425,12 +417,8 @@ export const formatMemberHoverForType = (
     };
     const member = lookupClassMember(objectType, memberName, getSuperclassName);
     if (member === undefined) return undefined;
-    if (member.kind === 'method') {
-      return '```lua\n' + formatMethodDoc(memberName, member.method) + '\n```';
-    }
-    if (member.kind === 'property') {
-      return '```lua\n' + formatPropertyDoc(memberName, member.prop) + '\n```';
-    }
+    if (member.kind === 'method') return '```lua\n' + formatMethodDoc(memberName, member.method) + '\n```';
+    if (member.kind === 'property') return '```lua\n' + formatPropertyDoc(memberName, member.prop) + '\n```';
     return undefined;
   }
 
@@ -469,9 +457,7 @@ export const setupHoverHandler = (
               const result = await executorBridge.requestProperties(instancePath, [memberAccess.memberName]);
               if (result.success && result.properties !== undefined && result.properties.length > 0) {
                 const liveValue = result.properties[0];
-                if (liveValue !== undefined) {
-                  liveValueMarkdown = `\n\n**Live Value:** \`${liveValue.value}\``;
-                }
+                if (liveValue !== undefined) liveValueMarkdown = `\n\n**Live Value:** \`${liveValue.value}\``;
               }
             } catch {
               /* noop */
@@ -490,7 +476,7 @@ export const setupHoverHandler = (
 
         const member = lookupClassMember(objectClass, memberAccess.memberName, getSuperclassName);
         if (member !== undefined) {
-          if (member.kind === 'method') {
+          if (member.kind === 'method')
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
@@ -498,7 +484,6 @@ export const setupHoverHandler = (
                   '```lua\n' + formatMethodDoc(memberAccess.memberName, member.method) + '\n```' + liveValueMarkdown,
               },
             };
-          }
           if (member.kind === 'property') {
             const markdown = '```lua\n' + formatPropertyDoc(memberAccess.memberName, member.prop) + '\n```';
             return {
@@ -508,7 +493,7 @@ export const setupHoverHandler = (
               },
             };
           }
-          if (member.kind === 'commonChild') {
+          if (member.kind === 'commonChild')
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
@@ -521,34 +506,31 @@ export const setupHoverHandler = (
                   liveValueMarkdown,
               },
             };
-          }
         }
       }
 
       const dataType = documentManager.globalEnv.robloxDataTypes.get(memberAccess.objectName);
       if (dataType !== undefined && dataType.kind === 'Table') {
         const memberProp = dataType.properties.get(memberAccess.memberName);
-        if (memberProp !== undefined) {
+        if (memberProp !== undefined)
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
               'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
             },
           };
-        }
       }
 
       const globalSymbol = documentManager.globalEnv.env.globalScope.symbols.get(memberAccess.objectName);
       if (globalSymbol !== undefined && globalSymbol.type.kind === 'Table') {
         const memberProp = globalSymbol.type.properties.get(memberAccess.memberName);
-        if (memberProp !== undefined) {
+        if (memberProp !== undefined)
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
               'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
             },
           };
-        }
       }
 
       const localObjectType = resolveSymbolTypeInDocument(document, memberAccess.objectName);
@@ -558,45 +540,41 @@ export const setupHoverHandler = (
           return cls !== undefined && cls.kind === 'Class' ? cls : undefined;
         };
         const markdown = formatMemberHoverForType(localObjectType, memberAccess.memberName, resolveClass);
-        if (markdown !== undefined) {
+        if (markdown !== undefined)
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
               'value': markdown + liveValueMarkdown,
             },
           };
-        }
       }
 
-      if (liveValueMarkdown.length > 0) {
+      if (liveValueMarkdown.length > 0)
         return {
           'contents': {
             'kind': MarkupKind.Markdown,
             'value': `\`\`\`lua\n${memberAccess.objectName}.${memberAccess.memberName}\n\`\`\`` + liveValueMarkdown,
           },
         };
-      }
     }
 
     const symbol = documentManager.globalEnv.env.globalScope.symbols.get(word);
-    if (symbol !== undefined) {
+    if (symbol !== undefined)
       return {
         'contents': {
           'kind': MarkupKind.Markdown,
           'value': formatTypeDocFull(word, symbol.type),
         },
       };
-    }
 
     const classType = documentManager.globalEnv.robloxClasses.get(word);
-    if (classType !== undefined && classType.kind === 'Class') {
+    if (classType !== undefined && classType.kind === 'Class')
       return {
         'contents': {
           'kind': MarkupKind.Markdown,
           'value': '```lua\n' + formatClassDoc(classType) + '\n```',
         },
       };
-    }
 
     const dataType = documentManager.globalEnv.robloxDataTypes.get(word);
     if (dataType !== undefined && dataType.kind === 'Table') {
@@ -610,39 +588,36 @@ export const setupHoverHandler = (
     }
 
     const enumType = documentManager.globalEnv.robloxEnums.get(word);
-    if (enumType !== undefined) {
+    if (enumType !== undefined)
       return {
         'contents': {
           'kind': MarkupKind.Markdown,
           'value': '```lua\nEnum.' + word + '\n```',
         },
       };
-    }
 
     if (document.typeCheckResult !== undefined) {
       let scope: Scope | undefined = document.typeCheckResult.environment.currentScope;
       while (scope !== undefined) {
         const localSymbol = scope.symbols.get(word);
-        if (localSymbol !== undefined) {
+        if (localSymbol !== undefined)
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
               'value': formatSymbolWithDocComment(word, localSymbol.type, localSymbol.docComment),
             },
           };
-        }
         scope = scope.parent;
       }
 
       const globalSymbol = document.typeCheckResult.environment.globalScope.symbols.get(word);
-      if (globalSymbol !== undefined) {
+      if (globalSymbol !== undefined)
         return {
           'contents': {
             'kind': MarkupKind.Markdown,
             'value': formatSymbolWithDocComment(word, globalSymbol.type, globalSymbol.docComment),
           },
         };
-      }
     }
 
     return null;

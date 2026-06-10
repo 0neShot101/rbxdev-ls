@@ -54,14 +54,11 @@ export const offsetToPosition = (text: string, offset: number): Position => {
   let line = 0;
   let character = 0;
 
-  for (let i = 0; i < offset && i < text.length; i++) {
+  for (let i = 0; i < offset && i < text.length; i++)
     if (text[i] === '\n') {
       line++;
       character = 0;
-    } else {
-      character++;
-    }
-  }
+    } else character++;
 
   return { line, character };
 };
@@ -78,9 +75,7 @@ export const positionToOffset = (text: string, position: Position): number => {
     if (text[offset] === '\n') {
       line++;
       character = 0;
-    } else {
-      character++;
-    }
+    } else character++;
     offset++;
   }
 

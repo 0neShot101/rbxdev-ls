@@ -158,27 +158,27 @@ The server registers 19 tools that the AI assistant can call:
 <details>
 <summary><strong>Full tool reference</strong></summary>
 
-| Tool                     | Description                                                                                                                |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `get_bridge_status`      | Check if the bridge is running and connected, returns executor name and service count                                      |
-| `execute_code`           | Run Luau code in the game with full Roblox API access and capture the return value                                         |
-| `get_game_tree`          | Browse the game hierarchy with optional path filtering and tree/json output formats                                        |
-| `get_properties`         | Read property values from any instance, optionally filtering to specific property names                                    |
-| `set_property`           | Set a property on an instance with explicit value type (string, number, boolean, Vector3, Color3, CFrame, UDim2, EnumItem) |
-| `get_children`           | List the direct children of an instance for lazy-loading deep hierarchies                                                  |
-| `create_instance`        | Create a new instance of a given class under a specified parent                                                            |
-| `clone_instance`         | Duplicate an instance and all its children as a sibling of the original                                                    |
-| `delete_instance`        | Permanently remove an instance from the game (cannot be undone)                                                            |
-| `reparent_instance`      | Move an instance to a new parent in the hierarchy                                                                          |
-| `teleport_player`        | Teleport the local player to a BasePart or Model position                                                                  |
-| `get_script_source`      | Decompile and return the source code of a Script, LocalScript, or ModuleScript                                             |
-| `get_console_output`     | Read recent print/warn/error output, with optional level filtering and limit                                               |
-| `refresh_game_tree`      | Request a fresh snapshot of the game tree from the executor                                                                |
-| `get_remote_calls`       | View captured RemoteEvent/RemoteFunction calls with reproducible Luau code                                                 |
-| `set_remote_spy_enabled` | Toggle the Remote Spy on or off to start or stop capturing remote calls                                                    |
-| `set_remote_spy_block_list` | Set remotes to block from firing to the server                                                                         |
-| `set_script_source`      | Update script source when connected through Roblox Studio                                                                 |
-| `save_instance`          | Save the full DataModel or a specific instance to a file                                                                  |
+| Tool                        | Description                                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `get_bridge_status`         | Check if the bridge is running and connected, returns executor name and service count                                      |
+| `execute_code`              | Run Luau code in the game with full Roblox API access and capture the return value                                         |
+| `get_game_tree`             | Browse the game hierarchy with optional path filtering and tree/json output formats                                        |
+| `get_properties`            | Read property values from any instance, optionally filtering to specific property names                                    |
+| `set_property`              | Set a property on an instance with explicit value type (string, number, boolean, Vector3, Color3, CFrame, UDim2, EnumItem) |
+| `get_children`              | List the direct children of an instance for lazy-loading deep hierarchies                                                  |
+| `create_instance`           | Create a new instance of a given class under a specified parent                                                            |
+| `clone_instance`            | Duplicate an instance and all its children as a sibling of the original                                                    |
+| `delete_instance`           | Permanently remove an instance from the game (cannot be undone)                                                            |
+| `reparent_instance`         | Move an instance to a new parent in the hierarchy                                                                          |
+| `teleport_player`           | Teleport the local player to a BasePart or Model position                                                                  |
+| `get_script_source`         | Decompile and return the source code of a Script, LocalScript, or ModuleScript                                             |
+| `get_console_output`        | Read recent print/warn/error output, with optional level filtering and limit                                               |
+| `refresh_game_tree`         | Request a fresh snapshot of the game tree from the executor                                                                |
+| `get_remote_calls`          | View captured RemoteEvent/RemoteFunction calls with reproducible Luau code                                                 |
+| `set_remote_spy_enabled`    | Toggle the Remote Spy on or off to start or stop capturing remote calls                                                    |
+| `set_remote_spy_block_list` | Set remotes to block from firing to the server                                                                             |
+| `set_script_source`         | Update script source when connected through Roblox Studio                                                                  |
+| `save_instance`             | Save the full DataModel or a specific instance to a file                                                                   |
 
 </details>
 

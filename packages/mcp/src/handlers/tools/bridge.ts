@@ -4,7 +4,7 @@ import { formatLogEntry } from '@mcp/utils/formatters';
 import { NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
 import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 export const bridgeToolHandlers: ToolHandlerMap = {
   'get_bridge_status': async (_args, { bridge }) =>

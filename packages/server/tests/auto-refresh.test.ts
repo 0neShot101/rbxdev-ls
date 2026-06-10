@@ -140,7 +140,8 @@ describe('studio-plugin init.server.luau auto-refresh wiring', () => {
 });
 
 describe('executor-bridge.lua auto-refresh subsystem', () => {
-  const source = readFile('roblox', 'executor-bridge', 'src', 'gameTree.luau') +
+  const source =
+    readFile('roblox', 'executor-bridge', 'src', 'gameTree.luau') +
     readFile('roblox', 'executor-bridge', 'src', 'init.luau') +
     readFile('roblox', 'executor-bridge', 'src', 'state.luau');
 

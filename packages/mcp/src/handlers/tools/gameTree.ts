@@ -2,7 +2,7 @@ import { formatGameTreeNode, formatServicesTree, serializeGameTreeNode } from '@
 import { NOT_CONNECTED, errorResult, requirePath, textResult } from '@mcp/utils/results';
 import { asRecord } from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 export const gameTreeToolHandlers: ToolHandlerMap = {
   'get_game_tree': async (args, { bridge }) => {

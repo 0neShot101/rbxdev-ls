@@ -10,9 +10,7 @@ export const findRojoProject = (workspacePath: string): string | undefined => {
 
   try {
     const files = fs.readdirSync(workspacePath);
-    for (const file of files) {
-      if (file.endsWith('.project.json')) return path.join(workspacePath, file);
-    }
+    for (const file of files) if (file.endsWith('.project.json')) return path.join(workspacePath, file);
   } catch {
     /* noop */
   }
@@ -77,11 +75,8 @@ export const buildDataModelTree = (project: RojoProject, projectDir: string): Da
               const baseName = entry.replace(/\.(lua|luau)$/, '');
               let fileClassName = 'ModuleScript';
 
-              if (baseName.endsWith('.server') || entry.includes('.server.')) {
-                fileClassName = 'Script';
-              } else if (baseName.endsWith('.client') || entry.includes('.client.')) {
-                fileClassName = 'LocalScript';
-              }
+              if (baseName.endsWith('.server') || entry.includes('.server.')) fileClassName = 'Script';
+              else if (baseName.endsWith('.client') || entry.includes('.client.')) fileClassName = 'LocalScript';
 
               children.set(baseName.replace(/\.(server|client)$/, ''), {
                 'name': baseName.replace(/\.(server|client)$/, ''),
@@ -120,12 +115,11 @@ export const getDataModelPath = (
   if (normalizedNodePath !== undefined) {
     if (normalizedFilePath === normalizedNodePath) return [...currentPath, node.name];
 
-    if (normalizedFilePath.startsWith(normalizedNodePath + path.sep)) {
+    if (normalizedFilePath.startsWith(normalizedNodePath + path.sep))
       for (const [, childNode] of node.children) {
         const result = getDataModelPath(childNode, filePath, [...currentPath, node.name]);
         if (result !== undefined) return result;
       }
-    }
   }
 
   for (const [, childNode] of node.children) {

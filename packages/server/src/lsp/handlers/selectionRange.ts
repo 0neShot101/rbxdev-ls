@@ -62,9 +62,7 @@ export const collectContainingRanges = (chunk: Chunk, line: number, character: n
           } else if (field.kind === 'TableFieldIndex') {
             walkExpr(field.index);
             walkExpr(field.value);
-          } else if (field.kind === 'TableFieldValue') {
-            walkExpr(field.value);
-          }
+          } else if (field.kind === 'TableFieldValue') walkExpr(field.value);
         }
         break;
 
@@ -112,9 +110,7 @@ export const collectContainingRanges = (chunk: Chunk, line: number, character: n
         break;
 
       case 'InterpolatedString':
-        for (const part of expr.parts) {
-          if (part.kind === 'InterpolatedExpression') walkExpr(part.expression);
-        }
+        for (const part of expr.parts) if (part.kind === 'InterpolatedExpression') walkExpr(part.expression);
         break;
     }
   };
@@ -125,9 +121,7 @@ export const collectContainingRanges = (chunk: Chunk, line: number, character: n
 
     switch (type.kind) {
       case 'FunctionType':
-        for (const param of type.params) {
-          if (param.type !== undefined) walkType(param.type);
-        }
+        for (const param of type.params) if (param.type !== undefined) walkType(param.type);
         if (type.returnType !== undefined) walkType(type.returnType);
         break;
 
@@ -155,9 +149,7 @@ export const collectContainingRanges = (chunk: Chunk, line: number, character: n
         break;
 
       case 'TypeReference':
-        if (type.typeArgs !== undefined) {
-          for (const arg of type.typeArgs) walkType(arg);
-        }
+        if (type.typeArgs !== undefined) for (const arg of type.typeArgs) walkType(arg);
         break;
     }
   };
@@ -281,9 +273,8 @@ export const setupSelectionRangeHandler = (connection: Connection, documentManag
       ranges.sort((a, b) => rangeSize(b) - rangeSize(a));
 
       const deduped: AstRange[] = [];
-      for (const r of ranges) {
+      for (const r of ranges)
         if (deduped.length === 0 || rangesEqual(r, deduped[deduped.length - 1]!) === false) deduped.push(r);
-      }
 
       let current: SelectionRange | undefined;
       for (const r of deduped) {
@@ -296,14 +287,13 @@ export const setupSelectionRangeHandler = (connection: Connection, documentManag
         else current = { range, 'parent': current };
       }
 
-      if (current === undefined) {
+      if (current === undefined)
         return {
           'range': {
             'start': { 'line': position.line, 'character': position.character },
             'end': { 'line': position.line, 'character': position.character },
           },
         };
-      }
 
       return current;
     });

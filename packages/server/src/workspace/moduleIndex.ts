@@ -47,7 +47,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
   if (returnValue === undefined) return exports;
 
   if (returnValue.kind === 'TableExpression') {
-    for (const field of returnValue.fields) {
+    for (const field of returnValue.fields)
       if (field.kind === 'TableFieldKey') {
         const name = field.key.name;
         let kind: ModuleExport['kind'] = 'value';
@@ -56,26 +56,23 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
         if (field.value.kind === 'FunctionExpression') {
           kind = 'function';
           signature = buildSignature(field.value);
-        } else if (field.value.kind === 'TableExpression') {
-          kind = 'table';
-        }
+        } else if (field.value.kind === 'TableExpression') kind = 'table';
 
         exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
       }
-    }
     return exports;
   }
 
   if (returnValue.kind === 'Identifier') {
     const varName = returnValue.name;
 
-    for (const stmt of chunk.body) {
+    for (const stmt of chunk.body)
       if (stmt.kind === 'LocalDeclaration') {
         const idx = stmt.names.findIndex(n => n.name === varName);
         if (idx !== -1) {
           const value = stmt.values[idx];
-          if (value?.kind === 'TableExpression') {
-            for (const field of value.fields) {
+          if (value?.kind === 'TableExpression')
+            for (const field of value.fields)
               if (field.kind === 'TableFieldKey') {
                 const name = field.key.name;
                 let kind: ModuleExport['kind'] = 'value';
@@ -84,9 +81,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
                 if (field.value.kind === 'FunctionExpression') {
                   kind = 'function';
                   signature = buildSignature(field.value);
-                } else if (field.value.kind === 'TableExpression') {
-                  kind = 'table';
-                }
+                } else if (field.value.kind === 'TableExpression') kind = 'table';
 
                 exports.push({
                   name,
@@ -96,12 +91,9 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
                   ...(signature !== undefined ? { signature } : {}),
                 });
               }
-            }
-          }
           break;
         }
       }
-    }
 
     for (const stmt of chunk.body) {
       if (stmt.kind === 'Assignment' && stmt.targets.length > 0 && stmt.values.length > 0) {
@@ -119,9 +111,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
           if (value?.kind === 'FunctionExpression') {
             kind = 'function';
             signature = buildSignature(value);
-          } else if (value?.kind === 'TableExpression') {
-            kind = 'table';
-          }
+          } else if (value?.kind === 'TableExpression') kind = 'table';
 
           exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
         }
@@ -129,7 +119,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
 
       if (stmt.kind === 'FunctionDeclaration' && stmt.name.base.name === varName) {
         const funcName = stmt.name.method?.name ?? stmt.name.path[stmt.name.path.length - 1]?.name;
-        if (funcName !== undefined) {
+        if (funcName !== undefined)
           exports.push({
             'name': funcName,
             'kind': 'function',
@@ -137,7 +127,6 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
             filePath,
             'signature': buildSignature(stmt.func),
           });
-        }
       }
     }
 
@@ -188,9 +177,7 @@ const scanDirectory = (dirPath: string, dataModelPath: string[], modules: Map<st
           }
 
           scanDirectory(entryPath, newDataModelPath, modules);
-        } else {
-          scanDirectory(entryPath, [...dataModelPath, entry.name], modules);
-        }
+        } else scanDirectory(entryPath, [...dataModelPath, entry.name], modules);
       } else if (entry.name.endsWith('.lua') || entry.name.endsWith('.luau')) {
         if (entry.name === 'init.lua' || entry.name === 'init.luau') continue;
 
@@ -231,9 +218,7 @@ export const buildModuleIndex = (rojoState: RojoState, workspacePath: string): M
 
     for (const dir of commonDirs) {
       const dirPath = path.join(workspacePath, dir);
-      if (fs.existsSync(dirPath)) {
-        scanDirectory(dirPath, [dir], modules);
-      }
+      if (fs.existsSync(dirPath)) scanDirectory(dirPath, [dir], modules);
     }
 
     return modules;
@@ -243,9 +228,8 @@ export const buildModuleIndex = (rojoState: RojoState, workspacePath: string): M
     if (node.filePath !== undefined && fs.existsSync(node.filePath)) {
       const stat = fs.statSync(node.filePath);
 
-      if (stat.isDirectory()) {
-        scanDirectory(node.filePath, dataModelPath, modules);
-      } else if (node.filePath.endsWith('.lua') || node.filePath.endsWith('.luau')) {
+      if (stat.isDirectory()) scanDirectory(node.filePath, dataModelPath, modules);
+      else if (node.filePath.endsWith('.lua') || node.filePath.endsWith('.luau')) {
         try {
           const content = fs.readFileSync(node.filePath, 'utf-8');
           const parseResult = parse(content);
@@ -266,9 +250,7 @@ export const buildModuleIndex = (rojoState: RojoState, workspacePath: string): M
       }
     }
 
-    for (const [childName, childNode] of node.children) {
-      scanNode(childNode, [...dataModelPath, childName]);
-    }
+    for (const [childName, childNode] of node.children) scanNode(childNode, [...dataModelPath, childName]);
   };
 
   scanNode(rojoState.dataModel, [rojoState.dataModel.name]);
@@ -281,32 +263,23 @@ export const generateRequirePath = (fromDataModelPath: string[], toDataModelPath
   let commonLength = 0;
   const minLength = Math.min(fromDataModelPath.length, toDataModelPath.length);
 
-  for (let i = 0; i < minLength; i++) {
-    if (fromDataModelPath[i] === toDataModelPath[i]) {
-      commonLength = i + 1;
-    } else {
-      break;
-    }
-  }
+  for (let i = 0; i < minLength; i++)
+    if (fromDataModelPath[i] === toDataModelPath[i]) commonLength = i + 1;
+    else break;
 
   const parts: string[] = [];
 
   const upCount = fromDataModelPath.length - commonLength - 1;
   if (upCount > 0) {
     parts.push('script');
-    for (let i = 0; i < upCount; i++) {
-      parts.push('Parent');
-    }
-  } else if (commonLength === 0) {
-    return `game.${toDataModelPath.join('.')}`;
-  } else {
+    for (let i = 0; i < upCount; i++) parts.push('Parent');
+  } else if (commonLength === 0) return `game.${toDataModelPath.join('.')}`;
+  else {
     parts.push('script');
     parts.push('Parent');
   }
 
-  for (let i = commonLength; i < toDataModelPath.length; i++) {
-    parts.push(toDataModelPath[i]!);
-  }
+  for (let i = commonLength; i < toDataModelPath.length; i++) parts.push(toDataModelPath[i]!);
 
   return parts.join('.');
 };
@@ -316,14 +289,12 @@ export const searchExports = (modules: Map<string, ModuleInfo>, query: string, l
   const results: ModuleExport[] = [];
   const lowerQuery = query.toLowerCase();
 
-  for (const [, moduleInfo] of modules) {
-    for (const exp of moduleInfo.exports) {
+  for (const [, moduleInfo] of modules)
+    for (const exp of moduleInfo.exports)
       if (exp.name.toLowerCase().startsWith(lowerQuery)) {
         results.push(exp);
         if (results.length >= limit) return results;
       }
-    }
-  }
 
   return results;
 };
@@ -378,7 +349,7 @@ export const listModuleFiles = (dirPath: string): ModuleFileEntry[] => {
     const entries = fs.readdirSync(dirPath, { 'withFileTypes': true });
     const results: ModuleFileEntry[] = [];
 
-    for (const entry of entries) {
+    for (const entry of entries)
       if (entry.isDirectory()) {
         const initLua = path.join(dirPath, entry.name, 'init.lua');
         const initLuau = path.join(dirPath, entry.name, 'init.luau');
@@ -396,7 +367,6 @@ export const listModuleFiles = (dirPath: string): ModuleFileEntry[] => {
         const exports = extractFileExports(filePath, [baseName]);
         results.push({ 'name': baseName, ext, 'isFolder': false, filePath, exports });
       }
-    }
 
     return results;
   } catch {

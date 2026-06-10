@@ -1,5 +1,5 @@
-import { DocumentHighlightKind } from 'vscode-languageserver';
 import { walk } from '@parser/visitor';
+import { DocumentHighlightKind } from 'vscode-languageserver';
 
 import type { Chunk, Identifier } from '@typings/ast';
 import type { HighlightLocation } from '@typings/handlers';
@@ -35,9 +35,8 @@ export const collectHighlights = (chunk: Chunk): Map<string, HighlightLocation[]
       for (const name of node.names) addHighlight(name, DocumentHighlightKind.Write);
     },
     'visitAssignment': node => {
-      for (const target of node.targets) {
+      for (const target of node.targets)
         if (target.kind === 'Identifier') addHighlight(target, DocumentHighlightKind.Write);
-      }
     },
     'visitCompoundAssignment': node => {
       if (node.target.kind === 'Identifier') addHighlight(node.target, DocumentHighlightKind.Write);

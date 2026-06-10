@@ -60,9 +60,7 @@ export const setupCodeActionHandler = (
 
       if (diagnostic.message.includes('is deprecated')) {
         let nameMatch = diagnostic.message.match(/'([^']+)' is deprecated/);
-        if (nameMatch === null) {
-          nameMatch = diagnostic.message.match(/['']([^'']+)[''] is deprecated/);
-        }
+        if (nameMatch === null) nameMatch = diagnostic.message.match(/['']([^'']+)[''] is deprecated/);
         if (nameMatch === null) continue;
 
         const deprecatedName = nameMatch[1];
@@ -89,9 +87,7 @@ export const setupCodeActionHandler = (
         }
 
         let useInsteadMatch = diagnostic.message.match(/Use '([^']+)' instead/);
-        if (useInsteadMatch === null) {
-          useInsteadMatch = diagnostic.message.match(/Use ['']([^'']+)[''] instead/);
-        }
+        if (useInsteadMatch === null) useInsteadMatch = diagnostic.message.match(/Use ['']([^'']+)[''] instead/);
         if (useInsteadMatch !== null) {
           const suggestedReplacement = useInsteadMatch[1];
           if (suggestedReplacement !== undefined && suggestedReplacement !== replacement) {
@@ -153,7 +149,7 @@ export const setupCodeActionHandler = (
         const unusedMatch = diagnostic.message.match(/['']([^'']+)['']/);
         if (unusedMatch !== null) {
           const varName = unusedMatch[1];
-          if (varName !== undefined && varName.startsWith('_') === false) {
+          if (varName !== undefined && varName.startsWith('_') === false)
             actions.push({
               'title': `Prefix '${varName}' with '_'`,
               'kind': CodeActionKind.QuickFix,
@@ -169,7 +165,6 @@ export const setupCodeActionHandler = (
                 },
               },
             });
-          }
         }
       }
     }
@@ -255,7 +250,7 @@ export const setupCodeActionHandler = (
       });
     }
 
-    if (parsedDoc?.ast !== undefined) {
+    if (parsedDoc?.ast !== undefined)
       walk(parsedDoc.ast, {
         'visitStringLiteral': node => {
           const nodeLine = node.range.start.line - 1;
@@ -266,7 +261,7 @@ export const setupCodeActionHandler = (
           if (params.range.start.character < nodeStart || params.range.start.character > nodeEnd) return;
 
           const raw = node.raw;
-          if (raw.startsWith('"')) {
+          if (raw.startsWith('"'))
             actions.push({
               'title': 'Convert to single quotes',
               'kind': CodeActionKind.RefactorRewrite,
@@ -284,7 +279,7 @@ export const setupCodeActionHandler = (
                 },
               },
             });
-          } else if (raw.startsWith("'")) {
+          else if (raw.startsWith("'"))
             actions.push({
               'title': 'Convert to double quotes',
               'kind': CodeActionKind.RefactorRewrite,
@@ -302,10 +297,8 @@ export const setupCodeActionHandler = (
                 },
               },
             });
-          }
         },
       });
-    }
 
     return actions;
   });

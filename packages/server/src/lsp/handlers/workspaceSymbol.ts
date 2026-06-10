@@ -34,6 +34,16 @@ const exportToSymbol = (exp: ModuleExport): SymbolInformation => ({
   'containerName': exp.modulePath,
 });
 
+const pushSymbol = (
+  symbols: SymbolInformation[],
+  symbol: SymbolInformation,
+  containerName: string | undefined,
+): void => {
+  if (symbol.name === '') return;
+  if (containerName !== undefined) symbol.containerName = containerName;
+  symbols.push(symbol);
+};
+
 const collectStatementSymbols = (
   stmt: Statement,
   uri: string,
@@ -49,52 +59,58 @@ const collectStatementSymbols = (
         const value = stmt.values[i];
         const isFunction = value?.kind === 'FunctionExpression';
 
-        const sym: SymbolInformation = {
-          'name': name.name,
-          'kind': isFunction ? SymbolKind.Function : SymbolKind.Variable,
-          'location': { uri, 'range': convertRange(name.range) },
-        };
-        if (containerName !== undefined) sym.containerName = containerName;
-        symbols.push(sym);
+        pushSymbol(
+          symbols,
+          {
+            'name': name.name,
+            'kind': isFunction ? SymbolKind.Function : SymbolKind.Variable,
+            'location': { uri, 'range': convertRange(name.range) },
+          },
+          containerName,
+        );
       }
       break;
 
-    case 'LocalFunction': {
-      const sym: SymbolInformation = {
-        'name': stmt.name.name,
-        'kind': SymbolKind.Function,
-        'location': { uri, 'range': convertRange(stmt.name.range) },
-      };
-      if (containerName !== undefined) sym.containerName = containerName;
-      symbols.push(sym);
+    case 'LocalFunction':
+      pushSymbol(
+        symbols,
+        {
+          'name': stmt.name.name,
+          'kind': SymbolKind.Function,
+          'location': { uri, 'range': convertRange(stmt.name.range) },
+        },
+        containerName,
+      );
       break;
-    }
 
     case 'FunctionDeclaration': {
       let fullName = stmt.name.base.name;
       for (const part of stmt.name.path) fullName += '.' + part.name;
       if (stmt.name.method !== undefined) fullName += ':' + stmt.name.method.name;
 
-      const sym: SymbolInformation = {
-        'name': fullName,
-        'kind': stmt.name.method !== undefined ? SymbolKind.Method : SymbolKind.Function,
-        'location': { uri, 'range': convertRange(stmt.name.base.range) },
-      };
-      if (containerName !== undefined) sym.containerName = containerName;
-      symbols.push(sym);
+      pushSymbol(
+        symbols,
+        {
+          'name': fullName,
+          'kind': stmt.name.method !== undefined ? SymbolKind.Method : SymbolKind.Function,
+          'location': { uri, 'range': convertRange(stmt.name.base.range) },
+        },
+        containerName,
+      );
       break;
     }
 
-    case 'TypeAlias': {
-      const sym: SymbolInformation = {
-        'name': stmt.name.name,
-        'kind': SymbolKind.TypeParameter,
-        'location': { uri, 'range': convertRange(stmt.name.range) },
-      };
-      if (containerName !== undefined) sym.containerName = containerName;
-      symbols.push(sym);
+    case 'TypeAlias':
+      pushSymbol(
+        symbols,
+        {
+          'name': stmt.name.name,
+          'kind': SymbolKind.TypeParameter,
+          'location': { uri, 'range': convertRange(stmt.name.range) },
+        },
+        containerName,
+      );
       break;
-    }
 
     case 'ExportStatement':
       collectStatementSymbols(stmt.declaration, uri, containerName, symbols);
@@ -102,12 +118,10 @@ const collectStatementSymbols = (
 
     case 'IfStatement':
       for (const s of stmt.thenBody) collectStatementSymbols(s, uri, containerName, symbols);
-      for (const clause of stmt.elseifClauses) {
+      for (const clause of stmt.elseifClauses)
         for (const s of clause.body) collectStatementSymbols(s, uri, containerName, symbols);
-      }
-      if (stmt.elseBody !== undefined) {
+      if (stmt.elseBody !== undefined)
         for (const s of stmt.elseBody) collectStatementSymbols(s, uri, containerName, symbols);
-      }
       break;
 
     case 'WhileStatement':
@@ -150,9 +164,8 @@ export const setupWorkspaceSymbolHandler = (connection: Connection, documentMana
       seen.add(doc.uri);
 
       const symbols = collectWorkspaceSymbols(doc.ast, doc.uri);
-      for (const symbol of symbols) {
+      for (const symbol of symbols)
         if (query.length === 0 || symbol.name.toLowerCase().includes(query)) results.push(symbol);
-      }
     }
 
     const moduleIndex = documentManager.getModuleIndex();
@@ -160,9 +173,8 @@ export const setupWorkspaceSymbolHandler = (connection: Connection, documentMana
       const fileUri = url.pathToFileURL(moduleInfo.filePath).toString();
       if (seen.has(fileUri)) continue;
 
-      for (const exp of moduleInfo.exports) {
+      for (const exp of moduleInfo.exports)
         if (query.length === 0 || exp.name.toLowerCase().includes(query)) results.push(exportToSymbol(exp));
-      }
     }
 
     return results;

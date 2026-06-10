@@ -89,6 +89,16 @@ const getJson = async (port: number, path: string): Promise<{ statusCode: number
     req.on('error', reject);
   });
 
+const parseFrame = (data: Buffer | string): Record<string, unknown> =>
+  JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')) as Record<string, unknown>;
+
+const openExecutor = async (port: number, name: string): Promise<WebSocket> => {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  await new Promise<void>(resolve => ws.on('open', resolve));
+  ws.send(JSON.stringify({ 'type': 'connected', 'executorName': name, 'version': '1.0' }));
+  return ws;
+};
+
 describe('BridgeCore', () => {
   test('initial status is stopped', () => {
     const core = createBridgeCore(noop, () => false, noop);
@@ -1177,6 +1187,151 @@ describe('ExecutorBridge - EADDRINUSE auto-fallback', () => {
     secondBridge.stop();
     expect(secondBridge.isRunning).toBe(false);
     expect(secondBridge.isConnected).toBe(false);
+  });
+});
+
+describe('ExecutorBridge - protocol robustness', () => {
+  let bridge: ExecutorBridge;
+  let port: number;
+  let logs: string[];
+
+  beforeEach(() => {
+    port = getPort();
+    logs = [];
+    bridge = createExecutorBridge(msg => logs.push(msg));
+    bridge.start(port);
+  });
+
+  afterEach(() => {
+    bridge.stop();
+  });
+
+  test('malformed frames do not crash or drop the connection', async () => {
+    const executor = await openExecutor(port, 'GarbageExec');
+    await waitFor(() => bridge.isConnected === true);
+
+    executor.on('message', (data: Buffer | string) => {
+      const frame = parseFrame(data);
+      if (frame['type'] === 'execute')
+        executor.send(
+          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'still alive' }),
+        );
+    });
+
+    executor.send('{not json');
+    executor.send('42');
+    executor.send(JSON.stringify({ 'noType': true }));
+    executor.send(JSON.stringify({ 'type': 'unknownType', 'id': 'x' }));
+
+    await waitFor(() => logs.filter(m => m.includes('invalid message')).length >= 4);
+
+    expect(bridge.isConnected).toBe(true);
+    expect(bridge.executorName).toBe('GarbageExec');
+
+    const result = await bridge.execute('print("ping")');
+    expect(result.success).toBe(true);
+    expect(result.result).toBe('still alive');
+
+    executor.close();
+    await waitFor(() => bridge.isConnected === false);
+  });
+
+  test('execute rejects when executor disconnects mid-request', async () => {
+    const executor = await openExecutor(port, 'DropExec');
+    await waitFor(() => bridge.isConnected === true);
+
+    executor.on('message', (data: Buffer | string) => {
+      const frame = parseFrame(data);
+      if (frame['type'] === 'execute') executor.close();
+    });
+
+    await expect(bridge.execute('while true do end')).rejects.toThrow('Client disconnected');
+
+    await waitFor(() => bridge.isConnected === false);
+  });
+
+  test('mismatched result id does not resolve the pending request', async () => {
+    const executor = await openExecutor(port, 'MismatchExec');
+    await waitFor(() => bridge.isConnected === true);
+
+    executor.on('message', (data: Buffer | string) => {
+      const frame = parseFrame(data);
+      if (frame['type'] !== 'execute') return;
+      executor.send(
+        JSON.stringify({ 'type': 'executeResult', 'id': `${frame['id']}-wrong`, 'success': true, 'result': 'stray' }),
+      );
+      setTimeout(
+        () =>
+          executor.send(
+            JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'matched' }),
+          ),
+        50,
+      );
+    });
+
+    const result = await bridge.execute('print("id")');
+    expect(result.result).toBe('matched');
+    expect(bridge.isConnected).toBe(true);
+
+    executor.close();
+    await waitFor(() => bridge.isConnected === false);
+  });
+
+  test('second executor connection replaces the first', async () => {
+    const first = await openExecutor(port, 'FirstExec');
+    await waitFor(() => bridge.executorName === 'FirstExec');
+
+    const firstClose = new Promise<{ code: number; reason: string }>(resolve =>
+      first.once('close', (code: number, reason: Buffer) => resolve({ code, 'reason': reason.toString('utf-8') })),
+    );
+
+    const second = await openExecutor(port, 'SecondExec');
+    const closeInfo = await firstClose;
+    await waitFor(() => bridge.executorName === 'SecondExec');
+
+    expect(closeInfo.code).toBe(1000);
+    expect(closeInfo.reason).toBe('Replaced by new connection');
+    expect(bridge.isConnected).toBe(true);
+
+    second.on('message', (data: Buffer | string) => {
+      const frame = parseFrame(data);
+      if (frame['type'] === 'execute')
+        second.send(
+          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'routed to second' }),
+        );
+    });
+
+    const result = await bridge.execute('print("route")');
+    expect(result.result).toBe('routed to second');
+
+    second.close();
+    await waitFor(() => bridge.isConnected === false);
+  });
+
+  test('odd result payload types resolve without throwing', async () => {
+    const executor = await openExecutor(port, 'OddExec');
+    await waitFor(() => bridge.isConnected === true);
+
+    let replyResult: unknown = 12345;
+    executor.on('message', (data: Buffer | string) => {
+      const frame = parseFrame(data);
+      if (frame['type'] === 'execute')
+        executor.send(
+          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': replyResult }),
+        );
+    });
+
+    const numberResult = await bridge.execute('return 1');
+    expect(numberResult.success).toBe(true);
+    expect(JSON.stringify(numberResult.result)).toBe('12345');
+
+    replyResult = { 'nested': true, 'list': [1, 2, 3] };
+    const objectResult = await bridge.execute('return {}');
+    expect(objectResult.success).toBe(true);
+    expect(JSON.stringify(objectResult.result)).toBe('{"nested":true,"list":[1,2,3]}');
+
+    executor.close();
+    await waitFor(() => bridge.isConnected === false);
   });
 });
 

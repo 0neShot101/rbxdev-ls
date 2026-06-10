@@ -1,0 +1,6 @@
+{
+  "name": "bridge-demo",
+  "tree": {
+    "$className": "DataModel"
+  }
+}

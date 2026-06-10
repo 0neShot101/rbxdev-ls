@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "noEmit": true,
+    "typeRoots": ["../node_modules/@types", "../../../node_modules/@types"],
+    "paths": {
+      "@parser/*": ["../../server/src/parser/*"],
+      "@typings/*": ["../../server/src/typings/*"]
+    }
+  },
+  "include": ["./**/*.ts", "../src/**/*.ts"],
+  "exclude": ["fixtures"]
+}

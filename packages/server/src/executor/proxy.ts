@@ -80,14 +80,8 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
 
         try {
           const parsed: unknown = JSON.parse(raw);
-          if (isProxyWelcome(parsed)) {
-            handleProxyMessage(parsed);
-            return;
-          }
-          if (isProxyStatusChange(parsed)) {
-            handleProxyMessage(parsed);
-            return;
-          }
+          if (isProxyWelcome(parsed)) return handleProxyMessage(parsed);
+          if (isProxyStatusChange(parsed)) return handleProxyMessage(parsed);
         } catch {
           /* not valid JSON */
         }
@@ -103,12 +97,11 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
         core.setStatus('waiting');
         core.rejectAllPending('Bridge server disconnected');
 
-        if (shouldReconnect && targetPort !== undefined) {
+        if (shouldReconnect && targetPort !== undefined)
           reconnectTimer = setTimeout(() => {
             reconnectTimer = undefined;
             if (shouldReconnect && targetPort !== undefined) connect(targetPort);
           }, RECONNECT_DELAY_MS);
-        }
       });
 
       ws.on('error', (err: Error) => log(`[proxy] WebSocket error: ${err.message}`));

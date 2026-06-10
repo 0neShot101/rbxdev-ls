@@ -7,9 +7,7 @@ const parseDocLine = (line: string): { tag: string | undefined; content: string 
 
   if (trimmed.startsWith('@')) {
     const tagMatch = trimmed.match(/^@(\w+)\s*(.*)/);
-    if (tagMatch !== null) {
-      return { 'tag': tagMatch[1], 'content': tagMatch[2] ?? '' };
-    }
+    if (tagMatch !== null) return { 'tag': tagMatch[1], 'content': tagMatch[2] ?? '' };
   }
 
   return { 'tag': undefined, 'content': trimmed };
@@ -17,46 +15,42 @@ const parseDocLine = (line: string): { tag: string | undefined; content: string 
 
 const parseParamTag = (content: string): DocParam => {
   const simpleMatch = content.match(/^(\w+)\s+([^\s]+(?:\s*\|\s*[^\s]+)*)\s*(.*)?$/);
-  if (simpleMatch !== null) {
+  if (simpleMatch !== null)
     return {
       'name': simpleMatch[1] ?? '',
       'type': simpleMatch[2]?.trim(),
       'description': simpleMatch[3]?.trim() || undefined,
     };
-  }
 
   const nameMatch = content.match(/^(\w+)\s*(.*)?$/);
-  if (nameMatch !== null) {
+  if (nameMatch !== null)
     return {
       'name': nameMatch[1] ?? '',
       'type': undefined,
       'description': nameMatch[2]?.trim() || undefined,
     };
-  }
 
   return { 'name': content.trim(), 'type': undefined, 'description': undefined };
 };
 
 const parseReturnTag = (content: string): DocReturn => {
   const match = content.match(/^([^\s]+(?:\s*\|\s*[^\s]+)*)\s*(.*)?$/);
-  if (match !== null) {
+  if (match !== null)
     return {
       'type': match[1]?.trim(),
       'description': match[2]?.trim() || undefined,
     };
-  }
   return { 'type': undefined, 'description': content.trim() || undefined };
 };
 
 const parseFieldTag = (content: string): DocField => {
   const match = content.match(/^(\w+)\s+(\S+)?\s*(.*)?$/);
-  if (match !== null) {
+  if (match !== null)
     return {
       'name': match[1] ?? '',
       'type': match[2],
       'description': match[3] || undefined,
     };
-  }
   return { 'name': content.trim(), 'type': undefined, 'description': undefined };
 };
 
@@ -77,9 +71,7 @@ export const parseDocComment = (commentValue: string): DocComment | undefined =>
     const { tag, content } = parseDocLine(line);
 
     if (tag === undefined) {
-      if (content.trim() !== '') {
-        descriptionLines.push(content);
-      }
+      if (content.trim() !== '') descriptionLines.push(content);
     } else {
       switch (tag) {
         case 'param':
@@ -120,11 +112,7 @@ export const parseDocComment = (commentValue: string): DocComment | undefined =>
 export const collectDocComments = (commentValues: ReadonlyArray<string>): DocComment | undefined => {
   const docComments: string[] = [];
 
-  for (const comment of commentValues) {
-    if (isDocComment(comment)) {
-      docComments.push(comment);
-    }
-  }
+  for (const comment of commentValues) if (isDocComment(comment)) docComments.push(comment);
 
   if (docComments.length === 0) return undefined;
 
@@ -146,21 +134,19 @@ export const formatDocCommentForDisplay = (doc: DocComment): string => {
     lines.push('');
   }
 
-  if (doc.params.length > 0) {
+  if (doc.params.length > 0)
     for (const param of doc.params) {
       const typeStr = param.type !== undefined ? `: ${param.type}` : '';
       const descStr = param.description !== undefined ? ` - ${param.description}` : '';
       lines.push(`@param \`${param.name}\`${typeStr}${descStr}`);
     }
-  }
 
-  if (doc.returns.length > 0) {
+  if (doc.returns.length > 0)
     for (const ret of doc.returns) {
       const typeStr = ret.type !== undefined ? `${ret.type}` : '';
       const descStr = ret.description !== undefined ? ` - ${ret.description}` : '';
       lines.push(`@return ${typeStr}${descStr}`);
     }
-  }
 
   return lines.join('\n');
 };

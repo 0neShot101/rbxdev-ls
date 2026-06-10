@@ -1,8 +1,8 @@
 import * as path from 'path';
 
 import { COMMON_CHILDREN, getCommonChildType } from '@definitions/commonChildren';
-import type { ExecutorBridge, LiveGameModel } from '@typings/bridge';
 import { formatDocCommentForDisplay } from '@parser/docComment';
+import type { ExecutorBridge, LiveGameModel } from '@typings/bridge';
 import {
   AnyType,
   ClassType,
@@ -25,11 +25,11 @@ import {
   TextEdit,
 } from 'vscode-languageserver';
 
-import type { ModuleReference } from '@typings/protocol';
 import type { TableContextInfo } from '@typings/handlers';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
-import type { ModuleFileEntry, ModuleInfo } from '@typings/workspace';
 import type { DocComment } from '@typings/parser';
+import type { ModuleReference } from '@typings/protocol';
+import type { ModuleFileEntry, ModuleInfo } from '@typings/workspace';
 import type {
   CompletionItem,
   CompletionList,
@@ -574,13 +574,12 @@ const formatFunctionSnippet = (name: string, func: FunctionType): string => {
   let hasCallback = false;
   const paramSnippets: string[] = [];
 
-  for (const p of func.params) {
+  for (const p of func.params)
     if (p.type.kind === 'Function' && hasCallback === false) {
       hasCallback = true;
       const innerFunc = p.type;
-      if (innerFunc.params.length === 0) {
-        paramSnippets.push(`function()\n\t$0\nend`);
-      } else {
+      if (innerFunc.params.length === 0) paramSnippets.push(`function()\n\t$0\nend`);
+      else {
         const innerParams = innerFunc.params.map(ip => {
           const pName = escapeSnippet(ip.name ?? 'arg');
           return `\${${tabIndex++}:${pName}}`;
@@ -591,7 +590,6 @@ const formatFunctionSnippet = (name: string, func: FunctionType): string => {
       const paramName = escapeSnippet(p.name ?? 'arg');
       paramSnippets.push(`\${${tabIndex++}:${paramName}}`);
     }
-  }
 
   return `${name}(${paramSnippets.join(', ')})`;
 };
@@ -627,11 +625,8 @@ const getTableCompletions = (table: TableType, prefix: string): CompletionItem[]
 
     if (prop.deprecated === true) {
       item.tags = [CompletionItemTag.Deprecated];
-      if (prop.deprecationMessage !== undefined) {
-        item.detail = `(deprecated) ${prop.deprecationMessage}`;
-      } else {
-        item.detail = '(deprecated)';
-      }
+      if (prop.deprecationMessage !== undefined) item.detail = `(deprecated) ${prop.deprecationMessage}`;
+      else item.detail = '(deprecated)';
     }
 
     items.push(item);
@@ -674,9 +669,8 @@ const detectTableFieldContext = (beforeCursor: string): TableContextInfo | undef
 
   for (let i = beforeCursor.length - 1; i >= 0; i--) {
     const char = beforeCursor[i];
-    if (char === '}') {
-      braceDepth++;
-    } else if (char === '{') {
+    if (char === '}') braceDepth++;
+    else if (char === '{') {
       if (braceDepth === 0) {
         tableStartPos = i;
         break;
@@ -726,9 +720,7 @@ const parseExistingTableFields = (tableContent: string): Set<string> => {
   const fieldPattern = /([a-zA-Z_]\w*)\s*=/g;
   let match;
 
-  while ((match = fieldPattern.exec(tableContent)) !== null) {
-    if (match[1] !== undefined) fields.add(match[1]);
-  }
+  while ((match = fieldPattern.exec(tableContent)) !== null) if (match[1] !== undefined) fields.add(match[1]);
 
   return fields;
 };
@@ -762,11 +754,9 @@ const getCommonChildrenForClass = (
 
   while (currentClass !== undefined) {
     const children = COMMON_CHILDREN.get(currentClass);
-    if (children !== undefined) {
-      for (const [childName, childType] of children) {
+    if (children !== undefined)
+      for (const [childName, childType] of children)
         if (result.has(childName) === false) result.set(childName, childType);
-      }
-    }
     currentClass = getSuperclass(currentClass);
   }
 
@@ -798,11 +788,8 @@ const getClassCompletions = (
 
     if (prop.deprecated === true) {
       item.tags = [CompletionItemTag.Deprecated];
-      if (prop.deprecationMessage !== undefined) {
-        item.detail = `(deprecated) ${prop.deprecationMessage}`;
-      } else {
-        item.detail = '(deprecated)';
-      }
+      if (prop.deprecationMessage !== undefined) item.detail = `(deprecated) ${prop.deprecationMessage}`;
+      else item.detail = '(deprecated)';
     }
 
     items.push(item);
@@ -822,11 +809,8 @@ const getClassCompletions = (
 
     if (method.deprecated === true) {
       item.tags = [CompletionItemTag.Deprecated];
-      if (method.deprecationMessage !== undefined) {
-        item.detail = `(deprecated) ${method.deprecationMessage}`;
-      } else {
-        item.detail = '(deprecated)';
-      }
+      if (method.deprecationMessage !== undefined) item.detail = `(deprecated) ${method.deprecationMessage}`;
+      else item.detail = '(deprecated)';
     }
 
     items.push(item);
@@ -835,20 +819,18 @@ const getClassCompletions = (
 
   if (cls.superclass !== undefined) {
     const inherited = getClassCompletions(cls.superclass, prefix, useColon, documentManager);
-    for (const item of inherited) {
+    for (const item of inherited)
       if (addedNames.has(item.label) === false) {
         items.push(item);
         addedNames.add(item.label);
       }
-    }
   }
 
   if (useColon === false && documentManager !== undefined) {
     const getSuperclass = (className: string): string | undefined => {
       const classType = documentManager.globalEnv.robloxClasses.get(className);
-      if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined) {
+      if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined)
         return classType.superclass.name;
-      }
       return undefined;
     };
 
@@ -1394,14 +1376,12 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
     const items: CompletionItem[] = [];
-    for (const cls of documentManager.globalEnv.robloxClasses.keys()) {
-      if (cls.toLowerCase().startsWith(prefix)) {
+    for (const cls of documentManager.globalEnv.robloxClasses.keys())
+      if (cls.toLowerCase().startsWith(prefix))
         items.push({
           'label': cls,
           'kind': CompletionItemKind.Class,
         });
-      }
-    }
     return items.slice(0, 50);
   }
 
@@ -1413,14 +1393,12 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
     const items: CompletionItem[] = [];
-    for (const cls of documentManager.globalEnv.robloxClasses.keys()) {
-      if (cls.toLowerCase().startsWith(prefix)) {
+    for (const cls of documentManager.globalEnv.robloxClasses.keys())
+      if (cls.toLowerCase().startsWith(prefix))
         items.push({
           'label': cls,
           'kind': CompletionItemKind.Class,
         });
-      }
-    }
     return items.slice(0, 50);
   }
 
@@ -1428,14 +1406,12 @@ const getStringCompletions = (beforeCursor: string, documentManager: DocumentMan
     const match = beforeCursor.match(/["']([\w]*)$/);
     const prefix = match?.[1]?.toLowerCase() ?? '';
     const items: CompletionItem[] = [];
-    for (const cls of documentManager.globalEnv.robloxClasses.keys()) {
-      if (cls.toLowerCase().startsWith(prefix)) {
+    for (const cls of documentManager.globalEnv.robloxClasses.keys())
+      if (cls.toLowerCase().startsWith(prefix))
         items.push({
           'label': cls,
           'kind': CompletionItemKind.Class,
         });
-      }
-    }
     return items.slice(0, 50);
   }
 
@@ -1967,11 +1943,9 @@ const resolveExpressionType = (
       }
       const bracketContent = expression.slice(startBracket + 1, i - 1).trim();
       const stringKeyMatch = bracketContent.match(/^['"](.+)['"]$/);
-      if (stringKeyMatch !== null && stringKeyMatch[1] !== undefined) {
+      if (stringKeyMatch !== null && stringKeyMatch[1] !== undefined)
         parts.push({ 'kind': 'property', 'name': stringKeyMatch[1] });
-      } else {
-        parts.push({ 'kind': 'call', 'args': expression.slice(startBracket, i) });
-      }
+      else parts.push({ 'kind': 'call', 'args': expression.slice(startBracket, i) });
     } else if (char === '(') {
       if (current !== '') {
         parts.push({ 'kind': 'property', 'name': current });
@@ -1989,9 +1963,7 @@ const resolveExpressionType = (
     } else if (/\w/.test(char)) {
       current += char;
       i++;
-    } else {
-      i++;
-    }
+    } else i++;
   }
 
   if (current !== '') parts.push({ 'kind': 'property', 'name': current });
@@ -2024,9 +1996,8 @@ const resolveExpressionType = (
       const resolved = resolveTypeReference(symbolType, documentManager);
       log(`Resolved type: ${resolved.kind}${resolved.kind === 'Class' ? ` (${(resolved as ClassType).name})` : ''}`);
 
-      if (resolved.kind === 'Class' || resolved.kind === 'Table') {
-        currentType = resolved;
-      } else if (resolved.kind === 'Union') {
+      if (resolved.kind === 'Class' || resolved.kind === 'Table') currentType = resolved;
+      else if (resolved.kind === 'Union') {
         const nonNilTypes = (resolved as { types: ReadonlyArray<LuauType> }).types.filter(
           (t: LuauType) => t.kind !== 'Primitive' || (t as { name: string }).name !== 'nil',
         );
@@ -2040,20 +2011,14 @@ const resolveExpressionType = (
       } else if (resolved.kind === 'Function') {
         const funcType = resolved as { returnType: LuauType };
         const returnResolved = resolveTypeReference(funcType.returnType, documentManager);
-        if (returnResolved.kind === 'Class' || returnResolved.kind === 'Table') {
-          currentType = returnResolved;
-        }
-      } else if (resolved.kind !== 'Any') {
+        if (returnResolved.kind === 'Class' || returnResolved.kind === 'Table') currentType = returnResolved;
+      } else if (resolved.kind !== 'Any')
         log(`allSymbols type for '${firstName}' not directly usable: ${resolved.kind}`);
-      }
-    } else {
-      log(`'${firstName}' not found in allSymbols`);
-    }
-  } else if (currentType === undefined) {
+    } else log(`'${firstName}' not found in allSymbols`);
+  } else if (currentType === undefined)
     log(
       `Skipping allSymbols check: doc=${document !== undefined}, typeCheck=${document?.typeCheckResult !== undefined}`,
     );
-  }
 
   if (currentType === undefined && liveContent !== undefined) {
     log(`Running quick scan for '${firstName}'...`);
@@ -2063,12 +2028,8 @@ const resolveExpressionType = (
         `Quick scan found '${firstName}': ${scannedType.kind}${scannedType.kind === 'Class' ? ` (${(scannedType as ClassType).name})` : ''}`,
       );
       currentType = scannedType;
-    } else {
-      log(`Quick scan found nothing for '${firstName}'`);
-    }
-  } else if (currentType === undefined) {
-    log(`Skipping quick scan: liveContent=${liveContent !== undefined}`);
-  }
+    } else log(`Quick scan found nothing for '${firstName}'`);
+  } else if (currentType === undefined) log(`Skipping quick scan: liveContent=${liveContent !== undefined}`);
 
   if (currentType === undefined) {
     const hintedClass = VARIABLE_NAME_HINTS.get(firstName);
@@ -2206,11 +2167,9 @@ const resolveExpressionType = (
       }
       debugLog('Failed to resolve method:', part.name);
       return undefined;
-    } else if (part.kind === 'call') {
-      if (currentType !== undefined && currentType.kind === 'Function') {
+    } else if (part.kind === 'call')
+      if (currentType !== undefined && currentType.kind === 'Function')
         currentType = resolveTypeReference(currentType.returnType, documentManager);
-      }
-    }
   }
 
   return currentType;
@@ -2218,9 +2177,8 @@ const resolveExpressionType = (
 
 const getSuperclassName = (className: string, documentManager: DocumentManager): string | undefined => {
   const classType = documentManager.globalEnv.robloxClasses.get(className);
-  if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined) {
+  if (classType !== undefined && classType.kind === 'Class' && classType.superclass !== undefined)
     return classType.superclass.name;
-  }
   return undefined;
 };
 
@@ -2298,9 +2256,7 @@ const getAutoImportCompletions = (
     try {
       if (currentDocUri.startsWith('file://')) {
         filePath = decodeURIComponent(currentDocUri.replace('file:///', '').replace('file://', ''));
-        if (filePath.match(/^\/[a-zA-Z]:/)) {
-          filePath = filePath.slice(1);
-        }
+        if (filePath.match(/^\/[a-zA-Z]:/)) filePath = filePath.slice(1);
       }
     } catch {
       /* noop */
@@ -2315,20 +2271,14 @@ const getAutoImportCompletions = (
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]?.trim() ?? '';
-    if (line === '' || line.startsWith('--')) {
-      insertLine = i + 1;
-    } else {
-      break;
-    }
+    if (line === '' || line.startsWith('--')) insertLine = i + 1;
+    else break;
   }
 
   for (let i = insertLine; i < lines.length; i++) {
     const line = lines[i]?.trim() ?? '';
-    if (line.startsWith('local') && line.includes('require(')) {
-      insertLine = i + 1;
-    } else if (line !== '' && line.startsWith('--') === false) {
-      break;
-    }
+    if (line.startsWith('local') && line.includes('require(')) insertLine = i + 1;
+    else if (line !== '' && line.startsWith('--') === false) break;
   }
 
   const items: CompletionItem[] = [];
@@ -2341,11 +2291,9 @@ const getAutoImportCompletions = (
     if (exp.filePath === currentDocUri) continue;
 
     let requirePath: string;
-    if (currentDataModelPath.length > 0) {
+    if (currentDataModelPath.length > 0)
       requirePath = generateRequirePath(currentDataModelPath, exp.modulePath.split('.'));
-    } else {
-      requirePath = `game.${exp.modulePath}`;
-    }
+    else requirePath = `game.${exp.modulePath}`;
 
     const pathParts = exp.modulePath.split('.');
     const moduleName = pathParts[pathParts.length - 1] ?? 'Module';
@@ -2526,9 +2474,7 @@ const splitPathExpression = (expr: string): string[] => {
           continue;
         }
       }
-      if (current !== '') {
-        current = '';
-      }
+      if (current !== '') current = '';
       let depth = 1;
       i++;
       while (i < expr.length && depth > 0) {
@@ -2536,9 +2482,7 @@ const splitPathExpression = (expr: string): string[] => {
         else if (expr[i] === ')') depth--;
         i++;
       }
-    } else {
-      i++;
-    }
+    } else i++;
   }
 
   if (current !== '' && CHILD_ACCESS_METHODS.has(current) === false) parts.push(current);
@@ -2716,7 +2660,7 @@ const getRequireModuleCompletions = async (
     const items: CompletionItem[] = [];
     const moduleInterface = result.interface;
 
-    if (moduleInterface.kind === 'table' && moduleInterface.properties !== undefined) {
+    if (moduleInterface.kind === 'table' && moduleInterface.properties !== undefined)
       for (const prop of moduleInterface.properties) {
         if (prop.name.startsWith('__')) continue;
         const item: CompletionItem = {
@@ -2726,13 +2670,11 @@ const getRequireModuleCompletions = async (
           'sortText': `0_${prop.name}`,
         };
 
-        if (prop.valueKind === 'function' && prop.functionArity !== undefined) {
+        if (prop.valueKind === 'function' && prop.functionArity !== undefined)
           item.detail = `(runtime) function (${prop.functionArity} params)`;
-        }
 
         items.push(item);
       }
-    }
 
     if (items.length > 0) {
       moduleInterfaceCache.set(cacheKey, { items, 'timestamp': Date.now() });
@@ -2873,9 +2815,8 @@ export const setupCompletionHandler = (
         `resolvedType: ${resolvedType?.kind}${resolvedType?.kind === 'Class' ? ` (${(resolvedType as ClassType).name})` : ''}`,
       );
 
-      if (resolvedType !== undefined && resolvedType.kind === 'TypeReference') {
+      if (resolvedType !== undefined && resolvedType.kind === 'TypeReference')
         resolvedType = resolveTypeReference(resolvedType, documentManager);
-      }
 
       if (resolvedType !== undefined) {
         if (resolvedType.kind === 'Class') {
@@ -2904,12 +2845,11 @@ export const setupCompletionHandler = (
             'items': classItems,
           };
         }
-        if (resolvedType.kind === 'Table') {
+        if (resolvedType.kind === 'Table')
           return {
             'isIncomplete': true,
             'items': getTableCompletions(resolvedType, chainInfo.prefix),
           };
-        }
       }
 
       if (resolvedType === undefined && executorBridge.isConnected) {
@@ -2942,12 +2882,11 @@ export const setupCompletionHandler = (
                 'Teams',
               ];
               const preamble: string[] = [];
-              for (const svc of serviceNames) {
+              for (const svc of serviceNames)
                 if (rawModulePath.startsWith(svc)) {
                   preamble.push(`local ${svc} = game:GetService("${svc}")`);
                   break;
                 }
-              }
               const modulePath = rawModulePath;
 
               const inspectScript = [
@@ -2980,14 +2919,13 @@ export const setupCompletionHandler = (
               if (execResult.success && execResult.result !== undefined) {
                 const members: Record<string, string> = JSON.parse(execResult.result);
                 const items: CompletionItem[] = [];
-                for (const [name, valueType] of Object.entries(members)) {
+                for (const [name, valueType] of Object.entries(members))
                   items.push({
                     'label': name,
                     'kind': valueType === 'function' ? CompletionItemKind.Function : CompletionItemKind.Field,
                     'detail': valueType,
                     'sortText': `0_${name}`,
                   });
-                }
                 if (items.length > 0) return { 'isIncomplete': true, items };
               }
             } catch {
@@ -3063,22 +3001,20 @@ export const setupCompletionHandler = (
       if (hasChain) return { 'isIncomplete': false, 'items': [] };
 
       const classType = documentManager.globalEnv.robloxClasses.get(chainInfo.expression);
-      if (classType !== undefined && classType.kind === 'Class') {
+      if (classType !== undefined && classType.kind === 'Class')
         return {
           'isIncomplete': true,
           'items': getClassCompletions(classType, chainInfo.prefix, chainInfo.isMethodAccess, documentManager),
         };
-      }
 
       const hintedClass = VARIABLE_NAME_HINTS.get(chainInfo.expression.toLowerCase());
       if (hintedClass !== undefined) {
         const hintedClassType = documentManager.globalEnv.robloxClasses.get(hintedClass);
-        if (hintedClassType !== undefined && hintedClassType.kind === 'Class') {
+        if (hintedClassType !== undefined && hintedClassType.kind === 'Class')
           return {
             'isIncomplete': true,
             'items': getClassCompletions(hintedClassType, chainInfo.prefix, chainInfo.isMethodAccess, documentManager),
           };
-        }
       }
     }
 
@@ -3095,54 +3031,48 @@ export const setupCompletionHandler = (
         const localType = document.typeCheckResult.allSymbols.get(objectName);
         if (localType !== undefined) {
           const resolved = resolveTypeReference(localType, documentManager);
-          if (resolved.kind === 'Table') {
+          if (resolved.kind === 'Table')
             return {
               'isIncomplete': true,
               'items': getTableCompletions(resolved, prefix ?? ''),
             };
-          }
-          if (resolved.kind === 'Class') {
+          if (resolved.kind === 'Class')
             return {
               'isIncomplete': true,
               'items': getClassCompletions(resolved, prefix ?? '', false, documentManager),
             };
-          }
         }
       }
 
       const symbol = documentManager.globalEnv.env.globalScope.symbols.get(objectName);
       if (symbol !== undefined) {
-        if (symbol.type.kind === 'Table') {
+        if (symbol.type.kind === 'Table')
           return {
             'isIncomplete': true,
             'items': getTableCompletions(symbol.type, prefix ?? ''),
           };
-        }
-        if (symbol.type.kind === 'Class') {
+        if (symbol.type.kind === 'Class')
           return {
             'isIncomplete': true,
             'items': getClassCompletions(symbol.type, prefix ?? '', false, documentManager),
           };
-        }
       }
 
       const classType = documentManager.globalEnv.robloxClasses.get(objectName);
-      if (classType !== undefined && classType.kind === 'Class') {
+      if (classType !== undefined && classType.kind === 'Class')
         return {
           'isIncomplete': true,
           'items': getClassCompletions(classType, prefix ?? '', false, documentManager),
         };
-      }
 
       const hintedClass = VARIABLE_NAME_HINTS.get(objectName.toLowerCase());
       if (hintedClass !== undefined) {
         const hintedClassType = documentManager.globalEnv.robloxClasses.get(hintedClass);
-        if (hintedClassType !== undefined && hintedClassType.kind === 'Class') {
+        if (hintedClassType !== undefined && hintedClassType.kind === 'Class')
           return {
             'isIncomplete': true,
             'items': getClassCompletions(hintedClassType, prefix ?? '', false, documentManager),
           };
-        }
       }
     }
 
@@ -3154,46 +3084,41 @@ export const setupCompletionHandler = (
         const localType = document.typeCheckResult.allSymbols.get(objectName);
         if (localType !== undefined) {
           const resolved = resolveTypeReference(localType, documentManager);
-          if (resolved.kind === 'Class') {
+          if (resolved.kind === 'Class')
             return {
               'isIncomplete': true,
               'items': getClassCompletions(resolved, prefix ?? '', true, documentManager),
             };
-          }
-          if (resolved.kind === 'Table') {
+          if (resolved.kind === 'Table')
             return {
               'isIncomplete': true,
               'items': getTableCompletions(resolved, prefix ?? ''),
             };
-          }
         }
       }
 
       const symbol = documentManager.globalEnv.env.globalScope.symbols.get(objectName);
-      if (symbol !== undefined && symbol.type.kind === 'Class') {
+      if (symbol !== undefined && symbol.type.kind === 'Class')
         return {
           'isIncomplete': true,
           'items': getClassCompletions(symbol.type, prefix ?? '', true, documentManager),
         };
-      }
 
       const classType = documentManager.globalEnv.robloxClasses.get(objectName);
-      if (classType !== undefined && classType.kind === 'Class') {
+      if (classType !== undefined && classType.kind === 'Class')
         return {
           'isIncomplete': true,
           'items': getClassCompletions(classType, prefix ?? '', true, documentManager),
         };
-      }
 
       const hintedClass = VARIABLE_NAME_HINTS.get(objectName.toLowerCase());
       if (hintedClass !== undefined) {
         const hintedClassType = documentManager.globalEnv.robloxClasses.get(hintedClass);
-        if (hintedClassType !== undefined && hintedClassType.kind === 'Class') {
+        if (hintedClassType !== undefined && hintedClassType.kind === 'Class')
           return {
             'isIncomplete': true,
             'items': getClassCompletions(hintedClassType, prefix ?? '', true, documentManager),
           };
-        }
       }
     }
 
@@ -3230,9 +3155,8 @@ export const setupCompletionHandler = (
             parts.push(symbol.type.example);
             parts.push('```');
           }
-          if (item.documentation === undefined) {
+          if (item.documentation === undefined)
             item.documentation = { 'kind': MarkupKind.Markdown, 'value': parts.join('\n') };
-          }
         }
       }
     }

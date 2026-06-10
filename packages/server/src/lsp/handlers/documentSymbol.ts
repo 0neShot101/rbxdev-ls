@@ -1,7 +1,7 @@
 import { SymbolKind } from 'vscode-languageserver';
 
-import type { DocumentManager } from '@typings/lsp';
 import type { Chunk, FunctionExpression, Statement } from '@typings/ast';
+import type { DocumentManager } from '@typings/lsp';
 import type { Connection, DocumentSymbol, DocumentSymbolParams } from 'vscode-languageserver';
 
 const convertRange = (range: { start: { line: number; column: number }; end: { line: number; column: number } }) => ({
@@ -23,20 +23,24 @@ const ensureContained = (
   return selection;
 };
 
+const pushSymbol = (symbols: DocumentSymbol[], symbol: DocumentSymbol): void => {
+  if (symbol.name === '') return;
+  symbols.push(symbol);
+};
+
 const collectFunctionSymbols = (func: FunctionExpression): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
-  for (const param of func.params) {
+  for (const param of func.params)
     if (param.name !== undefined) {
       const paramFull = convertRange(param.range);
-      symbols.push({
+      pushSymbol(symbols, {
         'name': param.name.name,
         'kind': SymbolKind.Variable,
         'range': paramFull,
         'selectionRange': ensureContained(convertRange(param.name.range), paramFull),
       });
     }
-  }
 
   for (const stmt of func.body) {
     const stmtSymbols = collectStatementSymbols(stmt);
@@ -66,11 +70,9 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
           'selectionRange': ensureContained(convertRange(name.range), declFull),
         };
 
-        if (isFunction && value !== undefined) {
-          symbol.children = collectFunctionSymbols(value as FunctionExpression);
-        }
+        if (isFunction && value !== undefined) symbol.children = collectFunctionSymbols(value as FunctionExpression);
 
-        symbols.push(symbol);
+        pushSymbol(symbols, symbol);
       }
       break;
     }
@@ -84,18 +86,14 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'selectionRange': ensureContained(convertRange(stmt.name.range), funcFull),
         'children': collectFunctionSymbols(stmt.func),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
     case 'FunctionDeclaration': {
       let fullName = stmt.name.base.name;
-      for (const part of stmt.name.path) {
-        fullName += '.' + part.name;
-      }
-      if (stmt.name.method !== undefined) {
-        fullName += ':' + stmt.name.method.name;
-      }
+      for (const part of stmt.name.path) fullName += '.' + part.name;
+      if (stmt.name.method !== undefined) fullName += ':' + stmt.name.method.name;
 
       const funcDeclFull = convertRange(stmt.range);
       const symbol: DocumentSymbol = {
@@ -105,7 +103,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'selectionRange': ensureContained(convertRange(stmt.name.base.range), funcDeclFull),
         'children': collectFunctionSymbols(stmt.func),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
@@ -117,70 +115,51 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
         'range': typeFull,
         'selectionRange': ensureContained(convertRange(stmt.name.range), typeFull),
       };
-      symbols.push(symbol);
+      pushSymbol(symbols, symbol);
       break;
     }
 
     case 'ExportStatement': {
       const innerSymbols = collectStatementSymbols(stmt.declaration);
-      for (const innerSymbol of innerSymbols) {
-        innerSymbol.name = `export ${innerSymbol.name}`;
-      }
+      for (const innerSymbol of innerSymbols) innerSymbol.name = `export ${innerSymbol.name}`;
       symbols.push(...innerSymbols);
       break;
     }
 
     case 'IfStatement': {
-      for (const s of stmt.thenBody) {
-        symbols.push(...collectStatementSymbols(s));
-      }
-      for (const clause of stmt.elseifClauses) {
-        for (const s of clause.body) {
-          symbols.push(...collectStatementSymbols(s));
-        }
-      }
-      if (stmt.elseBody !== undefined) {
-        for (const s of stmt.elseBody) {
-          symbols.push(...collectStatementSymbols(s));
-        }
-      }
+      for (const s of stmt.thenBody) symbols.push(...collectStatementSymbols(s));
+      for (const clause of stmt.elseifClauses) for (const s of clause.body) symbols.push(...collectStatementSymbols(s));
+      if (stmt.elseBody !== undefined) for (const s of stmt.elseBody) symbols.push(...collectStatementSymbols(s));
       break;
     }
 
     case 'WhileStatement':
     case 'RepeatStatement':
     case 'DoStatement': {
-      for (const s of stmt.body) {
-        symbols.push(...collectStatementSymbols(s));
-      }
+      for (const s of stmt.body) symbols.push(...collectStatementSymbols(s));
       break;
     }
 
     case 'ForNumeric': {
-      symbols.push({
+      pushSymbol(symbols, {
         'name': stmt.variable.name,
         'kind': SymbolKind.Variable,
         'range': convertRange(stmt.variable.range),
         'selectionRange': convertRange(stmt.variable.range),
       });
-      for (const s of stmt.body) {
-        symbols.push(...collectStatementSymbols(s));
-      }
+      for (const s of stmt.body) symbols.push(...collectStatementSymbols(s));
       break;
     }
 
     case 'ForGeneric': {
-      for (const v of stmt.variables) {
-        symbols.push({
+      for (const v of stmt.variables)
+        pushSymbol(symbols, {
           'name': v.name,
           'kind': SymbolKind.Variable,
           'range': convertRange(v.range),
           'selectionRange': convertRange(v.range),
         });
-      }
-      for (const s of stmt.body) {
-        symbols.push(...collectStatementSymbols(s));
-      }
+      for (const s of stmt.body) symbols.push(...collectStatementSymbols(s));
       break;
     }
   }

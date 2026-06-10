@@ -238,13 +238,10 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
     let tokenType = TOKEN_TYPE_VARIABLE;
     let modifiers = isDeclaration ? MOD_DECLARATION : 0;
 
-    if (parameterNames.has(name)) {
-      tokenType = TOKEN_TYPE_PARAMETER;
-    } else if (localFunctions.has(name)) {
-      tokenType = TOKEN_TYPE_FUNCTION;
-    } else if (isMethodCall) {
-      tokenType = TOKEN_TYPE_METHOD;
-    } else if (BUILTIN_GLOBALS.has(name)) {
+    if (parameterNames.has(name)) tokenType = TOKEN_TYPE_PARAMETER;
+    else if (localFunctions.has(name)) tokenType = TOKEN_TYPE_FUNCTION;
+    else if (isMethodCall) tokenType = TOKEN_TYPE_METHOD;
+    else if (BUILTIN_GLOBALS.has(name)) {
       tokenType = TOKEN_TYPE_VARIABLE;
       modifiers |= MOD_DEFAULT_LIBRARY;
     } else if (ROBLOX_CLASSES.has(name)) {
@@ -270,31 +267,26 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
       localFunctions.add(node.name.name);
       addToken(node.name, node.name.name.length, TOKEN_TYPE_FUNCTION, MOD_DECLARATION);
 
-      for (const param of node.func.params) {
+      for (const param of node.func.params)
         if (param.name !== undefined) {
           parameterNames.add(param.name.name);
           addToken(param.name, param.name.name.length, TOKEN_TYPE_PARAMETER, MOD_DECLARATION);
         }
-      }
     },
 
     'visitFunctionDeclaration': node => {
       addToken(node.name.base, node.name.base.name.length, TOKEN_TYPE_FUNCTION, MOD_DECLARATION);
 
-      for (const part of node.name.path) {
-        addToken(part, part.name.length, TOKEN_TYPE_PROPERTY);
-      }
+      for (const part of node.name.path) addToken(part, part.name.length, TOKEN_TYPE_PROPERTY);
 
-      if (node.name.method !== undefined) {
+      if (node.name.method !== undefined)
         addToken(node.name.method, node.name.method.name.length, TOKEN_TYPE_METHOD, MOD_DECLARATION);
-      }
 
-      for (const param of node.func.params) {
+      for (const param of node.func.params)
         if (param.name !== undefined) {
           parameterNames.add(param.name.name);
           addToken(param.name, param.name.name.length, TOKEN_TYPE_PARAMETER, MOD_DECLARATION);
         }
-      }
     },
 
     'visitTypeAlias': node => addToken(node.name, node.name.name.length, TOKEN_TYPE_TYPE, MOD_DECLARATION),
@@ -307,19 +299,15 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
     'visitMemberExpression': node => {
       const propName = node.property.name;
 
-      if (node.object.kind === 'Identifier' && node.object.name === 'Enum') {
-        addToken(node.property, propName.length, TOKEN_TYPE_ENUM);
-        return;
-      }
+      if (node.object.kind === 'Identifier' && node.object.name === 'Enum')
+        return addToken(node.property, propName.length, TOKEN_TYPE_ENUM);
 
       if (
         node.object.kind === 'MemberExpression' &&
         node.object.object.kind === 'Identifier' &&
         node.object.object.name === 'Enum'
-      ) {
-        addToken(node.property, propName.length, TOKEN_TYPE_ENUM_MEMBER);
-        return;
-      }
+      )
+        return addToken(node.property, propName.length, TOKEN_TYPE_ENUM_MEMBER);
 
       addToken(node.property, propName.length, TOKEN_TYPE_PROPERTY);
     },
@@ -331,16 +319,14 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
         const name = node.callee.name;
         let modifiers = 0;
 
-        if (BUILTIN_GLOBALS.has(name)) {
-          modifiers |= MOD_DEFAULT_LIBRARY;
-        }
+        if (BUILTIN_GLOBALS.has(name)) modifiers |= MOD_DEFAULT_LIBRARY;
 
         addToken(node.callee, name.length, TOKEN_TYPE_FUNCTION, modifiers);
       }
     },
 
     'visitTypeReference': node => {
-      if (ROBLOX_CLASSES.has(node.name)) {
+      if (ROBLOX_CLASSES.has(node.name))
         tokens.push({
           'line': node.range.start.line - 1,
           'character': node.range.start.column - 1,
@@ -348,7 +334,7 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
           'tokenType': TOKEN_TYPE_CLASS,
           'modifiers': MOD_DEFAULT_LIBRARY,
         });
-      } else {
+      else
         tokens.push({
           'line': node.range.start.line - 1,
           'character': node.range.start.column - 1,
@@ -356,15 +342,12 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
           'tokenType': TOKEN_TYPE_TYPE,
           'modifiers': 0,
         });
-      }
     },
 
     'visitForNumeric': node => addToken(node.variable, node.variable.name.length, TOKEN_TYPE_VARIABLE, MOD_DECLARATION),
 
     'visitForGeneric': node => {
-      for (const v of node.variables) {
-        addToken(v, v.name.length, TOKEN_TYPE_VARIABLE, MOD_DECLARATION);
-      }
+      for (const v of node.variables) addToken(v, v.name.length, TOKEN_TYPE_VARIABLE, MOD_DECLARATION);
     },
   });
 
@@ -377,13 +360,12 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
   let lastLine = -1;
   let lastChar = -1;
 
-  for (const token of tokens) {
+  for (const token of tokens)
     if (token.line !== lastLine || token.character !== lastChar) {
       uniqueTokens.push(token);
       lastLine = token.line;
       lastChar = token.character;
     }
-  }
 
   return uniqueTokens;
 };

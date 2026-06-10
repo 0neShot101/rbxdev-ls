@@ -7,41 +7,18 @@ import { randomBytes } from 'crypto';
 
 import { Disposable, ExtensionContext, ViewColumn, WebviewPanel, window } from 'vscode';
 
-import type { BlockEntry, IgnoreEntry, RemoteSpyCallEntry, RemoteSpyState } from './remoteSpyState';
-import type { RemoteSpyWebviewMessage } from './remoteSpyWebviewActions';
-
-/**
- * Messages sent from the extension host to the WebView
- */
-export interface ToWebviewMessage {
-  readonly type: 'addCall' | 'clear' | 'updateState' | 'selectResult';
-  readonly call?: RemoteSpyCallEntry & { readonly index: number };
-  readonly state?: WebviewStateSnapshot;
-  readonly success?: boolean;
-}
-
-/**
- * Messages sent from the WebView to the extension host
- */
-export type FromWebviewMessage = RemoteSpyWebviewMessage;
-
-interface WebviewStateSnapshot {
-  readonly calls: ReadonlyArray<RemoteSpyCallEntry>;
-  readonly selectedIndex: number;
-  readonly paused: boolean;
-  readonly ignoreCount: number;
-  readonly blockCount: number;
-  readonly spyEnabled: boolean;
-  readonly ignoreList: ReadonlyArray<IgnoreEntry>;
-  readonly blockList: ReadonlyArray<BlockEntry>;
-}
-
-export type RemoteSpyMessageHandler = (message: FromWebviewMessage) => void;
+import type {
+  FromWebviewMessage,
+  RemoteSpyCallEntry,
+  RemoteSpyMessageHandler,
+  RemoteSpyState,
+} from '@typings/remoteSpy';
 
 /**
  * Manages the Remote Spy WebView panel lifecycle
  */
 export class RemoteSpyPanel {
+  /** WebView panel type identifier registered with VS Code. */
   public static readonly viewType = 'rbxdev-remoteSpy';
 
   private panel: WebviewPanel | undefined;
@@ -55,9 +32,7 @@ export class RemoteSpyPanel {
   /**
    * Registers the callback for messages from the WebView
    */
-  onMessage = (handler: RemoteSpyMessageHandler): void => {
-    this.messageHandler = handler;
-  };
+  onMessage = (handler: RemoteSpyMessageHandler): void => void (this.messageHandler = handler);
 
   /**
    * Creates or reveals the WebView panel
@@ -120,9 +95,7 @@ export class RemoteSpyPanel {
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = undefined;
       const batch = this.pendingCalls.splice(0);
-      for (const c of batch) {
-        this.panel?.webview.postMessage({ 'type': 'addCall', 'call': c });
-      }
+      for (const entry of batch) this.panel?.webview.postMessage({ 'type': 'addCall', 'call': entry });
     }, 50);
   };
 
@@ -150,25 +123,12 @@ export class RemoteSpyPanel {
   /**
    * Clears the WebView display
    */
-  clear = (): void => {
-    if (this.panel === undefined) return;
-    this.panel.webview.postMessage({ 'type': 'clear' });
-  };
+  clear = (): void => void this.panel?.webview.postMessage({ 'type': 'clear' });
 
   /**
    * Disposes the panel
    */
-  dispose = (): void => {
-    if (this.panel !== undefined) this.panel.dispose();
-  };
-
-  private escapeHtml = (text: string): string =>
-    text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  dispose = (): void => void this.panel?.dispose();
 
   private getHtml = (): string => {
     const nonce = this.getNonce();
@@ -672,13 +632,13 @@ export class RemoteSpyPanel {
       let i = 0;
       const len = code.length;
 
-      const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
       while (i < len) {
         if (code[i] === '-' && code[i + 1] === '-') {
           let end = code.indexOf('\\n', i);
           if (end === -1) end = len;
-          result += '<span class="cm">' + esc(code.slice(i, end)) + '</span>';
+          result += '<span class="cm">' + escape(code.slice(i, end)) + '</span>';
           i = end;
           continue;
         }
@@ -691,7 +651,7 @@ export class RemoteSpyPanel {
             j++;
           }
           j = Math.min(j + 1, len);
-          result += '<span class="str">' + esc(code.slice(i, j)) + '</span>';
+          result += '<span class="str">' + escape(code.slice(i, j)) + '</span>';
           i = j;
           continue;
         }
@@ -699,7 +659,7 @@ export class RemoteSpyPanel {
         if (code[i] >= '0' && code[i] <= '9') {
           let j = i;
           while (j < len && /[0-9.xXa-fA-Fe]/.test(code[j])) j++;
-          result += '<span class="num">' + esc(code.slice(i, j)) + '</span>';
+          result += '<span class="num">' + escape(code.slice(i, j)) + '</span>';
           i = j;
           continue;
         }
@@ -708,26 +668,23 @@ export class RemoteSpyPanel {
           let j = i;
           while (j < len && /[a-zA-Z0-9_]/.test(code[j])) j++;
           const word = code.slice(i, j);
-          if (LUAU_KEYWORDS.has(word)) result += '<span class="kw">' + esc(word) + '</span>';
-          else if (LUAU_GLOBALS.has(word)) result += '<span class="gl">' + esc(word) + '</span>';
-          else if (j < len && code[j] === '(') result += '<span class="fn">' + esc(word) + '</span>';
-          else result += esc(word);
+          if (LUAU_KEYWORDS.has(word)) result += '<span class="kw">' + escape(word) + '</span>';
+          else if (LUAU_GLOBALS.has(word)) result += '<span class="gl">' + escape(word) + '</span>';
+          else if (j < len && code[j] === '(') result += '<span class="fn">' + escape(word) + '</span>';
+          else result += escape(word);
           i = j;
           continue;
         }
 
-        result += esc(code[i]);
+        result += escape(code[i]);
         i++;
       }
       return result;
     };
 
-    const formatTime = (ts) => new Date(ts * 1000).toLocaleTimeString();
+    const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString();
 
-    const getCallClass = (call) => {
-      const base = call.remoteType === 'RemoteFunction' ? 'function' : 'event';
-      return base;
-    };
+    const getCallClass = (call) => (call.remoteType === 'RemoteFunction' ? 'function' : 'event');
 
     const matchesSearch = (call) => {
       if (state.searchQuery === '') return true;
@@ -744,7 +701,7 @@ export class RemoteSpyPanel {
 
       if (filtered.length === 0) {
         empty.style.display = 'flex';
-        list.querySelectorAll('.call-item').forEach(el => el.remove());
+        list.querySelectorAll('.call-item').forEach((item) => item.remove());
         return;
       }
 
@@ -755,19 +712,19 @@ export class RemoteSpyPanel {
         const realIndex = state.calls.indexOf(call);
         const typeClass = getCallClass(call);
         const selected = realIndex === state.selectedIndex ? ' selected' : '';
-        const blocked = call._blocked ? ' blocked' : '';
+        const blocked = call._blocked === true ? ' blocked' : '';
         html += '<div class="call-item ' + typeClass + selected + blocked + '" data-index="' + realIndex + '">'
           + '<div class="call-info">'
-          + '<div class="call-name">' + escHtml(call.remoteName) + '</div>'
+          + '<div class="call-name">' + escapeHtml(call.remoteName) + '</div>'
           + '<div class="call-meta">'
           + '<span class="call-type-badge ' + typeClass + '">' + call.method + '</span>'
-          + '<span>' + escHtml(call.remoteType) + '</span>'
+          + '<span>' + escapeHtml(call.remoteType) + '</span>'
           + '</div></div>'
           + '<span class="call-time">' + formatTime(call.timestamp) + '</span>'
           + '</div>';
       }
       const items = list.querySelectorAll('.call-item');
-      items.forEach(el => el.remove());
+      items.forEach((item) => item.remove());
       empty.insertAdjacentHTML('afterend', html);
     };
 
@@ -788,13 +745,13 @@ export class RemoteSpyPanel {
       }
 
       const call = state.calls[state.selectedIndex];
-      const isFn = call.remoteType === 'RemoteFunction';
+      const isFunction = call.remoteType === 'RemoteFunction';
       codeView.style.display = 'block';
       codeEmpty.style.display = 'none';
       codeActions.style.display = 'flex';
       codeHeader.style.display = 'flex';
       codeHeaderText.textContent = call.remoteName + ' - ' + call.method;
-      headerDot.className = 'header-dot' + (isFn ? ' fn' : '');
+      headerDot.className = 'header-dot' + (isFunction ? ' fn' : '');
       codeView.innerHTML = highlightLuau(call.code);
     };
 
@@ -810,27 +767,25 @@ export class RemoteSpyPanel {
 
       if (state.listsMode === 'ignores') {
         html += '<div class="list-header">Ignored Remotes (' + state.ignoreList.length + ')</div>';
-        if (state.ignoreList.length === 0) {
+        if (state.ignoreList.length === 0)
           html += '<div class="list-entry" style="color:var(--vscode-descriptionForeground);font-style:italic;">No ignores set</div>';
-        }
         for (const entry of state.ignoreList) {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
-            + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" aria-label="Remove ignored remote ' + escHtml(entry.value) + '" title="Remove ignored remote" data-action="removeIgnore" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
+            + '<span class="entry-value">' + escapeHtml(entry.value) + '</span>'
+            + '<button class="entry-remove" aria-label="Remove ignored remote ' + escapeHtml(entry.value) + '" title="Remove ignored remote" data-action="removeIgnore" data-entry-type="' + escapeAttr(entry.type) + '" data-entry-value="' + escapeAttr(entry.value) + '">x</button>'
             + '</div>';
         }
         html += '<div style="padding:4px 10px;"><button class="btn" data-action="clearIgnores" style="width:100%;">Clear All Ignores</button></div>';
       } else if (state.listsMode === 'blocks') {
         html += '<div class="list-header">Blocked Remotes (' + state.blockList.length + ')</div>';
-        if (state.blockList.length === 0) {
+        if (state.blockList.length === 0)
           html += '<div class="list-entry" style="color:var(--vscode-descriptionForeground);font-style:italic;">No blocks set</div>';
-        }
         for (const entry of state.blockList) {
           html += '<div class="list-entry">'
             + '<span class="entry-type">' + entry.type + '</span>'
-            + '<span class="entry-value">' + escHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" aria-label="Remove blocked remote ' + escHtml(entry.value) + '" title="Remove blocked remote" data-action="removeBlock" data-entry-type="' + escAttr(entry.type) + '" data-entry-value="' + escAttr(entry.value) + '">x</button>'
+            + '<span class="entry-value">' + escapeHtml(entry.value) + '</span>'
+            + '<button class="entry-remove" aria-label="Remove blocked remote ' + escapeHtml(entry.value) + '" title="Remove blocked remote" data-action="removeBlock" data-entry-type="' + escapeAttr(entry.type) + '" data-entry-value="' + escapeAttr(entry.value) + '">x</button>'
             + '</div>';
         }
         html += '<div style="padding:4px 10px;"><button class="btn danger" data-action="clearBlocks" style="width:100%;">Clear All Blocks</button></div>';
@@ -842,42 +797,42 @@ export class RemoteSpyPanel {
       const statusText = document.getElementById('status-text');
       const statusDot = document.getElementById('status-dot');
       const callCount = document.getElementById('call-count');
-      const pauseBtn = document.getElementById('btn-pause');
-      const toggleBtn = document.getElementById('btn-toggle');
+      const pauseButton = document.getElementById('btn-pause');
+      const toggleButton = document.getElementById('btn-toggle');
 
       callCount.textContent = state.calls.length + ' calls';
 
       if (state.spyEnabled === false) {
         statusText.textContent = 'Spy disabled';
         statusDot.className = 'status-dot';
-        toggleBtn.textContent = 'Enable Spy';
-        toggleBtn.className = 'btn primary';
-        pauseBtn.disabled = true;
+        toggleButton.textContent = 'Enable Spy';
+        toggleButton.className = 'btn primary';
+        pauseButton.disabled = true;
       } else if (state.paused) {
         statusText.textContent = 'Paused';
         statusDot.className = 'status-dot paused';
-        toggleBtn.textContent = 'Disable';
-        toggleBtn.className = 'btn danger';
-        pauseBtn.textContent = 'Resume';
-        pauseBtn.disabled = false;
+        toggleButton.textContent = 'Disable';
+        toggleButton.className = 'btn danger';
+        pauseButton.textContent = 'Resume';
+        pauseButton.disabled = false;
       } else {
         statusText.textContent = 'Listening';
         statusDot.className = 'status-dot active';
-        toggleBtn.textContent = 'Disable';
-        toggleBtn.className = 'btn danger';
-        pauseBtn.textContent = 'Pause';
-        pauseBtn.disabled = false;
+        toggleButton.textContent = 'Disable';
+        toggleButton.className = 'btn danger';
+        pauseButton.textContent = 'Pause';
+        pauseButton.disabled = false;
       }
 
       document.getElementById('ignore-count').textContent = state.ignoreList.length.toString();
       document.getElementById('block-count').textContent = state.blockList.length.toString();
     };
 
-    const escHtml = (s) => {
+    const escapeHtml = (s) => {
       if (typeof s !== 'string') return '';
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     };
-    const escAttr = (s) => {
+    const escapeAttr = (s) => {
       if (typeof s !== 'string') return '';
       return s
         .replace(/&/g, '&amp;')
@@ -894,18 +849,11 @@ export class RemoteSpyPanel {
       vscode.postMessage({ type: 'selectCall', index });
     };
 
-    const toggleSpy = () => {
-      vscode.postMessage({ type: 'toggleSpy', enabled: state.spyEnabled === false });
-    };
+    const toggleSpy = () => vscode.postMessage({ type: 'toggleSpy', enabled: state.spyEnabled === false });
 
-    const togglePause = () => {
-      if (state.paused) vscode.postMessage({ type: 'resume' });
-      else vscode.postMessage({ type: 'pause' });
-    };
+    const togglePause = () => vscode.postMessage({ type: state.paused ? 'resume' : 'pause' });
 
-    const clearCalls = () => {
-      vscode.postMessage({ type: 'clear' });
-    };
+    const clearCalls = () => vscode.postMessage({ type: 'clear' });
 
     const copyCode = () => {
       if (state.selectedIndex >= 0) vscode.postMessage({ type: 'copyCode', index: state.selectedIndex });
@@ -941,11 +889,11 @@ export class RemoteSpyPanel {
     };
 
     let shouldAutoScroll = true;
-    const callListEl = document.getElementById('call-list');
-    callListEl.addEventListener('scroll', () => {
-      const atBottom = callListEl.scrollHeight - callListEl.scrollTop - callListEl.clientHeight < 40;
-      shouldAutoScroll = atBottom;
-    });
+    const callList = document.getElementById('call-list');
+    callList.addEventListener(
+      'scroll',
+      () => (shouldAutoScroll = callList.scrollHeight - callList.scrollTop - callList.clientHeight < 40),
+    );
 
     document.addEventListener('click', (event) => {
       const eventTarget = event.target;
@@ -975,9 +923,7 @@ export class RemoteSpyPanel {
           break;
         case 'toggleListsPanel': {
           const mode = target.getAttribute('data-list-mode');
-          if (mode === 'ignores' || mode === 'blocks') {
-            toggleListsPanel(mode);
-          }
+          if (mode === 'ignores' || mode === 'blocks') toggleListsPanel(mode);
           break;
         }
         case 'copyCode':
@@ -1011,12 +957,11 @@ export class RemoteSpyPanel {
         case 'removeBlock': {
           const type = target.getAttribute('data-entry-type');
           const value = target.getAttribute('data-entry-value');
-          if ((type === 'name' || type === 'path') && value !== null) {
+          if ((type === 'name' || type === 'path') && value !== null)
             vscode.postMessage({
               'type': action === 'removeIgnore' ? 'removeIgnore' : 'removeBlock',
               'entry': { type, value },
             });
-          }
           break;
         }
       }
@@ -1029,20 +974,18 @@ export class RemoteSpyPanel {
     });
 
     window.addEventListener('message', (event) => {
-      const msg = event.data;
+      const message = event.data;
 
-      if (msg.type === 'addCall') {
-        state.calls.push(msg.call);
+      if (message.type === 'addCall') {
+        state.calls.push(message.call);
         if (state.calls.length > 1000) state.calls.shift();
         renderCallList();
         updateStatusBar();
-        if (shouldAutoScroll) {
-          requestAnimationFrame(() => { callListEl.scrollTop = callListEl.scrollHeight; });
-        }
+        if (shouldAutoScroll) requestAnimationFrame(() => (callList.scrollTop = callList.scrollHeight));
         return;
       }
 
-      if (msg.type === 'clear') {
+      if (message.type === 'clear') {
         state.calls = [];
         state.selectedIndex = -1;
         renderCallList();
@@ -1051,14 +994,14 @@ export class RemoteSpyPanel {
         return;
       }
 
-      if (msg.type === 'updateState') {
-        const s = msg.state;
-        state.calls = s.calls || [];
-        state.selectedIndex = s.selectedIndex;
-        state.paused = s.paused;
-        state.spyEnabled = s.spyEnabled;
-        state.ignoreList = s.ignoreList || [];
-        state.blockList = s.blockList || [];
+      if (message.type === 'updateState') {
+        const snapshot = message.state;
+        state.calls = snapshot.calls ?? [];
+        state.selectedIndex = snapshot.selectedIndex;
+        state.paused = snapshot.paused;
+        state.spyEnabled = snapshot.spyEnabled;
+        state.ignoreList = snapshot.ignoreList ?? [];
+        state.blockList = snapshot.blockList ?? [];
         renderCallList();
         renderCodeView();
         renderListsPanel();

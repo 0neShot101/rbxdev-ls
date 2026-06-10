@@ -1,67 +1,10 @@
-import type { BlockEntry, IgnoreEntry } from './remoteSpyState';
-
-export type RemoteSpyWebviewAction =
-  | 'toggleSpy'
-  | 'togglePause'
-  | 'clearCalls'
-  | 'toggleListsPanel'
-  | 'copyCode'
-  | 'copyPath'
-  | 'copyArgs'
-  | 'ignoreByPath'
-  | 'ignoreByName'
-  | 'blockByPath'
-  | 'blockByName'
-  | 'clearIgnores'
-  | 'clearBlocks'
-  | 'removeIgnore'
-  | 'removeBlock';
-
-export type RemoteSpyListMode = 'ignores' | 'blocks' | null;
-
-export interface RemoteSpyWebviewMessage {
-  readonly type:
-    | 'selectCall'
-    | 'copyCode'
-    | 'copyPath'
-    | 'copyArgs'
-    | 'ignoreByPath'
-    | 'ignoreByName'
-    | 'blockByPath'
-    | 'blockByName'
-    | 'clearIgnores'
-    | 'clearBlocks'
-    | 'pause'
-    | 'resume'
-    | 'toggleSpy'
-    | 'search'
-    | 'clear'
-    | 'removeIgnore'
-    | 'removeBlock';
-  readonly index?: number;
-  readonly query?: string;
-  readonly enabled?: boolean;
-  readonly entry?: IgnoreEntry | BlockEntry;
-}
-
-export interface RemoteSpyActionContext {
-  readonly selectedIndex: number;
-  readonly paused: boolean;
-  readonly spyEnabled: boolean;
-  readonly listsMode: RemoteSpyListMode;
-}
-
-export interface RemoteSpyActionPayload {
-  readonly action: RemoteSpyWebviewAction;
-  readonly listMode?: string | null;
-  readonly entryType?: string | null;
-  readonly entryValue?: string | null;
-}
-
-export interface RemoteSpyActionResult {
-  readonly nextListsMode: RemoteSpyListMode;
-  readonly messages: ReadonlyArray<RemoteSpyWebviewMessage>;
-}
+import type {
+  RemoteSpyActionContext,
+  RemoteSpyActionPayload,
+  RemoteSpyActionResult,
+  RemoteSpyListMode,
+  RemoteSpyWebviewMessage,
+} from '@typings/remoteSpy';
 
 const createIndexedMessage = (
   type: 'copyCode' | 'copyPath' | 'copyArgs' | 'ignoreByPath' | 'ignoreByName' | 'blockByPath' | 'blockByName',
@@ -77,6 +20,12 @@ const isListMode = (value: string | null | undefined): value is Exclude<RemoteSp
 const isEntryType = (value: string | null | undefined): value is 'name' | 'path' =>
   value === 'name' || value === 'path';
 
+/**
+ * Resolves a toolbar/context-menu action into webview messages and the next lists-panel mode.
+ * @param context - Current UI state the action operates against.
+ * @param payload - The action and any list/entry details it carries.
+ * @returns The next panel mode and the messages to post to the webview.
+ */
 export const dispatchRemoteSpyAction = (
   context: RemoteSpyActionContext,
   payload: RemoteSpyActionPayload,
@@ -125,9 +74,8 @@ export const dispatchRemoteSpyAction = (
       };
     case 'removeIgnore':
     case 'removeBlock': {
-      if (isEntryType(payload.entryType) === false || payload.entryValue === undefined || payload.entryValue === null) {
+      if (isEntryType(payload.entryType) === false || payload.entryValue === undefined || payload.entryValue === null)
         return { 'nextListsMode': context.listsMode, 'messages': [] };
-      }
       return {
         'nextListsMode': context.listsMode,
         'messages': [

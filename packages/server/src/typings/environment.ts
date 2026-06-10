@@ -189,9 +189,7 @@ export const enterScope = (env: TypeEnvironment, kind: ScopeKind = 'Block'): Sco
 
 /** Exits the current scope, returning to the parent scope. */
 export const exitScope = (env: TypeEnvironment): Scope => {
-  if (env.currentScope.parent === undefined) {
-    throw new Error('Cannot exit global scope');
-  }
+  if (env.currentScope.parent === undefined) throw new Error('Cannot exit global scope');
   const oldScope = env.currentScope;
   env.currentScope = env.currentScope.parent;
   return oldScope;
@@ -546,9 +544,7 @@ export const addLuauBuiltins = (env: TypeEnvironment): void => {
   );
 
   const stdLibs = createAllStdLibraries();
-  for (const [name, type] of stdLibs) {
-    defineSymbol(env, name, type, 'Global', false);
-  }
+  for (const [name, type] of stdLibs) defineSymbol(env, name, type, 'Global', false);
 };
 
 /** Adds Roblox-specific globals and datatype constructors to the environment. */

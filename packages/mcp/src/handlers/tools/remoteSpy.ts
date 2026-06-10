@@ -3,7 +3,7 @@ import { hasCapability } from 'rbxdev-server';
 import { bridgeCall, NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
 import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from './shared';
+import type { ToolHandlerMap } from '@mcp/typings/tools';
 
 export const remoteSpyToolHandlers: ToolHandlerMap = {
   'get_remote_calls': async (args, { bridge }) => {
@@ -30,9 +30,7 @@ export const remoteSpyToolHandlers: ToolHandlerMap = {
       return errorResult('Error: Remote Spy is not available with the current client');
 
     const rawArgs = asRecord(args);
-    if (typeof rawArgs?.['enabled'] !== 'boolean') {
-      return errorResult('Error: enabled parameter is required (boolean)');
-    }
+    if (typeof rawArgs?.['enabled'] !== 'boolean') return errorResult('Error: enabled parameter is required (boolean)');
     const enabled = rawArgs['enabled'];
 
     return bridgeCall(
@@ -48,9 +46,7 @@ export const remoteSpyToolHandlers: ToolHandlerMap = {
       return errorResult('Error: Remote Spy is not available with the current client');
 
     const rawArgs = asRecord(args);
-    if (Array.isArray(rawArgs?.['blocks']) === false) {
-      return errorResult('Error: blocks parameter is required (array)');
-    }
+    if (Array.isArray(rawArgs?.['blocks']) === false) return errorResult('Error: blocks parameter is required (array)');
     const blocks = rawArgs['blocks'] as Array<{ type: 'path' | 'name'; value: string }>;
 
     return bridgeCall(

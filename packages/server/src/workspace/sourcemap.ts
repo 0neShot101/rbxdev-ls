@@ -87,14 +87,10 @@ export const buildDataModelTreeFromSourcemap = (root: SourcemapNode, baseDir: st
  */
 export const loadSourcemapState = (workspacePath: string): RojoState => {
   const sourcemapPath = findSourcemap(workspacePath);
-  if (sourcemapPath === undefined) {
-    return { 'project': undefined, 'dataModel': undefined, 'projectPath': undefined };
-  }
+  if (sourcemapPath === undefined) return { 'project': undefined, 'dataModel': undefined, 'projectPath': undefined };
 
   const root = parseSourcemap(sourcemapPath);
-  if (root === undefined) {
-    return { 'project': undefined, 'dataModel': undefined, 'projectPath': sourcemapPath };
-  }
+  if (root === undefined) return { 'project': undefined, 'dataModel': undefined, 'projectPath': sourcemapPath };
 
   const baseDir = path.dirname(sourcemapPath);
   const dataModel = buildDataModelTreeFromSourcemap(root, baseDir);

@@ -15,9 +15,7 @@ const findNode = (root: GameTreeNode, path: string[]): GameTreeNode | undefined 
 
 const getChildrenMap = (node: GameTreeNode): Map<string, GameTreeNode> => {
   const map = new Map<string, GameTreeNode>();
-  if (node.children !== undefined) {
-    for (const child of node.children) map.set(child.name, child);
-  }
+  if (node.children !== undefined) for (const child of node.children) map.set(child.name, child);
   return map;
 };
 

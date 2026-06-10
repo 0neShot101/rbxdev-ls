@@ -1,4 +1,5 @@
 import { createLiveGameModel, type GameTreeNode, type LogEntry } from 'rbxdev-server';
+import { describe, expect, test } from 'bun:test';
 import {
   createMcpServer,
   errorResult,
@@ -10,7 +11,6 @@ import {
   textResult,
   tools,
 } from '../src/server';
-import { describe, expect, test } from 'bun:test';
 
 describe('MCP Server - textResult / errorResult', () => {
   test('textResult wraps text in content array', () => {

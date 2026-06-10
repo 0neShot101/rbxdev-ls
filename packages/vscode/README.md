@@ -154,19 +154,19 @@ The language server reports diagnostics as you type, covering type errors, undef
 
 All settings are under the `rbxdev-ls` namespace in VS Code.
 
-| Setting                                    | Default                               | Purpose                                                                             |
-| ------------------------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------- |
-| `rbxdev-ls.typeCheckMode`                  | `strict`                              | Type checking strictness: `strict`, `nonstrict`, or `nocheck`                       |
-| `rbxdev-ls.enableSuncApi`                  | `true`                                | Enable Sunc executor API completions and type checking                              |
-| `rbxdev-ls.executorBridge.port`            | `21324`                               | WebSocket port for executor bridge connections                                      |
-| `rbxdev-ls.mcp.enabled`                    | `true`                                | Enable the built-in MCP server for AI assistants                                    |
+| Setting                                    | Default                               | Purpose                                                                               |
+| ------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------- |
+| `rbxdev-ls.typeCheckMode`                  | `strict`                              | Type checking strictness: `strict`, `nonstrict`, or `nocheck`                         |
+| `rbxdev-ls.enableSuncApi`                  | `true`                                | Enable Sunc executor API completions and type checking                                |
+| `rbxdev-ls.executorBridge.port`            | `21324`                               | WebSocket port for executor bridge connections                                        |
+| `rbxdev-ls.mcp.enabled`                    | `true`                                | Enable the built-in MCP server for AI assistants                                      |
 | `rbxdev-ls.bundler.path`                   | `""`                                  | Custom path to the `luau-bundler` executable; leave empty to auto-run through npx/npm |
-| `rbxdev-ls.saveInstance.decompile`         | `true`                                | Decompile scripts when saving instances to disk                                     |
-| `rbxdev-ls.saveInstance.noscripts`         | `false`                               | Exclude all scripts from saved instances                                            |
-| `rbxdev-ls.saveInstance.excludeServices`   | `["Chat", "CoreGui", "CorePackages"]` | Services to exclude from full DataModel saves                                       |
-| `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`                               | Automatically refresh the game tree when instances change in Studio or the executor |
-| `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`                                | Debounce interval for auto-refresh in milliseconds (minimum 2000)                   |
-| `rbxdev-ls.debugLogs`                      | `false`                               | Enable verbose debug logging in the extension output console                        |
+| `rbxdev-ls.saveInstance.decompile`         | `true`                                | Decompile scripts when saving instances to disk                                       |
+| `rbxdev-ls.saveInstance.noscripts`         | `false`                               | Exclude all scripts from saved instances                                              |
+| `rbxdev-ls.saveInstance.excludeServices`   | `["Chat", "CoreGui", "CorePackages"]` | Services to exclude from full DataModel saves                                         |
+| `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`                               | Automatically refresh the game tree when instances change in Studio or the executor   |
+| `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`                                | Debounce interval for auto-refresh in milliseconds (minimum 2000)                     |
+| `rbxdev-ls.debugLogs`                      | `false`                               | Enable verbose debug logging in the extension output console                          |
 
 ## Keybindings
 

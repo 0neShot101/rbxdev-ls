@@ -133,17 +133,11 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
   addLuarmorGlobals(env);
   addLuraphGlobals(env);
 
-  if (options.classes !== undefined) {
-    for (const [name, classType] of options.classes) {
-      (env.classes as Map<string, ClassType>).set(name, classType);
-    }
-  }
+  if (options.classes !== undefined)
+    for (const [name, classType] of options.classes) (env.classes as Map<string, ClassType>).set(name, classType);
 
-  if (options.dataTypes !== undefined) {
-    for (const [name, type] of options.dataTypes) {
-      env.globalScope.types.set(name, type);
-    }
-  }
+  if (options.dataTypes !== undefined)
+    for (const [name, type] of options.dataTypes) env.globalScope.types.set(name, type);
 
   const ignoreState = options.ignoreState ?? { 'ignoredLines': new Set<number>() };
 
@@ -462,7 +456,7 @@ const checkStatement = (state: CheckerState, stmt: Statement): void => {
 
     case 'BreakStatement':
     case 'ContinueStatement':
-      if (isInLoopScope(state.env) === false) {
+      if (isInLoopScope(state.env) === false)
         addDiagnostic(
           state,
           `${stmt.kind === 'BreakStatement' ? 'break' : 'continue'} outside of loop`,
@@ -470,7 +464,6 @@ const checkStatement = (state: CheckerState, stmt: Statement): void => {
           'error',
           'E001',
         );
-      }
       break;
 
     case 'TypeAlias':
@@ -574,7 +567,7 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
         hasValue &&
         state.env.mode !== 'nonstrict' &&
         isAssignable(valueType, declaredType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false
-      ) {
+      )
         addDiagnostic(
           state,
           `Type '${typeToString(valueType)}' is not assignable to type '${typeToString(declaredType)}'`,
@@ -582,7 +575,6 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
           'error',
           'E002',
         );
-      }
     } else if (docComment !== undefined && docComment.type !== undefined) {
       const docType = resolveDocTypeAnnotation(state, docComment.type);
       declaredType = docType !== undefined ? docType : widenTypeForMutableVariable(valueType);
@@ -619,26 +611,23 @@ const checkFunctionExpressionWithDocComment = (
   enterScope(state.env, 'Function');
 
   const typeParams: TypeParameterDef[] = [];
-  if (func.typeParams !== undefined) {
+  if (func.typeParams !== undefined)
     for (const param of func.typeParams) {
       const constraint = param.constraint !== undefined ? resolveTypeAnnotation(state, param.constraint) : undefined;
       const defaultType = param.defaultType !== undefined ? resolveTypeAnnotation(state, param.defaultType) : undefined;
       typeParams.push({ 'name': param.name, constraint, defaultType });
     }
-  }
 
   const docParamTypes = new Map<string, LuauType>();
-  if (docComment !== undefined) {
-    for (const docParam of docComment.params) {
+  if (docComment !== undefined)
+    for (const docParam of docComment.params)
       if (docParam.type !== undefined) {
         const resolvedType = resolveDocTypeAnnotation(state, docParam.type);
         if (resolvedType !== undefined) docParamTypes.set(docParam.name, resolvedType);
       }
-    }
-  }
 
   const params: FunctionParam[] = [];
-  for (const param of func.params) {
+  for (const param of func.params)
     if (param.name !== undefined) {
       let paramType: LuauType;
       if (param.type !== undefined) paramType = resolveTypeAnnotation(state, param.type);
@@ -651,7 +640,6 @@ const checkFunctionExpressionWithDocComment = (
       const varargType = param.type !== undefined ? resolveTypeAnnotation(state, param.type) : AnyType;
       params.push({ 'name': undefined, 'type': varargType, 'optional': true });
     }
-  }
 
   let declaredReturnType: LuauType | undefined;
   if (func.returnType !== undefined) declaredReturnType = resolveTypeAnnotation(state, func.returnType);
@@ -672,7 +660,7 @@ const checkFunctionExpressionWithDocComment = (
     state.env.mode === 'strict' &&
     (declaredReturnType.kind !== 'Primitive' || declaredReturnType.name !== 'nil') &&
     blockAlwaysExits(func.body) === false
-  ) {
+  )
     addDiagnostic(
       state,
       `Function with declared return type '${typeToString(declaredReturnType)}' must return a value on all code paths`,
@@ -680,7 +668,6 @@ const checkFunctionExpressionWithDocComment = (
       'error',
       'E013',
     );
-  }
 
   state.returnType = savedReturnType;
   state.isVariadic = savedVariadic;
@@ -711,7 +698,7 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
       targetType.kind !== 'Any' &&
       state.env.mode !== 'nonstrict' &&
       isAssignable(valueType, targetType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false
-    ) {
+    )
       addDiagnostic(
         state,
         `Type '${typeToString(valueType)}' is not assignable to type '${typeToString(targetType)}'`,
@@ -719,7 +706,6 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
         'error',
         'E002',
       );
-    }
   }
 };
 
@@ -739,7 +725,7 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
       addDiagnostic(state, `Operator '${stmt.operator}' requires numeric operand`, stmt.value.range, 'error', 'E003');
   } else if (stringOps.includes(stmt.operator)) {
     const stringOrNumber = createUnionType([StringType, NumberType]);
-    if (isSubtype(targetType, stringOrNumber, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+    if (isSubtype(targetType, stringOrNumber, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(
         state,
         `Operator '${stmt.operator}' requires string or number operand`,
@@ -747,7 +733,6 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
         'error',
         'E003',
       );
-    }
   }
 };
 
@@ -894,9 +879,7 @@ const checkReturnStatement = (state: CheckerState, stmt: ReturnStatement): void 
   if (state.returnType !== undefined && state.env.mode !== 'nonstrict') {
     const actualReturnType = returnTypes.length === 0 ? NilType : returnTypes[0]!;
 
-    if (
-      isAssignable(actualReturnType, state.returnType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false
-    ) {
+    if (isAssignable(actualReturnType, state.returnType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
       addDiagnostic(
         state,
         `Return type '${typeToString(actualReturnType)}' is not assignable to expected type '${typeToString(state.returnType)}'`,
@@ -904,7 +887,6 @@ const checkReturnStatement = (state: CheckerState, stmt: ReturnStatement): void 
         'error',
         'E005',
       );
-    }
   }
 };
 
@@ -980,7 +962,7 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
       if (state.env.mode === 'strict' && expr.expression.kind === 'TableExpression') {
         const resolvedExpr = resolveType(exprType, state.env.classes);
         const resolvedCast = resolveType(castType, state.env.classes);
-        if (resolvedExpr.kind === 'Table' && resolvedCast.kind === 'Table') {
+        if (resolvedExpr.kind === 'Table' && resolvedCast.kind === 'Table')
           for (const field of expr.expression.fields) {
             if (field.kind !== 'TableFieldKey') continue;
             const targetProp = resolvedCast.properties.get(field.key.name);
@@ -989,7 +971,7 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
             if (fieldProp === undefined) continue;
             const fieldType = resolveType(fieldProp.type, state.env.classes);
             const targetType = resolveType(targetProp.type, state.env.classes);
-            if (isAssignable(fieldType, targetType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false) {
+            if (isAssignable(fieldType, targetType, { 'mode': state.env.mode, 'variance': 'covariant' }) === false)
               addDiagnostic(
                 state,
                 `Type '${typeToString(fieldType)}' is not assignable to type '${typeToString(targetType)}' for field '${field.key.name}'`,
@@ -997,9 +979,7 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
                 'error',
                 'E002',
               );
-            }
           }
-        }
       }
 
       return castType;
@@ -1054,19 +1034,18 @@ const inferTableExpression = (state: CheckerState, table: TableExpression): Tabl
         isArray = false;
         const indexType = inferExpression(state, field.index);
         const valueType = inferExpression(state, field.value);
-        if (field.index.kind === 'StringLiteral') {
+        if (field.index.kind === 'StringLiteral')
           properties.set(field.index.value, {
             'type': valueType,
             'readonly': false,
             'optional': false,
           });
-        } else if (indexType.kind === 'Literal' && indexType.baseType === 'string') {
+        else if (indexType.kind === 'Literal' && indexType.baseType === 'string')
           properties.set(String(indexType.value), {
             'type': valueType,
             'readonly': false,
             'optional': false,
           });
-        }
         break;
       }
 
@@ -1131,7 +1110,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     };
 
     const checkOperand = (resolved: LuauType, original: LuauType, range: typeof expr.left.range): void => {
-      if (isNumericCompatible(resolved) === false) {
+      if (isNumericCompatible(resolved) === false)
         addDiagnostic(
           state,
           `Operator '${expr.operator}' cannot be applied to type '${typeToString(original)}'`,
@@ -1139,7 +1118,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
           'error',
           'E011',
         );
-      } else if (isDefinitelyNumeric(resolved) === false && state.env.mode !== 'nonstrict') {
+      else if (isDefinitelyNumeric(resolved) === false && state.env.mode !== 'nonstrict')
         addDiagnostic(
           state,
           `Operator '${expr.operator}' cannot be applied to type '${typeToString(original)}'`,
@@ -1147,7 +1126,6 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
           'error',
           'E011',
         );
-      }
     };
 
     checkOperand(leftResolved, leftType, expr.left.range);
@@ -1311,9 +1289,7 @@ const inferSpecialMethodReturnType = (
     }
   }
 
-  if (methodName === 'Clone' && args.length === 0) {
-    if (objectType.kind === 'Class') return objectType;
-  }
+  if (methodName === 'Clone' && args.length === 0) if (objectType.kind === 'Class') return objectType;
 
   if (methodName === 'FindFirstChildOfClass' && args.length >= 1) {
     const className = extractStringLiteral(args[0]!);
@@ -1443,9 +1419,7 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
   if (objectType.kind === 'Table') {
     const prop = objectType.properties.get(expr.method.name);
     if (prop !== undefined && prop.type.kind === 'Function') {
-      if (expr.method.name === 'Wait') {
-        return inferSignalWaitReturnType(objectType);
-      }
+      if (expr.method.name === 'Wait') return inferSignalWaitReturnType(objectType);
       return resolveType(prop.type.returnType, state.env.classes);
     }
   }
@@ -1537,7 +1511,7 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
     return AnyType;
   }
 
-  if (state.env.mode === 'strict') {
+  if (state.env.mode === 'strict')
     addDiagnostic(
       state,
       `Method '${expr.method.name}' does not exist on type '${typeToString(objectType)}'`,
@@ -1545,7 +1519,6 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
       'error',
       'E008',
     );
-  }
 
   return createErrorType(`method '${expr.method.name}' not found`);
 };
@@ -1665,7 +1638,7 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
 
   const lowercaseName = expr.property.name.toLowerCase();
   const correction = propertyCorrections[lowercaseName];
-  if (correction !== undefined && expr.property.name !== correction.correct) {
+  if (correction !== undefined && expr.property.name !== correction.correct)
     if (objectType.kind === 'Class') {
       const correctProp = lookupClassProperty(objectType, correction.correct);
       const correctMethod = lookupClassMethod(objectType, correction.correct);
@@ -1675,9 +1648,8 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
         if (correctMethod !== undefined) return correctMethod.func;
       }
     }
-  }
 
-  if (state.env.mode === 'strict') {
+  if (state.env.mode === 'strict')
     addDiagnostic(
       state,
       `Property '${expr.property.name}' does not exist on type '${typeToString(objectType)}'`,
@@ -1685,7 +1657,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
       'error',
       'E009',
     );
-  }
 
   return createErrorType(`property '${expr.property.name}' not found`);
 };
@@ -1742,20 +1713,18 @@ const resolveTypeAnnotation = (state: CheckerState, annotation: TypeAnnotation):
 
     case 'TableType': {
       const properties = new Map<string, PropertyType>();
-      for (const prop of annotation.properties) {
+      for (const prop of annotation.properties)
         properties.set(prop.name, {
           'type': resolveTypeAnnotation(state, prop.type),
           'readonly': prop.isReadonly,
           'optional': false,
         });
-      }
       const tableOptions: { indexer?: { keyType: LuauType; valueType: LuauType } } = {};
-      if (annotation.indexer !== undefined) {
+      if (annotation.indexer !== undefined)
         tableOptions.indexer = {
           'keyType': resolveTypeAnnotation(state, annotation.indexer.keyType),
           'valueType': resolveTypeAnnotation(state, annotation.indexer.valueType),
         };
-      }
       return createTableType(properties, tableOptions);
     }
 
