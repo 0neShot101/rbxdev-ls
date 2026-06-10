@@ -30,7 +30,13 @@ const isPath = (value: unknown): value is string[] => Array.isArray(value) && va
  * Escapes a value for safe embedding inside a Lua string literal.
  */
 const escapeLua = (value: string): string =>
-  value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"');
+  value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    .replace(/"/g, '\\"')
+    .replace(/\0/g, '\\000');
 
 /**
  * Builds a Lua expression that resolves an instance from path segments.
