@@ -157,6 +157,9 @@ nul
 # Codex local settings
 .codex/
 
+# Agents local settings
+.agents/
+
 # Root build output (stale from pre-monorepo)
 dist/
 
