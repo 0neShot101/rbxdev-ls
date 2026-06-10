@@ -49,7 +49,7 @@ export const isMissingExecutableError = (error: unknown): boolean => {
  * @returns The shell-safe value.
  */
 export const quoteForShell = (value: string): string =>
-  /[\s"&^]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  /[\s"&^|<>()]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
 /**
  * Runs a single launcher candidate via execFile, using a shell on Windows so

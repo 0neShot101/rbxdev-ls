@@ -77,6 +77,14 @@ describe('Bundler Launcher - quoteForShell', () => {
   test('doubles embedded quotes', () => {
     expect(quoteForShell('say "hi"')).toBe('"say ""hi"""');
   });
+
+  test('wraps values containing cmd metacharacters', () => {
+    expect(quoteForShell('a|b')).toBe('"a|b"');
+    expect(quoteForShell('a>b')).toBe('"a>b"');
+    expect(quoteForShell('a<b')).toBe('"a<b"');
+    expect(quoteForShell('dev(x)')).toBe('"dev(x)"');
+    expect(quoteForShell('a&b')).toBe('"a&b"');
+  });
 });
 
 describe('Bundler Launcher - resolveBundlerCommands', () => {
