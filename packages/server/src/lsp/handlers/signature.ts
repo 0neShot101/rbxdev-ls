@@ -54,7 +54,9 @@ export const createSignatureInfo = (
     if (docComment.description !== undefined) docParts.push(docComment.description);
     if (docComment.deprecated !== undefined) docParts.push(`\n\n**@deprecated** ${docComment.deprecated}`);
     if (docParts.length > 0) documentation = docParts.join('');
-  } else if (func.description !== undefined) documentation = func.description;
+  }
+
+  if (documentation === undefined && func.description !== undefined) documentation = func.description;
 
   if (documentation !== undefined)
     return {

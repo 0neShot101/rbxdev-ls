@@ -16,6 +16,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { Chunk } from '@typings/ast';
 import type { ParsedDocument } from '@typings/lsp';
+import type { DocComment } from '@typings/parser';
 import type { FunctionType } from '@typings/types';
 
 const parseCode = (code: string): Chunk => {
@@ -281,6 +282,30 @@ describe('Signature Help Edge Cases', () => {
     expect(sig.parameters![1]!.label).toContain('y');
     expect(sig.parameters![1]!.label).toContain('string');
     expect(sig.label).toContain('boolean');
+  });
+
+  test('createSignatureInfo falls back to func.description when doc comment has no text', () => {
+    const func: FunctionType = {
+      'kind': 'Function',
+      'typeParams': [],
+      'thisType': undefined,
+      'params': [{ 'name': 'x', 'type': { 'kind': 'Primitive', 'name': 'number' }, 'optional': false }],
+      'returnType': { 'kind': 'Primitive', 'name': 'boolean' },
+      'isVariadic': false,
+      'description': 'Built-in docs',
+    };
+    const docComment: DocComment = {
+      'description': undefined,
+      'params': [{ 'name': 'x', 'type': undefined, 'description': 'the number' }],
+      'returns': [],
+      'type': undefined,
+      'class': undefined,
+      'fields': [],
+      'deprecated': undefined,
+      'raw': '--- @param x the number',
+    };
+    const sig = createSignatureInfo('myFunc', func, docComment);
+    expect(sig.documentation).toEqual({ 'kind': 'markdown', 'value': 'Built-in docs' });
   });
 });
 
