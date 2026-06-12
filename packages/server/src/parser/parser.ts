@@ -46,23 +46,25 @@ import { createLexer } from '@parser/lexer';
 import { isTrivia } from '@parser/tokens';
 
 /** Binary operator info for precedence parsing - uses object for faster lookups than Map */
-const BINARY_OP_INFO: Record<TokenKind, { operator: BinaryOperator; precedence: number; rightAssociative: boolean } | undefined> = {
-  [TokenKind.Or]: { operator: 'or', precedence: 1, rightAssociative: false },
-  [TokenKind.And]: { operator: 'and', precedence: 2, rightAssociative: false },
-  [TokenKind.Less]: { operator: '<', precedence: 3, rightAssociative: false },
-  [TokenKind.Greater]: { operator: '>', precedence: 3, rightAssociative: false },
-  [TokenKind.LessEqual]: { operator: '<=', precedence: 3, rightAssociative: false },
-  [TokenKind.GreaterEqual]: { operator: '>=', precedence: 3, rightAssociative: false },
-  [TokenKind.NotEqual]: { operator: '~=', precedence: 3, rightAssociative: false },
-  [TokenKind.Equal]: { operator: '==', precedence: 3, rightAssociative: false },
-  [TokenKind.Concat]: { operator: '..', precedence: 4, rightAssociative: true },
-  [TokenKind.Plus]: { operator: '+', precedence: 5, rightAssociative: false },
-  [TokenKind.Minus]: { operator: '-', precedence: 5, rightAssociative: false },
-  [TokenKind.Star]: { operator: '*', precedence: 6, rightAssociative: false },
-  [TokenKind.Slash]: { operator: '/', precedence: 6, rightAssociative: false },
-  [TokenKind.DoubleSlash]: { operator: '//', precedence: 6, rightAssociative: false },
-  [TokenKind.Percent]: { operator: '%', precedence: 6, rightAssociative: false },
-  [TokenKind.Caret]: { operator: '^', precedence: 8, rightAssociative: true },
+const BINARY_OP_INFO: Partial<
+  Record<TokenKind, { operator: BinaryOperator; precedence: number; rightAssociative: boolean }>
+> = {
+  [TokenKind.Or]: { 'operator': 'or', 'precedence': 1, 'rightAssociative': false },
+  [TokenKind.And]: { 'operator': 'and', 'precedence': 2, 'rightAssociative': false },
+  [TokenKind.Less]: { 'operator': '<', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Greater]: { 'operator': '>', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.LessEqual]: { 'operator': '<=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.GreaterEqual]: { 'operator': '>=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.NotEqual]: { 'operator': '~=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Equal]: { 'operator': '==', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Concat]: { 'operator': '..', 'precedence': 4, 'rightAssociative': true },
+  [TokenKind.Plus]: { 'operator': '+', 'precedence': 5, 'rightAssociative': false },
+  [TokenKind.Minus]: { 'operator': '-', 'precedence': 5, 'rightAssociative': false },
+  [TokenKind.Star]: { 'operator': '*', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Slash]: { 'operator': '/', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.DoubleSlash]: { 'operator': '//', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Percent]: { 'operator': '%', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Caret]: { 'operator': '^', 'precedence': 8, 'rightAssociative': true },
 };
 
 const peek = (state: ParserState, offset = 0): Token => {
@@ -1395,7 +1397,7 @@ const parseExpressionStatement = (state: ParserState): Statement => {
   };
 };
 
-const COMPOUND_OP_MAP: Record<TokenKind, CompoundOperator | undefined> = {
+const COMPOUND_OP_MAP: Partial<Record<TokenKind, CompoundOperator>> = {
   [TokenKind.PlusAssign]: '+=',
   [TokenKind.MinusAssign]: '-=',
   [TokenKind.StarAssign]: '*=',

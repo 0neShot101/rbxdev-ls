@@ -169,7 +169,7 @@ export const createDocumentManager = (): DocumentManager => {
     };
 
     // Update cache with size limit
-    documentCache.set(uri, { hash: contentHash, doc: parsed });
+    documentCache.set(uri, { 'hash': contentHash, 'doc': parsed });
     if (documentCache.size > MAX_CACHE_SIZE) {
       // Evict oldest entries (simple strategy: clear half when over limit)
       const keys = [...documentCache.keys()].slice(0, Math.floor(MAX_CACHE_SIZE / 2));
