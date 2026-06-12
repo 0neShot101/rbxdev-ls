@@ -54,15 +54,17 @@ Once connected, you get:
 
 ## Hot-reloading the bridge (contributors)
 
-Keep your existing prod bridge script in the executor as the bootstrap. Once it connects to the extension, run:
+Bootstrap from a clean slate so the live socket is owned by a reuse-aware build: rejoin the game (or stop any running bridge) so nothing is connected, then run the current `scripts/executor-bridge.lua` once as your prod bootstrap. This matters because a reload adopts the existing socket rather than reconnecting, and only a socket opened by a build that supports adoption can be reused &mdash; swapping over an older, still-connected bridge falls back to closing and reopening the socket, which crashes some executors.
+
+With the bootstrap connected, run:
 
 ```bash
 bun run dev:bridge
 ```
 
-The watcher connects to the bridge port as a proxy client and, on every save under `roblox/executor-bridge/src`, rebundles and pushes the fresh build into the connected client as an `execute` message. The in-game bridge swaps itself out using the same re-execution takeover it runs on a normal re-inject, so edits go live within about a second without touching the executor again.
+The watcher connects to the bridge port as a proxy client and, on every save under `roblox/executor-bridge/src`, rebundles and pushes the fresh build into the connected client as an `execute` message. The pushed build takes over by adopting the live socket through a dispatch trampoline &mdash; it repoints the message handlers in place instead of tearing the connection down &mdash; so edits go live within about a second with no socket churn and no executor touch.
 
-A hot-reloaded build identifies itself as `<executor> (dev)` in the status bar, the `/health` endpoint, and the connection logs, so it is always clear whether prod or a dev build is live. Re-running the prod script (or rejoining the game) drops you back to a clean prod bridge.
+A hot-reloaded build identifies itself as `<executor> (dev)` in the status bar, the `/health` endpoint, and the connection logs, so it is always clear whether prod or a dev build is live. It also sends only a shallow tree on takeover, since the editor still holds the full tree from the bootstrap; use the refresh button if you need a fresh full snapshot. Rejoining the game drops you back to a clean prod bridge.
 
 If the watcher reports it is waiting for an executor, connect one and save again. The watcher reads its port from `RBXDEV_BRIDGE_PORT` (default `21324`).
 

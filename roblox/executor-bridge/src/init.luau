@@ -14,14 +14,22 @@ local remoteSpyHandler = require("handlers/remoteSpy")
 local consoleHandler = require("handlers/console")
 local moduleInterfaceHandler = require("handlers/moduleInterface")
 
--- Cleanup previous bridge instance
+-- Adopt a previous instance's live socket instead of tearing it down. Closing
+-- and reopening a WebSocket to swap bridge code crashes some executors, so a
+-- reload reuses the existing socket through the dispatch trampoline installed
+-- below. Only a socket without that trampoline (a pre-reuse build) is closed.
+local reuseSocket = nil
 if getgenv and getgenv()._RBXDEV_BRIDGE then
 	local old = getgenv()._RBXDEV_BRIDGE
-	if old.connection then pcall(old.connection.Close, old.connection) end
 	for _, conn in ipairs(old.refreshConnections or {}) do pcall(conn.Disconnect, conn) end
 	if old.spyCleanup ~= nil then
 		pcall(old.spyCleanup)
 		old.spyCleanup = nil
+	end
+	if old.socketReusable == true and old.connection ~= nil then
+		reuseSocket = old.connection
+	elseif old.connection ~= nil then
+		pcall(old.connection.Close, old.connection)
 	end
 	old.alive = false
 end
@@ -95,6 +103,36 @@ end
 local connect
 local scheduleReconnect
 
+local onSocketClose = function()
+	state.connected = false
+	state.connection = nil
+	gameTree.shutdownAutoRefresh()
+	scheduleReconnect()
+end
+
+-- Marks the live socket as adopted by this instance: repoint the global
+-- dispatch and close trampolines at this instance's handlers and record the
+-- connection. The next reload reuses this same socket.
+local adoptSocket = function(ws)
+	state.connection = ws
+	state.connected = true
+	state.reconnectScheduled = false
+	state.reconnectAttemptDelay = config.CONFIG.reconnectDelay
+	state.healthProbeFailures = 0
+
+	local bridge = getgenv and getgenv()._RBXDEV_BRIDGE
+	if bridge ~= nil then
+		bridge.connection = ws
+		bridge.socketReusable = true
+		bridge.dispatch = handleMessage
+		bridge.onClose = onSocketClose
+	end
+
+	local clientName = isDevBuild and (executor.name .. ' (dev)') or executor.name
+	protocol.send{ type = 'connected', executorName = clientName, version = executor.version }
+	protocol.send{ type = 'gameTree', data = gameTree.getGameTree(nil, config.CONFIG.firstConnectDepth) }
+end
+
 scheduleReconnect = function()
 	if state.reconnectScheduled or state.connected or not state.isBridgeAlive() then return end
 
@@ -131,6 +169,18 @@ end
 connect = function(scheduleOnFailure)
 	if not state.isBridgeAlive() then return false end
 	if scheduleOnFailure == nil then scheduleOnFailure = true end
+
+	-- Hot-reload fast path: a previous instance left a reusable live socket.
+	-- Adopt it rather than opening a new one. The socket's OnMessage/OnClose
+	-- trampolines already route through the global dispatch, so repointing
+	-- that dispatch is all it takes to take over without any socket churn.
+	if reuseSocket ~= nil then
+		local ws = reuseSocket
+		reuseSocket = nil
+		adoptSocket(ws)
+		return 'connected'
+	end
+
 	if not protocol.canAttemptConnect(config.CONFIG, executor.HttpRequest) then
 		if scheduleOnFailure then
 			scheduleReconnect()
@@ -146,29 +196,23 @@ connect = function(scheduleOnFailure)
 		return 'failed'
 	end
 
-	state.connection = ws
-	state.connected = true
-	state.reconnectScheduled = false
-	state.reconnectAttemptDelay = config.CONFIG.reconnectDelay
-	state.healthProbeFailures = 0
-
-	if getgenv and getgenv()._RBXDEV_BRIDGE then
-		getgenv()._RBXDEV_BRIDGE.connection = ws
-	end
-
-	local clientName = isDevBuild and (executor.name .. ' (dev)') or executor.name
-	protocol.send{ type = 'connected', executorName = clientName, version = executor.version }
-	protocol.send{ type = 'gameTree', data = gameTree.getGameTree(nil, config.CONFIG.firstConnectDepth) }
-
-	ws.OnMessage:Connect(handleMessage)
-
-	ws.OnClose:Connect(function()
-		state.connected = false
-		state.connection = nil
-		gameTree.shutdownAutoRefresh()
-		scheduleReconnect()
+	-- Stable trampolines, connected once per socket. They read the current
+	-- handlers from the global each time so a reload can adopt this socket by
+	-- repointing the global instead of reconnecting the events.
+	ws.OnMessage:Connect(function(raw)
+		local bridge = getgenv and getgenv()._RBXDEV_BRIDGE
+		local dispatch = bridge ~= nil and bridge.dispatch or nil
+		if dispatch ~= nil then dispatch(raw) else handleMessage(raw) end
 	end)
 
+	ws.OnClose:Connect(function()
+		local bridge = getgenv and getgenv()._RBXDEV_BRIDGE
+		if bridge ~= nil then bridge.socketReusable = false end
+		local closer = bridge ~= nil and bridge.onClose or nil
+		if closer ~= nil then closer() else onSocketClose() end
+	end)
+
+	adoptSocket(ws)
 	return 'connected'
 end
 
