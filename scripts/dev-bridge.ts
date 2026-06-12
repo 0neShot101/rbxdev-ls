@@ -27,8 +27,19 @@ const SOURCE_DIR = join(import.meta.dir, '..', 'roblox', 'executor-bridge', 'src
 const DEBOUNCE_MS = 150;
 const RECONNECT_DELAY_MS = 2000;
 
-/** Preamble prepended to every dev bundle so the bridge identifies as a dev build. */
-const DEV_PREAMBLE = 'if getgenv then getgenv()._RBXDEV_DEV = true end\n';
+/**
+ * Wraps a dev bundle so it runs safely when pushed through the live bridge.
+ *
+ * The bundle is delivered as an `execute` message, which the running bridge
+ * handles synchronously inside its own WebSocket message callback. The bundle's
+ * re-execution takeover closes that very socket, and tearing a WebSocket down
+ * from inside its own callback crashes the executor. Deferring the bundle onto
+ * a fresh task thread moves the takeover off the callback stack so the close is
+ * safe. The dev flag is set before the deferred body so the swapped-in build
+ * still identifies as a dev build.
+ */
+const wrapDevBundle = (bundleSource: string): string =>
+  `if getgenv then getgenv()._RBXDEV_DEV = true end\ntask.defer(function(...)\n${bundleSource}\nend)\n`;
 
 interface ProxyWelcome {
   readonly type: 'proxyWelcome';
@@ -62,7 +73,7 @@ const generateId = (): string => Math.random().toString(36).slice(2, 10);
 const buildDevBundle = (): string => {
   const result = bundle({ 'sourceDir': SOURCE_DIR, 'header': 'rbxdev executor bridge (dev)' });
   log(`bundled ${result.moduleCount} modules in ${result.elapsedMs.toFixed(1)}ms`);
-  return DEV_PREAMBLE + result.output;
+  return wrapDevBundle(result.output);
 };
 
 const pushBundle = (reason: string): void => {
