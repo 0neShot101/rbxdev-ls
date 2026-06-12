@@ -1187,6 +1187,16 @@ _modules["init.luau"] = {
 				old.alive = false
 			end
 
+			-- Detect a hot-reloaded dev build pushed by `bun run dev:bridge`. The dev
+			-- watcher prepends a preamble that sets this global before this chunk runs.
+			-- It is read once and cleared so a later prod injection identifies as prod.
+			local isDevBuild = false
+			if getgenv ~= nil then
+				isDevBuild = getgenv()._RBXDEV_DEV == true
+				getgenv()._RBXDEV_DEV = nil
+			end
+			if isDevBuild then warn'[rbxdev-bridge] DEV BUILD active (hot-reloaded)' end
+
 			-- Apply user config from varargs
 			local userConfig = (...) or {}
 			config.applyUserConfig(userConfig)
@@ -1301,7 +1311,8 @@ _modules["init.luau"] = {
 					getgenv()._RBXDEV_BRIDGE.connection = ws
 				end
 
-				protocol.send{ type = 'connected', executorName = executor.name, version = executor.version }
+				local clientName = isDevBuild and (executor.name .. ' (dev)') or executor.name
+				protocol.send{ type = 'connected', executorName = clientName, version = executor.version }
 				protocol.send{ type = 'gameTree', data = gameTree.getGameTree(nil, config.CONFIG.firstConnectDepth) }
 
 				ws.OnMessage:Connect(handleMessage)
