@@ -270,6 +270,54 @@ export interface VariadicType {
   readonly type: LuauType;
 }
 
+const dedupKey = (type: LuauType): string | undefined => {
+  const resolved = resolveType(type);
+  switch (resolved.kind) {
+    case 'Primitive':
+      return `P:${resolved.name}`;
+    case 'Literal':
+      return `L:${typeof resolved.value}:${String(resolved.value)}`;
+    case 'TypeVariable':
+      return `V:${resolved.id}`;
+    case 'Class':
+      return `C:${resolved.name}`;
+    case 'Enum':
+      return `E:${resolved.name}`;
+    case 'TypeReference':
+      return `R:${resolved.name}`;
+    case 'Any':
+    case 'Unknown':
+    case 'Never':
+      return resolved.kind;
+    default:
+      return undefined;
+  }
+};
+
+const dedupeTypes = (types: ReadonlyArray<LuauType>, skipKind: 'Never' | 'Unknown'): LuauType[] => {
+  const seen = new Set<string>();
+  const complex: LuauType[] = [];
+  const unique: LuauType[] = [];
+
+  for (const t of types) {
+    if (t.kind === skipKind) continue;
+
+    const key = dedupKey(t);
+    if (key !== undefined) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(t);
+      continue;
+    }
+
+    if (complex.some(u => typesEqual(t, u))) continue;
+    complex.push(t);
+    unique.push(t);
+  }
+
+  return unique;
+};
+
 /** Creates a union type, flattening nested unions and removing duplicates. */
 export const createUnionType = (types: ReadonlyArray<LuauType>): LuauType => {
   if (types.length === 0) return NeverType;
@@ -280,10 +328,7 @@ export const createUnionType = (types: ReadonlyArray<LuauType>): LuauType => {
     if (t.kind === 'Union') flattened.push(...t.types);
     else flattened.push(t);
 
-  const unique = flattened.filter((t, i) => {
-    if (t.kind === 'Never') return false;
-    return flattened.findIndex(u => typesEqual(t, u)) === i;
-  });
+  const unique = dedupeTypes(flattened, 'Never');
 
   if (unique.length === 0) return NeverType;
   if (unique.length === 1) return unique[0]!;
@@ -305,10 +350,7 @@ export const createIntersectionType = (types: ReadonlyArray<LuauType>): LuauType
 
   if (flattened.some(t => t.kind === 'Never')) return NeverType;
 
-  const unique = flattened.filter((t, i) => {
-    if (t.kind === 'Unknown') return false;
-    return flattened.findIndex(u => typesEqual(t, u)) === i;
-  });
+  const unique = dedupeTypes(flattened, 'Unknown');
 
   if (unique.length === 0) return UnknownType;
   if (unique.length === 1) return unique[0]!;
