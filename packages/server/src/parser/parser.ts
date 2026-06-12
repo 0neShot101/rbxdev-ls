@@ -1428,28 +1428,38 @@ const parseBlock = (state: ParserState): Statement[] => {
   return statements;
 };
 
+const tokenIndexCache = new WeakMap<ReadonlyArray<Token>, Map<number, number>>();
+
+const tokenIndexByOffset = (tokens: ReadonlyArray<Token>): Map<number, number> => {
+  const cached = tokenIndexCache.get(tokens);
+  if (cached !== undefined) return cached;
+
+  const byOffset = new Map<number, number>();
+  for (let i = 0; i < tokens.length; i++) byOffset.set(tokens[i]!.start.offset, i);
+  tokenIndexCache.set(tokens, byOffset);
+  return byOffset;
+};
+
 const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocComment | undefined => {
+  const target = tokenIndexByOffset(state.allTokens).get(tokenOffset);
+  if (target === undefined) return undefined;
+
   const docCommentLines: string[] = [];
 
-  for (let i = 0; i < state.allTokens.length; i++) {
+  for (let i = target - 1; i >= 0; i--) {
     const token = state.allTokens[i]!;
-    if (token.start.offset >= tokenOffset) break;
-
+    if (token.kind === TokenKind.Whitespace || token.kind === TokenKind.Newline) continue;
     if (token.kind === TokenKind.Comment && token.value.startsWith('---')) {
-      const nextNonTrivia = state.allTokens.slice(i + 1).find(t => isTrivia(t.kind) === false);
-      if (nextNonTrivia !== undefined && nextNonTrivia.start.offset === tokenOffset) docCommentLines.push(token.value);
-      else if (docCommentLines.length > 0) {
-        const lastDocLine = state.allTokens[i - 1];
-        if (lastDocLine !== undefined && lastDocLine.kind === TokenKind.Comment && lastDocLine.value.startsWith('---'))
-          docCommentLines.push(token.value);
-      }
-    } else if (token.kind !== TokenKind.Whitespace && token.kind !== TokenKind.Newline) docCommentLines.length = 0;
+      docCommentLines.push(token.value);
+      continue;
+    }
+    break;
   }
 
   if (docCommentLines.length === 0) return undefined;
 
-  const combined = docCommentLines.join('\n');
-  return parseDocComment(combined);
+  docCommentLines.reverse();
+  return parseDocComment(docCommentLines.join('\n'));
 };
 
 const collectDocComment = (state: ParserState): DocComment | undefined => {
