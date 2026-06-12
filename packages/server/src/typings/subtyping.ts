@@ -214,6 +214,7 @@ export const narrowType = (type: LuauType, guard: LuauType): LuauType => {
     const narrowed = resolved.types.filter(t => isSubtype(t, guard, defaultContext));
     if (narrowed.length === 0) return { 'kind': 'Never' };
     if (narrowed.length === 1) return narrowed[0]!;
+    if (narrowed.length === resolved.types.length) return resolved;
     return { 'kind': 'Union', 'types': narrowed };
   }
 
@@ -230,6 +231,7 @@ export const excludeType = (type: LuauType, excluded: LuauType): LuauType => {
     const remaining = resolved.types.filter(t => isSubtype(t, excluded, defaultContext) === false);
     if (remaining.length === 0) return { 'kind': 'Never' };
     if (remaining.length === 1) return remaining[0]!;
+    if (remaining.length === resolved.types.length) return resolved;
     return { 'kind': 'Union', 'types': remaining };
   }
 

@@ -14,6 +14,19 @@ import type { TypeCheckMode } from '@typings/subtyping';
 import type { ModuleExport, ModuleInfo, RojoState } from '@typings/workspace';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
+/** Simple string hash for cache key generation */
+const hashString = (str: string): number => {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  return hash >>> 0;
+};
+
+/** Cache for parsed documents keyed by URI + content hash */
+const documentCache = new Map<string, { hash: number; doc: ParsedDocument }>();
+
+/** Maximum number of cached documents */
+const MAX_CACHE_SIZE = 100;
+
 const countLines = (content: string): number => {
   let count = 1;
   for (let i = 0; i < content.length; i++) if (content[i] === '\n') count++;
@@ -51,6 +64,15 @@ export const createDocumentManager = (): DocumentManager => {
     const uri = doc.uri;
     const version = doc.version;
     const content = doc.getText();
+
+    // Check cache first - skip expensive parsing if content hasn't changed
+    const contentHash = hashString(content);
+    const cached = documentCache.get(uri);
+    if (cached !== undefined && cached.hash === contentHash && cached.doc.version === version) {
+      const cachedDoc = cached.doc;
+      documents.set(uri, cachedDoc);
+      return cachedDoc;
+    }
 
     const parseResult = parse(content);
     const ast = parseResult.ast;
@@ -145,6 +167,14 @@ export const createDocumentManager = (): DocumentManager => {
       typeErrors,
       typeCheckResult,
     };
+
+    // Update cache with size limit
+    documentCache.set(uri, { 'hash': contentHash, 'doc': parsed });
+    if (documentCache.size > MAX_CACHE_SIZE) {
+      // Evict oldest entries (simple strategy: clear half when over limit)
+      const keys = [...documentCache.keys()].slice(0, Math.floor(MAX_CACHE_SIZE / 2));
+      for (const key of keys) documentCache.delete(key);
+    }
 
     documents.set(uri, parsed);
     return parsed;

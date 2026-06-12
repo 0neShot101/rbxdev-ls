@@ -379,21 +379,31 @@ const buildSemanticTokens = (tokenInfos: TokenInfo[]): SemanticTokens => {
   return builder.build();
 };
 
+const tokenCache = new WeakMap<Chunk, TokenInfo[]>();
+
+const cachedSemanticTokens = (ast: Chunk): TokenInfo[] => {
+  const cached = tokenCache.get(ast);
+  if (cached !== undefined) return cached;
+
+  const tokens = collectSemanticTokens(ast);
+  tokenCache.set(ast, tokens);
+  return tokens;
+};
+
 /** Provides enhanced syntax highlighting by classifying tokens based on their semantic meaning. */
 export const setupSemanticTokensHandler = (connection: Connection, documentManager: DocumentManager): void => {
   connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticTokens => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return { 'data': [] };
 
-    const tokens = collectSemanticTokens(document.ast);
-    return buildSemanticTokens(tokens);
+    return buildSemanticTokens(cachedSemanticTokens(document.ast));
   });
 
   connection.languages.semanticTokens.onRange((params: SemanticTokensRangeParams): SemanticTokens => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return { 'data': [] };
 
-    const allTokens = collectSemanticTokens(document.ast);
+    const allTokens = cachedSemanticTokens(document.ast);
     const startLine = params.range.start.line;
     const endLine = params.range.end.line;
 

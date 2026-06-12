@@ -1068,46 +1068,51 @@ const inferTableExpression = (state: CheckerState, table: TableExpression): Tabl
   return createTableType(properties);
 };
 
+const arithmeticOps = new Set(['+', '-', '*', '/', '//', '%', '^']);
+const comparisonOps = new Set(['<', '<=', '>', '>=']);
+const mathTypeNames = new Set(['Vector3', 'Vector2', 'CFrame', 'UDim', 'UDim2', 'Color3']);
+
+const hasMathShape = (t: TableType): boolean => {
+  if (t.properties.has('X') && t.properties.has('Y')) return true;
+  if (t.properties.has('Width') && t.properties.has('Height')) return true;
+  if (t.properties.has('Scale') && t.properties.has('Offset')) return true;
+  return false;
+};
+
+const isNumericCompatible = (t: LuauType): boolean => {
+  if (t.kind === 'Any' || t.kind === 'Error') return true;
+  if (t.kind === 'Primitive' && t.name === 'number') return true;
+  if (t.kind === 'Literal' && t.baseType === 'number') return true;
+  if (t.kind === 'TypeReference' && mathTypeNames.has(t.name)) return true;
+  if (t.kind === 'Union') return t.types.some(member => isNumericCompatible(member));
+  if (t.kind === 'Table') return hasMathShape(t);
+  return false;
+};
+
+const isDefinitelyNumeric = (t: LuauType): boolean => {
+  if (t.kind === 'Any' || t.kind === 'Error') return true;
+  if (t.kind === 'Primitive' && t.name === 'number') return true;
+  if (t.kind === 'Literal' && t.baseType === 'number') return true;
+  if (t.kind === 'TypeReference' && mathTypeNames.has(t.name)) return true;
+  if (t.kind === 'Union') return t.types.every(member => isDefinitelyNumeric(member));
+  if (t.kind === 'Table') return hasMathShape(t);
+  return false;
+};
+
+const getMathType = (t: LuauType): LuauType | undefined => {
+  if (t.kind === 'TypeReference' && mathTypeNames.has(t.name)) return t;
+  if (t.kind === 'Class' && mathTypeNames.has(t.name)) return t;
+  if (t.kind === 'Table' && hasMathShape(t)) return t;
+  return undefined;
+};
+
 const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): LuauType => {
   const leftType = inferExpression(state, expr.left);
   const rightType = inferExpression(state, expr.right);
 
-  const arithmeticOps = ['+', '-', '*', '/', '//', '%', '^'];
-  const comparisonOps = ['<', '<=', '>', '>='];
-
-  if (arithmeticOps.includes(expr.operator)) {
+  if (arithmeticOps.has(expr.operator)) {
     const leftResolved = resolveType(leftType, state.env.classes);
     const rightResolved = resolveType(rightType, state.env.classes);
-
-    const mathTypeNames = ['Vector3', 'Vector2', 'CFrame', 'UDim', 'UDim2', 'Color3'];
-
-    const isNumericCompatible = (t: LuauType): boolean => {
-      if (t.kind === 'Any' || t.kind === 'Error') return true;
-      if (t.kind === 'Primitive' && t.name === 'number') return true;
-      if (t.kind === 'Literal' && t.baseType === 'number') return true;
-      if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return true;
-      if (t.kind === 'Union') return t.types.some(member => isNumericCompatible(member));
-      if (t.kind === 'Table') {
-        if (t.properties.has('X') && t.properties.has('Y')) return true;
-        if (t.properties.has('Width') && t.properties.has('Height')) return true;
-        if (t.properties.has('Scale') && t.properties.has('Offset')) return true;
-      }
-      return false;
-    };
-
-    const isDefinitelyNumeric = (t: LuauType): boolean => {
-      if (t.kind === 'Any' || t.kind === 'Error') return true;
-      if (t.kind === 'Primitive' && t.name === 'number') return true;
-      if (t.kind === 'Literal' && t.baseType === 'number') return true;
-      if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return true;
-      if (t.kind === 'Union') return t.types.every(member => isDefinitelyNumeric(member));
-      if (t.kind === 'Table') {
-        if (t.properties.has('X') && t.properties.has('Y')) return true;
-        if (t.properties.has('Width') && t.properties.has('Height')) return true;
-        if (t.properties.has('Scale') && t.properties.has('Offset')) return true;
-      }
-      return false;
-    };
 
     const checkOperand = (resolved: LuauType, original: LuauType, range: typeof expr.left.range): void => {
       if (isNumericCompatible(resolved) === false)
@@ -1131,17 +1136,6 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     checkOperand(leftResolved, leftType, expr.left.range);
     checkOperand(rightResolved, rightType, expr.right.range);
 
-    const getMathType = (t: LuauType): LuauType | undefined => {
-      if (t.kind === 'TypeReference' && mathTypeNames.includes(t.name)) return t;
-      if (t.kind === 'Class' && mathTypeNames.includes(t.name)) return t;
-      if (t.kind === 'Table') {
-        if (t.properties.has('X') && t.properties.has('Y')) return t;
-        if (t.properties.has('Width') && t.properties.has('Height')) return t;
-        if (t.properties.has('Scale') && t.properties.has('Offset')) return t;
-      }
-      return undefined;
-    };
-
     const leftMathType = getMathType(leftResolved);
     if (leftMathType !== undefined) return leftMathType;
 
@@ -1151,7 +1145,7 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
     return NumberType;
   }
 
-  if (comparisonOps.includes(expr.operator)) return BooleanType;
+  if (comparisonOps.has(expr.operator)) return BooleanType;
 
   switch (expr.operator) {
     case '..':
@@ -1354,6 +1348,49 @@ const inferSignalWaitReturnType = (signalType: LuauType): LuauType => {
   return callbackParamTypes[0]!;
 };
 
+const methodCorrections: Record<string, string> = {
+  'connect': 'Connect',
+  'disconnect': 'Disconnect',
+  'wait': 'Wait',
+  'once': 'Once',
+  'destroy': 'Destroy',
+  'clone': 'Clone',
+  'getchildren': 'GetChildren',
+  'getdescendants': 'GetDescendants',
+  'findfirstchild': 'FindFirstChild',
+  'findfirstchildofclass': 'FindFirstChildOfClass',
+  'findfirstchildwhichisa': 'FindFirstChildWhichIsA',
+  'findfirstancestor': 'FindFirstAncestor',
+  'findfirstancestorofclass': 'FindFirstAncestorOfClass',
+  'findfirstancestorwhichisa': 'FindFirstAncestorWhichIsA',
+  'waitforchild': 'WaitForChild',
+  'isa': 'IsA',
+  'isancestorof': 'IsAncestorOf',
+  'isdescendantof': 'IsDescendantOf',
+  'getattribute': 'GetAttribute',
+  'setattribute': 'SetAttribute',
+  'getattributes': 'GetAttributes',
+  'getpropertychangedsignal': 'GetPropertyChangedSignal',
+  'getattributechangedsignal': 'GetAttributeChangedSignal',
+  'setprimarypartcframe': 'SetPrimaryPartCFrame',
+  'getprimarypartcframe': 'GetPrimaryPartCFrame',
+  'moveto': 'MoveTo',
+  'tweenposition': 'TweenPosition',
+  'tweensize': 'TweenSize',
+  'tweensizeandposition': 'TweenSizeAndPosition',
+  'play': 'Play',
+  'stop': 'Stop',
+  'pause': 'Pause',
+  'resume': 'Resume',
+  'fire': 'Fire',
+  'invoke': 'Invoke',
+  'fireserver': 'FireServer',
+  'fireclient': 'FireClient',
+  'fireallclients': 'FireAllClients',
+  'invokeserver': 'InvokeServer',
+  'invokeclient': 'InvokeClient',
+};
+
 const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpression): LuauType => {
   const objectType = resolveType(inferExpression(state, expr.object), state.env.classes);
 
@@ -1446,49 +1483,6 @@ const inferMethodCallExpression = (state: CheckerState, expr: MethodCallExpressi
     }
   }
 
-  const methodCorrections: Record<string, string> = {
-    'connect': 'Connect',
-    'disconnect': 'Disconnect',
-    'wait': 'Wait',
-    'once': 'Once',
-    'destroy': 'Destroy',
-    'clone': 'Clone',
-    'getchildren': 'GetChildren',
-    'getdescendants': 'GetDescendants',
-    'findfirstchild': 'FindFirstChild',
-    'findfirstchildofclass': 'FindFirstChildOfClass',
-    'findfirstchildwhichisa': 'FindFirstChildWhichIsA',
-    'findfirstancestor': 'FindFirstAncestor',
-    'findfirstancestorofclass': 'FindFirstAncestorOfClass',
-    'findfirstancestorwhichisa': 'FindFirstAncestorWhichIsA',
-    'waitforchild': 'WaitForChild',
-    'isa': 'IsA',
-    'isancestorof': 'IsAncestorOf',
-    'isdescendantof': 'IsDescendantOf',
-    'getattribute': 'GetAttribute',
-    'setattribute': 'SetAttribute',
-    'getattributes': 'GetAttributes',
-    'getpropertychangedsignal': 'GetPropertyChangedSignal',
-    'getattributechangedsignal': 'GetAttributeChangedSignal',
-    'setprimarypartcframe': 'SetPrimaryPartCFrame',
-    'getprimarypartcframe': 'GetPrimaryPartCFrame',
-    'moveto': 'MoveTo',
-    'tweenposition': 'TweenPosition',
-    'tweensize': 'TweenSize',
-    'tweensizeandposition': 'TweenSizeAndPosition',
-    'play': 'Play',
-    'stop': 'Stop',
-    'pause': 'Pause',
-    'resume': 'Resume',
-    'fire': 'Fire',
-    'invoke': 'Invoke',
-    'fireserver': 'FireServer',
-    'fireclient': 'FireClient',
-    'fireallclients': 'FireAllClients',
-    'invokeserver': 'InvokeServer',
-    'invokeclient': 'InvokeClient',
-  };
-
   const lowercaseName = expr.method.name.toLowerCase();
   const correction = methodCorrections[lowercaseName];
   if (correction !== undefined && expr.method.name !== correction) {
@@ -1558,6 +1552,27 @@ const inferIndexExpression = (state: CheckerState, expr: IndexExpression): LuauT
   return AnyType;
 };
 
+const propertyCorrections: Record<string, { correct: string; message: string }> = {
+  'children': { 'correct': 'GetChildren', 'message': "Use 'GetChildren()' method instead of 'children' property." },
+  'parent': { 'correct': 'Parent', 'message': "Use 'Parent' (capitalized) instead of 'parent'." },
+  'name': { 'correct': 'Name', 'message': "Use 'Name' (capitalized) instead of 'name'." },
+  'classname': { 'correct': 'ClassName', 'message': "Use 'ClassName' (capitalized) instead of 'classname'." },
+  'position': { 'correct': 'Position', 'message': "Use 'Position' (capitalized) instead of 'position'." },
+  'cframe': { 'correct': 'CFrame', 'message': "Use 'CFrame' (capitalized) instead of 'cframe'." },
+  'size': { 'correct': 'Size', 'message': "Use 'Size' (capitalized) instead of 'size'." },
+  'color': { 'correct': 'Color', 'message': "Use 'Color' (capitalized) instead of 'color'." },
+  'transparency': {
+    'correct': 'Transparency',
+    'message': "Use 'Transparency' (capitalized) instead of 'transparency'.",
+  },
+  'visible': { 'correct': 'Visible', 'message': "Use 'Visible' (capitalized) instead of 'visible'." },
+  'enabled': { 'correct': 'Enabled', 'message': "Use 'Enabled' (capitalized) instead of 'enabled'." },
+  'anchored': { 'correct': 'Anchored', 'message': "Use 'Anchored' (capitalized) instead of 'anchored'." },
+  'cancollide': { 'correct': 'CanCollide', 'message': "Use 'CanCollide' (capitalized) instead of 'cancollide'." },
+  'value': { 'correct': 'Value', 'message': "Use 'Value' (capitalized) instead of 'value'." },
+  'text': { 'correct': 'Text', 'message': "Use 'Text' (capitalized) instead of 'text'." },
+};
+
 const inferMemberExpression = (state: CheckerState, expr: MemberExpression): LuauType => {
   const objectType = resolveType(inferExpression(state, expr.object), state.env.classes);
 
@@ -1614,27 +1629,6 @@ const inferMemberExpression = (state: CheckerState, expr: MemberExpression): Lua
   if (objectType.kind === 'Any') return AnyType;
 
   if (objectType.kind === 'Error') return objectType;
-
-  const propertyCorrections: Record<string, { correct: string; message: string }> = {
-    'children': { 'correct': 'GetChildren', 'message': "Use 'GetChildren()' method instead of 'children' property." },
-    'parent': { 'correct': 'Parent', 'message': "Use 'Parent' (capitalized) instead of 'parent'." },
-    'name': { 'correct': 'Name', 'message': "Use 'Name' (capitalized) instead of 'name'." },
-    'classname': { 'correct': 'ClassName', 'message': "Use 'ClassName' (capitalized) instead of 'classname'." },
-    'position': { 'correct': 'Position', 'message': "Use 'Position' (capitalized) instead of 'position'." },
-    'cframe': { 'correct': 'CFrame', 'message': "Use 'CFrame' (capitalized) instead of 'cframe'." },
-    'size': { 'correct': 'Size', 'message': "Use 'Size' (capitalized) instead of 'size'." },
-    'color': { 'correct': 'Color', 'message': "Use 'Color' (capitalized) instead of 'color'." },
-    'transparency': {
-      'correct': 'Transparency',
-      'message': "Use 'Transparency' (capitalized) instead of 'transparency'.",
-    },
-    'visible': { 'correct': 'Visible', 'message': "Use 'Visible' (capitalized) instead of 'visible'." },
-    'enabled': { 'correct': 'Enabled', 'message': "Use 'Enabled' (capitalized) instead of 'enabled'." },
-    'anchored': { 'correct': 'Anchored', 'message': "Use 'Anchored' (capitalized) instead of 'anchored'." },
-    'cancollide': { 'correct': 'CanCollide', 'message': "Use 'CanCollide' (capitalized) instead of 'cancollide'." },
-    'value': { 'correct': 'Value', 'message': "Use 'Value' (capitalized) instead of 'value'." },
-    'text': { 'correct': 'Text', 'message': "Use 'Text' (capitalized) instead of 'text'." },
-  };
 
   const lowercaseName = expr.property.name.toLowerCase();
   const correction = propertyCorrections[lowercaseName];

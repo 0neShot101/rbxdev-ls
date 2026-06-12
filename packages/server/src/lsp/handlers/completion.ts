@@ -1741,6 +1741,39 @@ const resolveRequireModuleType = (
   return undefined;
 };
 
+const buildScanPatterns = (varName: string) => ({
+  'instanceNew': new RegExp(
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*Instance\\s*\\.\\s*new\\s*\\(\\s*["']([\\w]+)["']`,
+  ),
+  'getService': new RegExp(
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*:\\s*[Gg]et[Ss]ervice\\s*\\(?\\s*["']([\\w]+)["']`,
+  ),
+  'gameService': new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*\\.\\s*([\\w]+)`),
+  'workspace': new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*workspace\\b`),
+  'findChildOfClass': new RegExp(
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildOfClass\\s*\\(\\s*["']([\\w]+)["']`,
+  ),
+  'findChildWhichIsA': new RegExp(
+    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildWhichIsA\\s*\\(\\s*["']([\\w]+)["']`,
+  ),
+  'require': new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*require\\s*\\(\\s*([^)]+)\\s*\\)`),
+  'indirect': new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(\\w+)([.:][^\\n]+)`),
+  'isDefined': new RegExp(`local\\s+${varName}\\b`),
+});
+
+const scanPatternCache = new Map<string, ReturnType<typeof buildScanPatterns>>();
+
+const scanPatternsFor = (varName: string): ReturnType<typeof buildScanPatterns> => {
+  const cached = scanPatternCache.get(varName);
+  if (cached !== undefined) return cached;
+
+  if (scanPatternCache.size >= 512) scanPatternCache.clear();
+
+  const patterns = buildScanPatterns(varName);
+  scanPatternCache.set(varName, patterns);
+  return patterns;
+};
+
 const quickScanForVariableType = (
   varName: string,
   content: string,
@@ -1751,10 +1784,9 @@ const quickScanForVariableType = (
   const log = logFn ?? debugLog;
   log(`quickScan for: ${varName}`);
 
-  const instanceNewPattern = new RegExp(
-    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*Instance\\s*\\.\\s*new\\s*\\(\\s*["']([\\w]+)["']`,
-  );
-  const instanceNewMatch = content.match(instanceNewPattern);
+  const patterns = scanPatternsFor(varName);
+
+  const instanceNewMatch = content.match(patterns.instanceNew);
   log(`instanceNewMatch: ${instanceNewMatch !== null ? instanceNewMatch[0] : 'null'}`);
   if (instanceNewMatch !== null) {
     const className = instanceNewMatch[1];
@@ -1765,10 +1797,7 @@ const quickScanForVariableType = (
     }
   }
 
-  const getServicePattern = new RegExp(
-    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*:\\s*[Gg]et[Ss]ervice\\s*\\(?\\s*["']([\\w]+)["']`,
-  );
-  const getServiceMatch = content.match(getServicePattern);
+  const getServiceMatch = content.match(patterns.getService);
   if (getServiceMatch !== null) {
     const serviceName = getServiceMatch[1];
     if (serviceName !== undefined) {
@@ -1777,8 +1806,7 @@ const quickScanForVariableType = (
     }
   }
 
-  const gameServicePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*game\\s*\\.\\s*([\\w]+)`);
-  const gameServiceMatch = content.match(gameServicePattern);
+  const gameServiceMatch = content.match(patterns.gameService);
   if (gameServiceMatch !== null) {
     const serviceName = gameServiceMatch[1];
     if (serviceName !== undefined) {
@@ -1790,16 +1818,12 @@ const quickScanForVariableType = (
     }
   }
 
-  const workspacePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*workspace\\b`);
-  if (workspacePattern.test(content)) {
+  if (patterns.workspace.test(content)) {
     const workspaceClass = documentManager.globalEnv.robloxClasses.get('Workspace');
     if (workspaceClass !== undefined) return workspaceClass;
   }
 
-  const findChildOfClassPattern = new RegExp(
-    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildOfClass\\s*\\(\\s*["']([\\w]+)["']`,
-  );
-  const findChildOfClassMatch = content.match(findChildOfClassPattern);
+  const findChildOfClassMatch = content.match(patterns.findChildOfClass);
   if (findChildOfClassMatch !== null) {
     const className = findChildOfClassMatch[1];
     if (className !== undefined) {
@@ -1808,10 +1832,7 @@ const quickScanForVariableType = (
     }
   }
 
-  const findChildWhichIsAPattern = new RegExp(
-    `local\\s+${varName}${TYPE_ANNOT_RE}\\s*=.*:FindFirstChildWhichIsA\\s*\\(\\s*["']([\\w]+)["']`,
-  );
-  const findChildWhichIsAMatch = content.match(findChildWhichIsAPattern);
+  const findChildWhichIsAMatch = content.match(patterns.findChildWhichIsA);
   if (findChildWhichIsAMatch !== null) {
     const className = findChildWhichIsAMatch[1];
     if (className !== undefined) {
@@ -1820,8 +1841,7 @@ const quickScanForVariableType = (
     }
   }
 
-  const requirePattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*require\\s*\\(\\s*([^)]+)\\s*\\)`);
-  const requireMatch = content.match(requirePattern);
+  const requireMatch = content.match(patterns.require);
   if (requireMatch !== null) {
     const requireArg = requireMatch[1]?.trim();
     if (requireArg !== undefined) {
@@ -1830,8 +1850,7 @@ const quickScanForVariableType = (
     }
   }
 
-  const indirectPattern = new RegExp(`local\\s+${varName}${TYPE_ANNOT_RE}\\s*=\\s*(\\w+)([.:][^\\n]+)`);
-  const indirectMatch = content.match(indirectPattern);
+  const indirectMatch = content.match(patterns.indirect);
   if (indirectMatch !== null && indirectMatch[1] !== undefined && indirectMatch[2] !== undefined) {
     const sourceVar = indirectMatch[1];
     const suffix = indirectMatch[2].trim();
@@ -1858,12 +1877,9 @@ const quickScanForVariableType = (
   }
 
   const hintedClass = VARIABLE_NAME_HINTS.get(varName);
-  if (hintedClass !== undefined) {
-    const isDefinedPattern = new RegExp(`local\\s+${varName}\\b`);
-    if (isDefinedPattern.test(content)) {
-      const classType = documentManager.globalEnv.robloxClasses.get(hintedClass);
-      if (classType !== undefined) return classType;
-    }
+  if (hintedClass !== undefined && patterns.isDefined.test(content)) {
+    const classType = documentManager.globalEnv.robloxClasses.get(hintedClass);
+    if (classType !== undefined) return classType;
   }
 
   return undefined;
@@ -2704,9 +2720,12 @@ export const setupCompletionHandler = (
     if (liveDoc === undefined) return { 'isIncomplete': false, 'items': [] };
 
     const content = liveDoc.getText();
-    const lines = content.split('\n');
-    const line = lines[params.position.line];
-    if (line === undefined) return { 'isIncomplete': false, 'items': [] };
+    if (params.position.line >= liveDoc.lineCount) return { 'isIncomplete': false, 'items': [] };
+
+    const lineStart = liveDoc.offsetAt({ 'line': params.position.line, 'character': 0 });
+    const lineEnd = liveDoc.offsetAt({ 'line': params.position.line + 1, 'character': 0 });
+    const rawLine = content.slice(lineStart, lineEnd);
+    const line = rawLine.endsWith('\n') ? rawLine.slice(0, -1) : rawLine;
 
     const beforeCursor = line.slice(0, params.position.character);
     log(`beforeCursor: "${beforeCursor}"`);

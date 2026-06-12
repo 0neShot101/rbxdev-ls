@@ -1,7 +1,6 @@
 import {
   TokenKind,
   TokenKindName,
-  type BinaryOpInfo,
   type DocComment,
   type ParseResult,
   type ParserState,
@@ -46,24 +45,27 @@ import { parseDocComment } from '@parser/docComment';
 import { createLexer } from '@parser/lexer';
 import { isTrivia } from '@parser/tokens';
 
-const BINARY_OP_INFO: ReadonlyMap<TokenKind, BinaryOpInfo> = new Map([
-  [TokenKind.Or, { 'operator': 'or' as BinaryOperator, 'precedence': 1, 'rightAssociative': false }],
-  [TokenKind.And, { 'operator': 'and' as BinaryOperator, 'precedence': 2, 'rightAssociative': false }],
-  [TokenKind.Less, { 'operator': '<' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.Greater, { 'operator': '>' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.LessEqual, { 'operator': '<=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.GreaterEqual, { 'operator': '>=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.NotEqual, { 'operator': '~=' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.Equal, { 'operator': '==' as BinaryOperator, 'precedence': 3, 'rightAssociative': false }],
-  [TokenKind.Concat, { 'operator': '..' as BinaryOperator, 'precedence': 4, 'rightAssociative': true }],
-  [TokenKind.Plus, { 'operator': '+' as BinaryOperator, 'precedence': 5, 'rightAssociative': false }],
-  [TokenKind.Minus, { 'operator': '-' as BinaryOperator, 'precedence': 5, 'rightAssociative': false }],
-  [TokenKind.Star, { 'operator': '*' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
-  [TokenKind.Slash, { 'operator': '/' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
-  [TokenKind.DoubleSlash, { 'operator': '//' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
-  [TokenKind.Percent, { 'operator': '%' as BinaryOperator, 'precedence': 6, 'rightAssociative': false }],
-  [TokenKind.Caret, { 'operator': '^' as BinaryOperator, 'precedence': 8, 'rightAssociative': true }],
-]);
+/** Binary operator info for precedence parsing - uses object for faster lookups than Map */
+const BINARY_OP_INFO: Partial<
+  Record<TokenKind, { operator: BinaryOperator; precedence: number; rightAssociative: boolean }>
+> = {
+  [TokenKind.Or]: { 'operator': 'or', 'precedence': 1, 'rightAssociative': false },
+  [TokenKind.And]: { 'operator': 'and', 'precedence': 2, 'rightAssociative': false },
+  [TokenKind.Less]: { 'operator': '<', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Greater]: { 'operator': '>', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.LessEqual]: { 'operator': '<=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.GreaterEqual]: { 'operator': '>=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.NotEqual]: { 'operator': '~=', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Equal]: { 'operator': '==', 'precedence': 3, 'rightAssociative': false },
+  [TokenKind.Concat]: { 'operator': '..', 'precedence': 4, 'rightAssociative': true },
+  [TokenKind.Plus]: { 'operator': '+', 'precedence': 5, 'rightAssociative': false },
+  [TokenKind.Minus]: { 'operator': '-', 'precedence': 5, 'rightAssociative': false },
+  [TokenKind.Star]: { 'operator': '*', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Slash]: { 'operator': '/', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.DoubleSlash]: { 'operator': '//', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Percent]: { 'operator': '%', 'precedence': 6, 'rightAssociative': false },
+  [TokenKind.Caret]: { 'operator': '^', 'precedence': 8, 'rightAssociative': true },
+};
 
 const peek = (state: ParserState, offset = 0): Token => {
   const index = state.current + offset;
@@ -658,7 +660,7 @@ const parseBinaryExpression = (state: ParserState, minPrecedence = 0): Expressio
   let left = parseUnaryExpression(state);
 
   while (true) {
-    const info = BINARY_OP_INFO.get(current(state).kind);
+    const info = BINARY_OP_INFO[current(state).kind];
     if (info === undefined || info.precedence < minPrecedence) break;
 
     advance(state);
@@ -1395,18 +1397,18 @@ const parseExpressionStatement = (state: ParserState): Statement => {
   };
 };
 
-const COMPOUND_OP_MAP: ReadonlyMap<TokenKind, CompoundOperator> = new Map([
-  [TokenKind.PlusAssign, '+='],
-  [TokenKind.MinusAssign, '-='],
-  [TokenKind.StarAssign, '*='],
-  [TokenKind.SlashAssign, '/='],
-  [TokenKind.DoubleSlashAssign, '//='],
-  [TokenKind.PercentAssign, '%='],
-  [TokenKind.CaretAssign, '^='],
-  [TokenKind.ConcatAssign, '..='],
-]);
+const COMPOUND_OP_MAP: Partial<Record<TokenKind, CompoundOperator>> = {
+  [TokenKind.PlusAssign]: '+=',
+  [TokenKind.MinusAssign]: '-=',
+  [TokenKind.StarAssign]: '*=',
+  [TokenKind.SlashAssign]: '/=',
+  [TokenKind.DoubleSlashAssign]: '//=',
+  [TokenKind.PercentAssign]: '%=',
+  [TokenKind.CaretAssign]: '^=',
+  [TokenKind.ConcatAssign]: '..=',
+};
 
-const getCompoundOperator = (token: Token): CompoundOperator | undefined => COMPOUND_OP_MAP.get(token.kind);
+const getCompoundOperator = (token: Token): CompoundOperator | undefined => COMPOUND_OP_MAP[token.kind];
 
 const parseBlock = (state: ParserState): Statement[] => {
   const statements: Statement[] = [];
@@ -1426,28 +1428,38 @@ const parseBlock = (state: ParserState): Statement[] => {
   return statements;
 };
 
+const tokenIndexCache = new WeakMap<ReadonlyArray<Token>, Map<number, number>>();
+
+const tokenIndexByOffset = (tokens: ReadonlyArray<Token>): Map<number, number> => {
+  const cached = tokenIndexCache.get(tokens);
+  if (cached !== undefined) return cached;
+
+  const byOffset = new Map<number, number>();
+  for (let i = 0; i < tokens.length; i++) byOffset.set(tokens[i]!.start.offset, i);
+  tokenIndexCache.set(tokens, byOffset);
+  return byOffset;
+};
+
 const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocComment | undefined => {
+  const target = tokenIndexByOffset(state.allTokens).get(tokenOffset);
+  if (target === undefined) return undefined;
+
   const docCommentLines: string[] = [];
 
-  for (let i = 0; i < state.allTokens.length; i++) {
+  for (let i = target - 1; i >= 0; i--) {
     const token = state.allTokens[i]!;
-    if (token.start.offset >= tokenOffset) break;
-
+    if (token.kind === TokenKind.Whitespace || token.kind === TokenKind.Newline) continue;
     if (token.kind === TokenKind.Comment && token.value.startsWith('---')) {
-      const nextNonTrivia = state.allTokens.slice(i + 1).find(t => isTrivia(t.kind) === false);
-      if (nextNonTrivia !== undefined && nextNonTrivia.start.offset === tokenOffset) docCommentLines.push(token.value);
-      else if (docCommentLines.length > 0) {
-        const lastDocLine = state.allTokens[i - 1];
-        if (lastDocLine !== undefined && lastDocLine.kind === TokenKind.Comment && lastDocLine.value.startsWith('---'))
-          docCommentLines.push(token.value);
-      }
-    } else if (token.kind !== TokenKind.Whitespace && token.kind !== TokenKind.Newline) docCommentLines.length = 0;
+      docCommentLines.push(token.value);
+      continue;
+    }
+    break;
   }
 
   if (docCommentLines.length === 0) return undefined;
 
-  const combined = docCommentLines.join('\n');
-  return parseDocComment(combined);
+  docCommentLines.reverse();
+  return parseDocComment(docCommentLines.join('\n'));
 };
 
 const collectDocComment = (state: ParserState): DocComment | undefined => {

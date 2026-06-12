@@ -270,6 +270,54 @@ export interface VariadicType {
   readonly type: LuauType;
 }
 
+const dedupKey = (type: LuauType): string | undefined => {
+  const resolved = resolveType(type);
+  switch (resolved.kind) {
+    case 'Primitive':
+      return `P:${resolved.name}`;
+    case 'Literal':
+      return `L:${typeof resolved.value}:${String(resolved.value)}`;
+    case 'TypeVariable':
+      return `V:${resolved.id}`;
+    case 'Class':
+      return `C:${resolved.name}`;
+    case 'Enum':
+      return `E:${resolved.name}`;
+    case 'TypeReference':
+      return `R:${resolved.name}`;
+    case 'Any':
+    case 'Unknown':
+    case 'Never':
+      return resolved.kind;
+    default:
+      return undefined;
+  }
+};
+
+const dedupeTypes = (types: ReadonlyArray<LuauType>, skipKind: 'Never' | 'Unknown'): LuauType[] => {
+  const seen = new Set<string>();
+  const complex: LuauType[] = [];
+  const unique: LuauType[] = [];
+
+  for (const t of types) {
+    if (t.kind === skipKind) continue;
+
+    const key = dedupKey(t);
+    if (key !== undefined) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(t);
+      continue;
+    }
+
+    if (complex.some(u => typesEqual(t, u))) continue;
+    complex.push(t);
+    unique.push(t);
+  }
+
+  return unique;
+};
+
 /** Creates a union type, flattening nested unions and removing duplicates. */
 export const createUnionType = (types: ReadonlyArray<LuauType>): LuauType => {
   if (types.length === 0) return NeverType;
@@ -280,10 +328,7 @@ export const createUnionType = (types: ReadonlyArray<LuauType>): LuauType => {
     if (t.kind === 'Union') flattened.push(...t.types);
     else flattened.push(t);
 
-  const unique = flattened.filter((t, i) => {
-    if (t.kind === 'Never') return false;
-    return flattened.findIndex(u => typesEqual(t, u)) === i;
-  });
+  const unique = dedupeTypes(flattened, 'Never');
 
   if (unique.length === 0) return NeverType;
   if (unique.length === 1) return unique[0]!;
@@ -305,10 +350,7 @@ export const createIntersectionType = (types: ReadonlyArray<LuauType>): LuauType
 
   if (flattened.some(t => t.kind === 'Never')) return NeverType;
 
-  const unique = flattened.filter((t, i) => {
-    if (t.kind === 'Unknown') return false;
-    return flattened.findIndex(u => typesEqual(t, u)) === i;
-  });
+  const unique = dedupeTypes(flattened, 'Unknown');
 
   if (unique.length === 0) return UnknownType;
   if (unique.length === 1) return unique[0]!;
@@ -503,83 +545,119 @@ export const typesEqual = (a: LuauType, b: LuauType): boolean => {
   }
 };
 
+/** Memoization cache for typeToString - keyed by type object reference */
+const typeToStringCache = new WeakMap<object, string>();
+
 /** Converts a type to its string representation. */
 export const typeToString = (type: LuauType): string => {
+  // Check cache for object types (using object identity)
+  if (typeof type === 'object' && type !== null) {
+    const cached = typeToStringCache.get(type as object);
+    if (cached !== undefined) return cached;
+  }
+
   const resolved = resolveType(type);
+
+  let result: string;
 
   switch (resolved.kind) {
     case 'Primitive':
-      return resolved.name;
+      result = resolved.name;
+      break;
 
     case 'Literal':
-      if (typeof resolved.value === 'string') return `"${resolved.value}"`;
-      return String(resolved.value);
+      result = typeof resolved.value === 'string' ? `"${resolved.value}"` : String(resolved.value);
+      break;
 
     case 'Function': {
       const params = resolved.params.map(p => {
         const name = p.name !== undefined ? `${p.name}: ` : '';
         return `${name}${typeToString(p.type)}`;
       });
-      return `(${params.join(', ')}) -> ${typeToString(resolved.returnType)}`;
+      result = `(${params.join(', ')}) -> ${typeToString(resolved.returnType)}`;
+      break;
     }
 
     case 'Table': {
-      if (resolved.isArray && resolved.indexer !== undefined) return `{${typeToString(resolved.indexer.valueType)}}`;
-      if (resolved.properties.size === 0 && resolved.indexer !== undefined)
-        return `{[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}}`;
-      const props = Array.from(resolved.properties.entries())
-        .map(([k, v]) => `${k}: ${typeToString(v.type)}`)
-        .join(', ');
-      if (resolved.indexer !== undefined) {
-        const indexerStr = `[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}`;
-        return `{${props}, ${indexerStr}}`;
+      if (resolved.isArray && resolved.indexer !== undefined) result = `{${typeToString(resolved.indexer.valueType)}}`;
+      else if (resolved.properties.size === 0 && resolved.indexer !== undefined)
+        result = `{[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}}`;
+      else {
+        const props = Array.from(resolved.properties.entries())
+          .map(([k, v]) => `${k}: ${typeToString(v.type)}`)
+          .join(', ');
+        if (resolved.indexer !== undefined) {
+          const indexerStr = `[${typeToString(resolved.indexer.keyType)}]: ${typeToString(resolved.indexer.valueType)}`;
+          result = `{${props}, ${indexerStr}}`;
+        } else result = `{${props}}`;
       }
-      return `{${props}}`;
+      break;
     }
 
     case 'Class':
-      return resolved.name;
+      result = resolved.name;
+      break;
 
     case 'Enum':
-      return `Enum.${resolved.name}`;
+      result = `Enum.${resolved.name}`;
+      break;
 
     case 'Union':
-      return resolved.types.map(typeToString).join(' | ');
+      result = resolved.types.map(typeToString).join(' | ');
+      break;
 
     case 'Intersection':
-      return resolved.types.map(typeToString).join(' & ');
+      result = resolved.types.map(typeToString).join(' & ');
+      break;
 
     case 'Optional':
-      return `${typeToString(resolved.type)}?`;
+      result = `${typeToString(resolved.type)}?`;
+      break;
 
     case 'Variadic':
-      return `...${typeToString(resolved.type)}`;
+      result = `...${typeToString(resolved.type)}`;
+      break;
 
     case 'Generic':
-      return `${typeToString(resolved.base)}<${resolved.typeArgs.map(typeToString).join(', ')}>`;
+      result = `${typeToString(resolved.base)}<${resolved.typeArgs.map(typeToString).join(', ')}>`;
+      break;
 
     case 'TypeVariable':
-      return resolved.name;
+      result = resolved.name;
+      break;
 
     case 'TypeReference':
-      return resolved.name;
+      result = resolved.name;
+      break;
 
     case 'Any':
-      return 'any';
+      result = 'any';
+      break;
 
     case 'Unknown':
-      return 'unknown';
+      result = 'unknown';
+      break;
 
     case 'Never':
-      return 'never';
+      result = 'never';
+      break;
 
     case 'Error':
-      return `<error: ${resolved.message}>`;
+      result = `<error: ${resolved.message}>`;
+      break;
 
     case 'Lazy':
-      return typeToString(resolveLazyType(resolved));
+      result = typeToString(resolveLazyType(resolved));
+      break;
 
     default:
-      return '<unknown>';
+      result = '<unknown>';
   }
+
+  // Cache the result for object types
+  if (typeof resolved === 'object' && resolved !== null) {
+    typeToStringCache.set(resolved as object, result);
+  }
+
+  return result;
 };
