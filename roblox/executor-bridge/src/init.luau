@@ -40,6 +40,12 @@ if isDevBuild then warn'[rbxdev-bridge] DEV BUILD active (hot-reloaded)' end
 local userConfig = (...) or {}
 config.applyUserConfig(userConfig)
 
+-- A hot reload only swaps bridge code; the editor still holds the tree from
+-- the prod connection it replaced. Serialising the whole DataModel at the
+-- full first-connect depth again would freeze the game on every save, so a
+-- dev build sends only a shallow tree and lets the editor refresh on demand.
+if isDevBuild then config.CONFIG.firstConnectDepth = config.CONFIG.updateTreeDepth end
+
 -- Initialize reconnect delay from config
 state.reconnectAttemptDelay = config.CONFIG.reconnectDelay
 
