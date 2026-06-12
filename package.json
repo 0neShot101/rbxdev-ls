@@ -25,6 +25,7 @@
     "build:vsix": "bun scripts/build-vsix.ts",
     "build:beta": "bun scripts/build-vsix.ts --beta",
     "build:bridge": "bun packages/luau-bundler/src/cli.ts --src roblox/executor-bridge/src --out scripts/executor-bridge.lua --header 'rbxdev executor bridge'",
+    "dev:bridge": "bun scripts/dev-bridge.ts",
     "build:studio": "bun scripts/build-studio-plugin.ts"
   },
   "devDependencies": {

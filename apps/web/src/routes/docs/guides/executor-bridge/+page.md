@@ -52,6 +52,20 @@ Once connected, you get:
 - **Remote Spy** capturing FireServer and InvokeServer calls
 - **Instance manipulation** (create, clone, delete, reparent, teleport)
 
+## Hot-reloading the bridge (contributors)
+
+Keep your existing prod bridge script in the executor as the bootstrap. Once it connects to the extension, run:
+
+```bash
+bun run dev:bridge
+```
+
+The watcher connects to the bridge port as a proxy client and, on every save under `roblox/executor-bridge/src`, rebundles and pushes the fresh build into the connected client as an `execute` message. The in-game bridge swaps itself out using the same re-execution takeover it runs on a normal re-inject, so edits go live within about a second without touching the executor again.
+
+A hot-reloaded build identifies itself as `<executor> (dev)` in the status bar, the `/health` endpoint, and the connection logs, so it is always clear whether prod or a dev build is live. Re-running the prod script (or rejoining the game) drops you back to a clean prod bridge.
+
+If the watcher reports it is waiting for an executor, connect one and save again. The watcher reads its port from `RBXDEV_BRIDGE_PORT` (default `21324`).
+
 ## Troubleshooting
 
 **Bridge not connecting?**
