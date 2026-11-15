@@ -1,5 +1,6 @@
+<svelte:head><title>Type checking | rbxdev-ls docs</title></svelte:head>
 
-# Type Checking
+# Type checking
 
 rbxdev-ls includes a Luau type checker that validates your code against the Roblox API and your own type annotations. It catches type mismatches, undefined variables, and incorrect API usage before you run your code.
 
@@ -37,17 +38,9 @@ Type inference is active but unresolvable types default to `any`. This is the de
 
 Useful for generated code or files you don't control.
 
-## Changing the default
+## Default mode
 
-The global default is `nonstrict`. Change it in VS Code settings:
-
-```json
-{
-  "rbxdev-ls.typeCheckMode": "strict"
-}
-```
-
-Per-file directives always override the global setting.
+Files without a directive are checked in `nonstrict` mode. The language server does not read the `rbxdev-ls.typeCheckMode` setting, so add a directive to each file that needs a different mode.
 
 ## Ignore directives
 
@@ -65,11 +58,11 @@ local b = bar()
 -- Diagnostics resume here
 ```
 
-| Directive | Scope |
-|-----------|-------|
-| `--@rbxls-ignore` | Suppresses the next line |
+| Directive          | Scope                              |
+| ------------------ | ---------------------------------- |
+| `--@rbxls-ignore`  | Suppresses the next line           |
 | `--@rbxls-disable` | Suppresses from this point forward |
-| `--@rbxls-enable` | Re-enables after a disable |
+| `--@rbxls-enable`  | Re-enables after a disable         |
 
 ## Roblox API types
 
@@ -79,3 +72,5 @@ The type checker loads the complete Roblox API dump at startup. This means:
 - Constructor types (`Instance.new`, `Vector3.new`, `CFrame.new`) are fully checked
 - Enum values are validated (`Enum.Material.Neon` resolves correctly)
 - Service return types from `game:GetService()` are narrowed automatically
+
+With `rbxdev-ls.api.autoUpdate` on, the extension checks once a day for a newer API dump and documentation. Downloaded data is used after the language server next starts.

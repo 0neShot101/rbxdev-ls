@@ -1,5 +1,6 @@
+<svelte:head><title>Executor bridge | rbxdev-ls docs</title></svelte:head>
 
-# Executor Bridge
+# Executor bridge
 
 The executor bridge is a Luau script that runs inside a Roblox game and opens a WebSocket connection back to VS Code. It enables live game features: Game Tree browsing, property editing, code execution, and Remote Spy.
 
@@ -27,13 +28,13 @@ loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/0neShot101/rbxde
 })
 ```
 
-| Parameter | Default | Purpose |
-|-----------|---------|---------|
-| `host` | `ws://127.0.0.1:21324` | WebSocket URL to connect to |
-| `reconnectDelay` | `5` | Seconds between reconnection attempts |
-| `firstConnectDepth` | `999` | Instance tree depth on first connection |
-| `updateTreeDepth` | `3` | Depth of tree updates when instances change |
-| `expandedTreeDepth` | `2` | Depth sent when expanding a tree node |
+| Parameter           | Default                | Purpose                                     |
+| ------------------- | ---------------------- | ------------------------------------------- |
+| `host`              | `ws://127.0.0.1:21324` | WebSocket URL to connect to                 |
+| `reconnectDelay`    | `5`                    | Seconds between reconnection attempts       |
+| `firstConnectDepth` | `999`                  | Instance tree depth on first connection     |
+| `updateTreeDepth`   | `3`                    | Depth of tree updates when instances change |
+| `expandedTreeDepth` | `2`                    | Depth sent when expanding a tree node       |
 
 ## How it works
 
@@ -54,7 +55,7 @@ Once connected, you get:
 
 ## Hot-reloading the bridge (contributors)
 
-Bootstrap from a clean slate so the live socket is owned by a reuse-aware build: rejoin the game (or stop any running bridge) so nothing is connected, then run the current `scripts/executor-bridge.lua` once as your prod bootstrap. This matters because a reload adopts the existing socket rather than reconnecting, and only a socket opened by a build that supports adoption can be reused &mdash; swapping over an older, still-connected bridge falls back to closing and reopening the socket, which crashes some executors.
+Bootstrap from a clean slate so the live socket is owned by a reuse-aware build: rejoin the game (or stop any running bridge) so nothing is connected, then run the current `scripts/executor-bridge.lua` once as your prod bootstrap. This matters because a reload adopts the existing socket rather than reconnecting, and only a socket opened by a build that supports adoption can be reused. Swapping over an older, still-connected bridge falls back to closing and reopening the socket, which crashes some executors.
 
 With the bootstrap connected, run:
 
@@ -62,7 +63,7 @@ With the bootstrap connected, run:
 bun run dev:bridge
 ```
 
-The watcher connects to the bridge port as a proxy client and, on every save under `roblox/executor-bridge/src`, rebundles and pushes the fresh build into the connected client as an `execute` message. The pushed build takes over by adopting the live socket through a dispatch trampoline &mdash; it repoints the message handlers in place instead of tearing the connection down &mdash; so edits go live within about a second with no socket churn and no executor touch.
+The watcher connects to the bridge port as a proxy client and, on every save under `roblox/executor-bridge/src`, rebundles and pushes the fresh build into the connected client as an `execute` message. The pushed build takes over by adopting the live socket through a dispatch trampoline: it repoints the message handlers in place instead of tearing the connection down. Edits go live within about a second with no socket churn and no executor touch.
 
 A hot-reloaded build identifies itself as `<executor> (dev)` in the status bar, the `/health` endpoint, and the connection logs, so it is always clear whether prod or a dev build is live. It also sends only a shallow tree on takeover, since the editor still holds the full tree from the bootstrap; use the refresh button if you need a fresh full snapshot. Rejoining the game drops you back to a clean prod bridge.
 

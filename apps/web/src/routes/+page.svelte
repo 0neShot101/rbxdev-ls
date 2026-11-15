@@ -1,14 +1,36 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
+
+	import { resolve } from '$app/paths';
+	import { COPY_RESET_MS, writeClipboard } from '$lib/clipboard';
 	import Particles from '$lib/components/Particles.svelte';
 
-	let copied = $state(false);
+	import type { CopyStatus } from '$lib/types/clipboard';
 
-	const copyInstall = () => {
-		navigator.clipboard.writeText('ext install rbxdev.rbxdev-ls');
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
+	const INSTALL_COMMAND = 'ext install rbxdev.rbxdev-ls';
+	const COPY_LABELS: Record<CopyStatus, string> = {
+		'idle': 'click to copy',
+		'copied': 'copied',
+		'failed': 'copy failed',
 	};
+
+	let status: CopyStatus = $state('idle');
+	let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const copyInstall = async (): Promise<void> => {
+		status = (await writeClipboard(INSTALL_COMMAND)) ? 'copied' : 'failed';
+		clearTimeout(resetTimer);
+		resetTimer = setTimeout(() => {
+			status = 'idle';
+		}, COPY_RESET_MS);
+	};
+
+	onDestroy(() => clearTimeout(resetTimer));
 </script>
+
+<svelte:head>
+	<title>rbxdev-ls | Luau language server for Roblox</title>
+</svelte:head>
 
 <Particles />
 
@@ -16,14 +38,14 @@
 <nav class="fixed top-0 z-50 w-full border-b border-white/5 bg-surface-base/80 backdrop-blur-xl">
 	<div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
 		<div class="flex items-center gap-3">
-			<img src="https://raw.githubusercontent.com/0neShot101/rbxdev-ls/main/packages/vscode/icon.png" alt="rbxdev-ls" class="h-8 w-8" />
+			<enhanced:img src="$lib/assets/rbxdev.png" alt="" width="64" height="64" class="h-8 w-8" />
 			<span class="text-lg font-semibold text-text-primary">rbxdev-ls</span>
 		</div>
 		<div class="hidden items-center gap-8 text-sm text-text-secondary md:flex">
 			<a href="#features" class="transition-colors hover:text-text-primary">Features</a>
 			<a href="#bridge" class="transition-colors hover:text-text-primary">Bridge</a>
 			<a href="#mcp" class="transition-colors hover:text-text-primary">MCP</a>
-			<a href="/docs" class="transition-colors hover:text-text-primary">Docs</a>
+			<a href={resolve('/docs')} class="transition-colors hover:text-text-primary">Docs</a>
 			<a href="https://github.com/0neShot101/rbxdev-ls" class="transition-colors hover:text-text-primary">GitHub</a>
 		</div>
 		<a
@@ -42,11 +64,6 @@
 	</div>
 
 	<div class="relative z-10 mx-auto max-w-4xl text-center">
-		<div class="mb-6 inline-flex items-center gap-2 rounded-full border border-brand-500/20 bg-brand-500/5 px-4 py-1.5 text-sm text-brand-300">
-			<span class="h-1.5 w-1.5 rounded-full bg-brand-400"></span>
-			v0.4.0 now available
-		</div>
-
 		<h1 class="mb-6 text-5xl font-extrabold leading-[1.1] tracking-tight text-text-primary md:text-6xl lg:text-7xl">
 			The Luau language server<br />
 			<span class="bg-linear-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
@@ -55,19 +72,20 @@
 		</h1>
 
 		<p class="mx-auto mb-10 max-w-2xl text-lg leading-relaxed text-text-secondary md:text-xl">
-			Type checking, intelligent completions, and live game tooling. Write Luau with full
-			Roblox API support, execute code in-game, and connect AI assistants to your running game.
+			Type checking, completions, and live game tooling. Write Luau against the full
+			Roblox API, run code in-game, and connect AI assistants to your running game.
 		</p>
 
 		<button
+			type="button"
 			onclick={copyInstall}
 			class="group mx-auto mb-8 flex max-w-lg items-center gap-3 rounded-xl border border-code-border bg-code-bg px-5 py-3.5 text-left font-mono text-sm transition-colors hover:border-brand-500/30"
 		>
-			<span class="text-text-muted">$</span>
+			<span class="text-text-muted" aria-hidden="true">$</span>
 			<span class="text-text-secondary">ext install</span>
 			<span class="text-brand-300">rbxdev.rbxdev-ls</span>
-			<span class="ml-auto text-xs text-text-muted transition-colors group-hover:text-text-tertiary">
-				{copied ? 'copied!' : 'click to copy'}
+			<span class="ml-auto text-xs text-text-muted transition-colors group-hover:text-text-tertiary" aria-live="polite">
+				{COPY_LABELS[status]}
 			</span>
 		</button>
 
@@ -233,7 +251,7 @@
 <footer class="border-t border-white/5 px-6 py-12">
 	<div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-sm text-text-muted md:flex-row">
 		<div class="flex items-center gap-2">
-			<img src="https://raw.githubusercontent.com/0neShot101/rbxdev-ls/main/packages/vscode/icon.png" alt="" class="h-5 w-5 opacity-50" />
+			<enhanced:img src="$lib/assets/rbxdev.png" alt="" width="40" height="40" class="h-5 w-5 opacity-50" />
 			<span>rbxdev-ls</span>
 		</div>
 		<div class="flex gap-6">
@@ -248,49 +266,49 @@
 <script lang="ts" module>
 	const features = [
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>',
-			title: 'Roblox API Completions',
-			description: 'Every class, method, property, and enum from the official API dump with inline documentation.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>',
+			'title': 'Roblox API completions',
+			'description': 'Every class, method, property, and enum from the official API dump with inline documentation.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>',
-			title: 'Luau Type Checking',
-			description: 'Catch type mismatches before runtime. Supports strict, nonstrict, and nocheck modes.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>',
+			'title': 'Luau type checking',
+			'description': 'Catch type mismatches before runtime. Supports strict, nonstrict, and nocheck modes.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
-			title: 'Go to Definition',
-			description: 'Navigate to module definitions, function declarations, and variable assignments across files.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+			'title': 'Go to definition',
+			'description': 'Navigate to module definitions, function declarations, and variable assignments across files.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
-			title: 'Rename & Refactor',
-			description: 'Safely rename symbols across your workspace. Quick fixes for undefined variables and missing requires.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+			'title': 'Rename and refactor',
+			'description': 'Safely rename symbols across your workspace. Quick fixes for undefined variables and missing requires.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>',
-			title: 'Auto Import',
-			description: 'Automatically insert require statements when completing exports from workspace modules.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>',
+			'title': 'Auto import',
+			'description': 'Automatically insert require statements when completing exports from workspace modules.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>',
-			title: 'Rojo & Sourcemap',
-			description: 'Cross-file module resolution through Rojo projects and sourcemap.json. Hot-reloads on changes.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>',
+			'title': 'Rojo and sourcemaps',
+			'description': 'Cross-file module resolution through Rojo projects and sourcemap.json. Hot-reloads on changes.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/></svg>',
-			title: 'Semantic Tokens',
-			description: 'Enhanced syntax highlighting that distinguishes services, classes, types, enums, and parameters.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/></svg>',
+			'title': 'Semantic tokens',
+			'description': 'Enhanced syntax highlighting that distinguishes services, classes, types, enums, and parameters.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>',
-			title: 'Formatting',
-			description: 'Built-in Luau formatter with StyLua integration. Format on save or on demand.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>',
+			'title': 'Formatting',
+			'description': 'Built-in Luau formatter with StyLua integration. Format on save or on demand.'
 		},
 		{
-			icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>',
-			title: 'AI Tools',
-			description: '19 language model tools for GitHub Copilot. Standalone MCP server for Claude and Cursor.'
+			'icon': '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>',
+			'title': 'AI tools',
+			'description': '15 language model tools for GitHub Copilot. A standalone MCP server with 19 tools for Claude and Cursor.'
 		},
 	];
 

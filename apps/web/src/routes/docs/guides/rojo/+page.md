@@ -1,5 +1,6 @@
+<svelte:head><title>Rojo integration | rbxdev-ls docs</title></svelte:head>
 
-# Rojo Integration
+# Rojo integration
 
 rbxdev-ls supports Rojo projects and `sourcemap.json` files for cross-file module resolution. When your workspace has a Rojo project or sourcemap, the language server maps filesystem paths to the Roblox data model, enabling `require()` resolution across files.
 

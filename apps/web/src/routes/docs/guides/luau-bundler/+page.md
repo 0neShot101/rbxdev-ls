@@ -1,5 +1,6 @@
+<svelte:head><title>Luau bundler | rbxdev-ls docs</title></svelte:head>
 
-# Luau Bundler
+# Luau bundler
 
 The Luau bundler combines multiple `.lua`/`.luau` source files into a single self-contained script. The output works with `loadstring()` in Roblox executors and anywhere else a single Lua file is needed.
 
@@ -27,11 +28,11 @@ Create `luau-bundler.config.json` in your project root:
 }
 ```
 
-| Field | Default | Purpose |
-|-------|---------|---------|
-| `src` | `src` | Directory containing your source files |
-| `output` | `dist/out.lua` | Where the bundled file is written |
-| `entry` | `init` | Module name to execute first (without extension) |
+| Field    | Default        | Purpose                                          |
+| -------- | -------------- | ------------------------------------------------ |
+| `src`    | `src`          | Directory containing your source files           |
+| `output` | `dist/out.lua` | Where the bundled file is written                |
+| `entry`  | `init`         | Module name to execute first (without extension) |
 
 ### Rojo project support
 

@@ -1,5 +1,6 @@
+<svelte:head><title>Quick start | rbxdev-ls docs</title></svelte:head>
 
-# Quick Start
+# Quick start
 
 ## 1. Install the extension
 
@@ -36,16 +37,16 @@ You should immediately see:
 
 ## 4. Connect to a live game (optional)
 
-To enable live game features like the Game Tree, Properties panel, and code execution, you need to set up the [Executor Bridge](/docs/guides/executor-bridge). This is optional and only needed for runtime interaction.
+To enable live game features like the Game Tree, Properties panel, and code execution, set up the [executor bridge](/docs/guides/executor-bridge). This is optional and only needed for runtime interaction.
 
 ## Type checking modes
 
 Control how strict the type checker is with a comment at the top of your file:
 
-| Directive | Behavior |
-|-----------|----------|
-| `--!strict` | Full type checking, all errors reported |
+| Directive      | Behavior                                    |
+| -------------- | ------------------------------------------- |
+| `--!strict`    | Full type checking, all errors reported     |
 | `--!nonstrict` | Type inference enabled, some errors relaxed |
-| `--!nocheck` | Parsing only, no type diagnostics |
+| `--!nocheck`   | Parsing only, no type diagnostics           |
 
-The default mode is `nonstrict`. You can change it globally with the `rbxdev-ls.typeCheckMode` setting.
+Files without a directive are checked in `nonstrict` mode.

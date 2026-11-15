@@ -1,4 +1,6 @@
-# MCP Tools Reference
+<svelte:head><title>MCP tools reference | rbxdev-ls docs</title></svelte:head>
+
+# MCP tools reference
 
 The MCP server exposes 19 tools that AI assistants can call to interact with a running Roblox game.
 
@@ -12,7 +14,7 @@ Returns the current bridge connection state, executor name, and service count.
 
 **Returns:** `{ isRunning, isConnected, executorName, clientType }`
 
-## Code Execution
+## Code execution
 
 ### execute_code
 
@@ -39,7 +41,7 @@ Reads recent `print`, `warn`, and `error` output from the game.
 | `limit` | `number` | No       | Maximum entries to return (default: 50)  |
 | `level` | `string` | No       | Filter by level: `info`, `warn`, `error` |
 
-## Instance Tree
+## Instance tree
 
 ### get_game_tree
 
@@ -94,7 +96,7 @@ Sets a property value on an instance.
 | `value`     | `string`   | Yes      | Value as a string                                                                       |
 | `valueType` | `string`   | Yes      | Type: `string`, `number`, `boolean`, `Vector3`, `Color3`, `CFrame`, `UDim2`, `EnumItem` |
 
-## Instance Manipulation
+## Instance manipulation
 
 ### create_instance
 

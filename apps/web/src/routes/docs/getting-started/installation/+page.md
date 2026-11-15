@@ -1,7 +1,8 @@
+<svelte:head><title>Installation | rbxdev-ls docs</title></svelte:head>
 
 # Installation
 
-## VS Code Extension
+## VS Code extension
 
 Install from either marketplace:
 
@@ -15,11 +16,11 @@ ext install rbxdev.rbxdev-ls
 
 The extension activates automatically when you open any `.lua` or `.luau` file, or a workspace containing a `default.project.json`.
 
-## MCP Server
+## MCP server
 
-If you want AI assistants (Claude, Cursor, Windsurf) to interact with your game, install the MCP server separately. See the [MCP Server guide](/docs/guides/mcp-server) for setup instructions.
+If you want AI assistants (Claude, Cursor, Windsurf) to interact with your game, install the MCP server separately. See the [MCP server guide](/docs/guides/mcp-server) for setup instructions.
 
-## Luau Bundler
+## Luau bundler
 
 The bundler is available as a standalone CLI for bundling multi-file Luau projects into a single script:
 
@@ -27,12 +28,12 @@ The bundler is available as a standalone CLI for bundling multi-file Luau projec
 npx @oneshot101/luau-bundler --src src --out dist/out.lua
 ```
 
-See the [Luau Bundler guide](/docs/guides/luau-bundler) for configuration and usage.
+See the [Luau bundler guide](/docs/guides/luau-bundler) for configuration and usage.
 
 ## Requirements
 
-| Dependency | Version | Purpose |
-|-----------|---------|---------|
-| VS Code | 1.75.0+ | Extension host |
-| Node.js | 18+ | MCP server (if used standalone) |
-| Bun | 1.0+ | Development only |
+| Dependency | Version | Purpose                         |
+| ---------- | ------- | ------------------------------- |
+| VS Code    | 1.75.0+ | Extension host                  |
+| Node.js    | 18+     | MCP server (if used standalone) |
+| Bun        | 1.0+    | Development only                |
