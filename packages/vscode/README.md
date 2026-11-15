@@ -154,19 +154,20 @@ The language server reports diagnostics as you type, covering type errors, undef
 
 All settings are under the `rbxdev-ls` namespace in VS Code.
 
-| Setting                                    | Default                               | Purpose                                                                               |
-| ------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------- |
-| `rbxdev-ls.typeCheckMode`                  | `strict`                              | Type checking strictness: `strict`, `nonstrict`, or `nocheck`                         |
-| `rbxdev-ls.enableSuncApi`                  | `true`                                | Enable Sunc executor API completions and type checking                                |
-| `rbxdev-ls.executorBridge.port`            | `21324`                               | WebSocket port for executor bridge connections                                        |
-| `rbxdev-ls.mcp.enabled`                    | `true`                                | Enable the built-in MCP server for AI assistants                                      |
-| `rbxdev-ls.bundler.path`                   | `""`                                  | Custom path to the `luau-bundler` executable; leave empty to auto-run through npx/npm |
-| `rbxdev-ls.saveInstance.decompile`         | `true`                                | Decompile scripts when saving instances to disk                                       |
-| `rbxdev-ls.saveInstance.noscripts`         | `false`                               | Exclude all scripts from saved instances                                              |
-| `rbxdev-ls.saveInstance.excludeServices`   | `["Chat", "CoreGui", "CorePackages"]` | Services to exclude from full DataModel saves                                         |
-| `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`                               | Automatically refresh the game tree when instances change in Studio or the executor   |
-| `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`                                | Debounce interval for auto-refresh in milliseconds (minimum 2000)                     |
-| `rbxdev-ls.debugLogs`                      | `false`                               | Enable verbose debug logging in the extension output console                          |
+| Setting                                    | Default                               | Purpose                                                                                                             |
+| ------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `rbxdev-ls.api.autoUpdate`                 | `true`                                | Check daily for Roblox API and documentation updates. Downloaded data is used after the language server next starts |
+| `rbxdev-ls.typeCheckMode`                  | `strict`                              | Declared but not read; files without a `--!` directive are checked in `nonstrict` mode                              |
+| `rbxdev-ls.enableSuncApi`                  | `true`                                | Declared but not read by the language server                                                                        |
+| `rbxdev-ls.executorBridge.port`            | `21324`                               | Port written into the MCP configuration by the setup command                                                        |
+| `rbxdev-ls.mcp.enabled`                    | `true`                                | Declared but not read; use `Roblox: Setup MCP Server for Copilot` to register the MCP server                        |
+| `rbxdev-ls.bundler.path`                   | `""`                                  | Custom path to the `luau-bundler` executable; leave empty to auto-run through npx/npm                               |
+| `rbxdev-ls.saveInstance.decompile`         | `true`                                | Decompile scripts when saving instances to disk                                                                     |
+| `rbxdev-ls.saveInstance.noscripts`         | `false`                               | Exclude all scripts from saved instances                                                                            |
+| `rbxdev-ls.saveInstance.excludeServices`   | `["Chat", "CoreGui", "CorePackages"]` | Services to exclude from full DataModel saves                                                                       |
+| `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`                               | Automatically refresh the game tree when instances change in Studio or the executor                                 |
+| `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`                                | Debounce interval for auto-refresh in milliseconds (minimum 2000)                                                   |
+| `rbxdev-ls.debugLogs`                      | `false`                               | Enable verbose debug logging in the extension output console                                                        |
 
 ## Keybindings
 
@@ -197,7 +198,7 @@ Right-click any item in the Game Tree sidebar for these actions:
 
 ## Bridge Setup
 
-Live game features (Game Tree, Properties, code execution, Remote Spy) require a WebSocket bridge between VS Code and a Roblox executor. The bridge script ships with the repository and is hosted on GitHub for easy loading.
+Live game features (Game Tree, Properties, code execution, Remote Spy) require a WebSocket bridge between VS Code and a Roblox executor. The bridge script ships with the repository and is hosted on GitLab for easy loading.
 
 ### Connect the bridge
 

@@ -257,27 +257,27 @@ To use a non-default port, set the `RBXDEV_BRIDGE_PORT` environment variable:
 <details>
 <summary><strong>Available MCP Tools</strong></summary>
 
-| Tool                     | Description                                                             |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `get_bridge_status`      | Check whether the bridge is running and an executor is connected        |
-| `execute_code`           | Run Luau code in the game with full Roblox API access                   |
-| `get_game_tree`          | Browse the game hierarchy (services, instances, children)               |
-| `get_properties`         | Read property values from any instance                                  |
-| `set_property`           | Set properties on instances (supports Vector3, Color3, UDim2, and more) |
-| `get_children`           | List children of a specific instance                                    |
-| `create_instance`        | Create new instances in the game                                        |
-| `clone_instance`         | Clone existing instances                                                |
-| `delete_instance`        | Remove instances from the game                                          |
-| `reparent_instance`      | Move instances to a new parent                                          |
-| `teleport_player`        | Teleport the local player to an instance's position                     |
-| `get_script_source`      | Decompile and read script source code                                   |
-| `get_console_output`     | Read recent print/warn/error output from the game                       |
-| `refresh_game_tree`      | Request a fresh snapshot of the game tree                               |
-| `get_remote_calls`       | View captured RemoteEvent/RemoteFunction calls                          |
-| `set_remote_spy_enabled` | Toggle the remote spy on or off                                         |
-| `set_remote_spy_block_list` | Block selected remotes from firing to the server                    |
-| `set_script_source`      | Update script source when connected through Studio                      |
-| `save_instance`          | Save the game or a specific instance to a file                          |
+| Tool                        | Description                                                             |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `get_bridge_status`         | Check whether the bridge is running and an executor is connected        |
+| `execute_code`              | Run Luau code in the game with full Roblox API access                   |
+| `get_game_tree`             | Browse the game hierarchy (services, instances, children)               |
+| `get_properties`            | Read property values from any instance                                  |
+| `set_property`              | Set properties on instances (supports Vector3, Color3, UDim2, and more) |
+| `get_children`              | List children of a specific instance                                    |
+| `create_instance`           | Create new instances in the game                                        |
+| `clone_instance`            | Clone existing instances                                                |
+| `delete_instance`           | Remove instances from the game                                          |
+| `reparent_instance`         | Move instances to a new parent                                          |
+| `teleport_player`           | Teleport the local player to an instance's position                     |
+| `get_script_source`         | Decompile and read script source code                                   |
+| `get_console_output`        | Read recent print/warn/error output from the game                       |
+| `refresh_game_tree`         | Request a fresh snapshot of the game tree                               |
+| `get_remote_calls`          | View captured RemoteEvent/RemoteFunction calls                          |
+| `set_remote_spy_enabled`    | Toggle the remote spy on or off                                         |
+| `set_remote_spy_block_list` | Block selected remotes from firing to the server                        |
+| `set_script_source`         | Update script source when connected through Studio                      |
+| `save_instance`             | Save the game or a specific instance to a file                          |
 
 The server also exposes three MCP resources for passive reading:
 
@@ -293,14 +293,21 @@ The server also exposes three MCP resources for passive reading:
 
 All settings are prefixed with `rbxdev-ls.` and can be set in VS Code's `settings.json` or through the Settings UI.
 
-| Setting                         | Default     | Purpose                                                                                                                                    |
-| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `rbxdev-ls.typeCheckMode`       | `nonstrict` | Controls the default type checking strictness for files without a `--!` annotation at the top. Accepts `strict`, `nonstrict`, or `nocheck` |
-| `rbxdev-ls.enableSuncApi`       | `false`     | Loads Sunc executor API definitions into the type environment, providing completions and type checking for Sunc-specific globals           |
-| `rbxdev-ls.executorBridge.port` | `21324`     | The TCP port the WebSocket bridge server listens on for executor and Studio plugin connections                                             |
-| `rbxdev-ls.mcp.enabled`         | `true`      | Enables the built-in MCP server integration that registers language model tools with VS Code's Copilot API                                 |
-| `rbxdev-ls.bundler.path`        | `""`        | Path to a custom `luau-bundle` binary used for the bundle-and-execute command. When empty, the built-in bundler is used                    |
-| `rbxdev-ls.debugLogs`           | `false`     | Enables verbose logging in the extension output channel for troubleshooting connection and protocol issues                                 |
+| Setting                                    | Default  | Purpose                                                                                                             |
+| ------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `rbxdev-ls.api.autoUpdate`                 | `true`   | Check daily for Roblox API and documentation updates. Downloaded data is used after the language server next starts |
+| `rbxdev-ls.typeCheckMode`                  | `strict` | Declared but not read by the language server. Files without a `--!` directive are checked in `nonstrict` mode       |
+| `rbxdev-ls.enableSuncApi`                  | `true`   | Declared but not read by the language server                                                                        |
+| `rbxdev-ls.executorBridge.port`            | `21324`  | Port written into the MCP configuration by the setup command. The bridge listener does not read this setting        |
+| `rbxdev-ls.mcp.enabled`                    | `true`   | Declared but not read. Register the MCP server with the `Roblox: Setup MCP Server for Copilot` command              |
+| `rbxdev-ls.bundler.path`                   | `""`     | Path to a custom bundler executable. When empty, `@oneshot101/luau-bundler` runs through npx or npm                 |
+| `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`  | Refresh the game tree when instances are added or removed                                                           |
+| `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`   | Debounce window for auto-refresh in milliseconds; values below `2000` are raised to `2000`                          |
+| `rbxdev-ls.debugLogs`                      | `false`  | Enables verbose logging in the extension output channel for troubleshooting connection and protocol issues          |
+
+### Roblox API updates
+
+The extension ships a validated Roblox API dump and documentation. With `api.autoUpdate` on, the language server starts a short-lived background process 30 seconds after startup, at most once a day. It checks the current Studio build, downloads a newer API dump or changed documentation, validates them, and stores a complete snapshot in the extension's global storage. The new snapshot is used the next time the language server starts; a running server is never hot-swapped. Offline machines, failed downloads and invalid data leave the current definitions in use. Turning the setting off stops downloads but keeps already validated data.
 
 ## Keyboard Shortcuts
 
@@ -320,36 +327,41 @@ rbxdev-ls/
 ├── packages/
 │   ├── server/                    Language server package (rbxdev-server)
 │   │   ├── src/
-│   │   │   ├── core/              LSP server bootstrap, connection, and capability registration
+│   │   │   ├── core/              LSP server bootstrap, connection, capabilities and update scheduling
 │   │   │   ├── lsp/
-│   │   │   │   └── handlers/      30+ LSP request handlers (completion, hover, rename, etc.)
+│   │   │   │   └── handlers/      LSP request handlers; completion providers live in handlers/completion/
 │   │   │   ├── parser/            Luau lexer, parser, and doc-comment extraction
-│   │   │   ├── typings/           Type system, type checker, and subtyping logic
-│   │   │   ├── definitions/       Roblox API, stdlib, executor, and third-party type definitions
+│   │   │   ├── analyzer/          Type checker, environment, subtyping and type values
+│   │   │   ├── types/             Type and interface declarations (imported as @typings/*)
+│   │   │   ├── definitions/       Roblox API, stdlib, executor and constructor definitions
+│   │   │   │   └── updates/       Download, validation, cache storage and refresh of definition data
 │   │   │   ├── workspace/         Module resolution, Rojo integration, and sourcemap support
 │   │   │   ├── executor/          Bridge protocol, WebSocket server, and proxy handling
 │   │   │   └── utils/             Shared utility functions
-│   │   ├── tests/                 29 test suites (984 tests)
-│   │   └── data/                  Roblox API dump (roblox-api.json)
+│   │   ├── scripts/               Benchmark and fetch-definitions release script
+│   │   ├── tests/                 Bun test suites
+│   │   └── data/                  Bundled API dump, Roblox and Luau docs, manifest.json
 │   ├── vscode/                    VS Code extension client
 │   │   └── src/
-│   │       ├── extension.ts       Extension activation and command registration
+│   │       ├── extension.ts       Extension activation
+│   │       ├── controllers/       Console, bridge, game tree, properties, execution, remote spy, scripts, MCP setup, save
 │   │       ├── gameTreeProvider.ts Game tree sidebar data provider
 │   │       ├── propertiesProvider.ts Properties panel data provider
 │   │       ├── remoteSpyWebview.ts Remote spy webview panel
-│   │       └── mcpTools.ts        19 language model tools for Copilot integration
+│   │       └── mcpTools.ts        15 language model tools for Copilot integration
 │   ├── mcp/                       Standalone MCP server (@oneshot101/rbxdev-mcp)
 │   │   └── src/
 │   │       ├── index.ts           Entry point (stdio transport)
 │   │       └── server.ts          Tool and resource registration
+│   └── luau-bundler/              Luau module bundler library and CLI (@oneshot101/luau-bundler)
+├── roblox/
+│   ├── executor-bridge/src/       Executor bridge source, bundled into scripts/executor-bridge.lua
 │   └── studio-plugin/             Roblox Studio bridge plugin (Luau, built with Rojo)
-│       ├── default.project.json   Rojo project file
-│       └── src/                   Plugin source
 ├── scripts/                       Build orchestration and maintenance
-│   ├── build-vsix.ts              Packages the VS Code extension as a .vsix
+│   ├── build-vsix.ts              Refreshes definition data, tests and packages the VS Code extension
 │   ├── build-studio-plugin.ts     Builds the Studio plugin via Rojo
-│   ├── fetch-roblox-api.ts        Downloads the latest Roblox API dump
 │   └── executor-bridge.lua        Bridge script loaded by executors at runtime
+├── tools/oxlint/                  Lint plugins: vendored anti-slop rules and project standards
 └── package.json                   Workspace root (bun workspaces)
 ```
 
@@ -374,31 +386,32 @@ All dependencies across every workspace are installed by the single `bun install
 
 ### Scripts
 
-| Script                 | Description                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `bun run build`        | Build the language server (compiles `packages/server` with Bun targeting Node.js)          |
-| `bun run build:mcp`    | Build the standalone MCP server                                                            |
-| `bun run build:all`    | Build the language server and MCP server in sequence                                       |
-| `bun run test`         | Run the full test suite (984 tests across 29 files)                                        |
-| `bun run type-check`   | Run the TypeScript compiler in check-only mode against the server package                  |
-| `bun run lint:check`   | Run ESLint without auto-fixing                                                             |
-| `bun run lint`         | Run ESLint with auto-fix                                                                   |
-| `bun run format:check` | Check formatting with Prettier                                                             |
-| `bun run format`       | Auto-format with Prettier                                                                  |
-| `bun run fetch-api`    | Download the latest Roblox API dump and write it to `packages/server/data/roblox-api.json` |
-| `bun run build:vsix`   | Package the VS Code extension as a `.vsix` file for distribution                           |
-| `bun run build:beta`   | Package a beta build of the extension                                                      |
-| `bun run build:studio` | Build the Roblox Studio plugin using Rojo                                                  |
+| Script                      | Description                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `bun run build`             | Build the language server (compiles `packages/server` with Bun targeting Node.js)            |
+| `bun run build:mcp`         | Build the standalone MCP server                                                              |
+| `bun run build:all`         | Build the language server and MCP server in sequence                                         |
+| `bun run test`              | Run the server, MCP, VS Code extension and bundler test suites                               |
+| `bun run type-check`        | Type-check every package, test, script and lint-plugin project                               |
+| `bun run lint:check`        | Run type-aware Oxlint with the anti-slop and project standards plugins                       |
+| `bun run lint`              | Run Oxlint with auto-fix                                                                     |
+| `bun run format:check`      | Check formatting with Prettier                                                               |
+| `bun run format`            | Auto-format with Prettier                                                                    |
+| `bun run bench`             | Benchmark startup and analysis (`--runtime node` by default, or `--runtime bun`)             |
+| `bun run fetch-definitions` | Download, validate and write the API dump, both docs databases and their manifest to `data/` |
+| `bun run build:vsix`        | Package the VS Code extension as a `.vsix` file for distribution (bumps the version)         |
+| `bun run build:beta`        | Package a beta build of the extension                                                        |
+| `bun run build:studio`      | Build the Roblox Studio plugin using Rojo                                                    |
 
 ### Verify
 
 After cloning and installing, confirm everything works:
 
 ```bash
-bun run build && bun run test
+bun run build:all && bun run test
 ```
 
-All 984 tests should pass. If they do, the language server binary is at `packages/server/dist/index.js` and ready for the extension to consume.
+If the suites pass, the language server binary is at `packages/server/dist/index.js` and ready for the extension to consume.
 
 ## Contributing
 

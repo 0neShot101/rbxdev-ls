@@ -153,7 +153,7 @@ You can also pass `--port 21325` as a CLI argument instead of the environment va
 
 ## Tools
 
-The server registers 19 tools that the AI assistant can call:
+The server registers 19 tools that the AI assistant can call. Arguments are checked against each tool's input schema before anything is sent to the game: a missing required field, a wrong value type or a path containing non-string segments returns an error result instead.
 
 <details>
 <summary><strong>Full tool reference</strong></summary>

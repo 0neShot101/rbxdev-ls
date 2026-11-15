@@ -2,6 +2,24 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.5.1] - 2026-11-15
+
+### Added
+
+- Updated Roblox API and Luau documentation data, with automatic definition refresh support.
+- Richer completion and hover documentation for Roblox globals, classes, and members.
+
+### Changed
+
+- Integrated the remaining language-server, completion, and extension-controller optimization work.
+- Updated the documentation website, navigation, code-copy controls, and particle rendering.
+- Migrated repository linting to type-aware Oxlint with shared coding rules.
+
+### Fixed
+
+- Improved validation of MCP and editor tool inputs and handling of disconnected bridge operations.
+- Preserved local-symbol precedence and Remote Spy capture/return behavior across the internal module changes.
+
 ## [0.5.0] - 2026-11-15
 
 ### Added
@@ -21,10 +39,6 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 - Reloaded bridges restore acknowledged spy policy through the execution-socket owner; proxies no longer race to restore conflicting settings.
 - Return updates still reach the editor after server-buffer eviction. Panel reopen, clear, and snapshot operations discard stale batches.
 - Local declarations take precedence over Luraph attribute globals in completion, hover, and signatures, respecting lexical scope and declaration order.
-
-### Validation limits
-
-- Executor hook coverage and anti-cheat compatibility still require live Roblox validation. This update does not claim a verified detector bypass.
 
 ## [0.3.6] - 2026-04-11
 
