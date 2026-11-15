@@ -1146,8 +1146,9 @@ const parseIfStatement = (state: ParserState): IfStatement => {
   consume(state, TokenKind.If, 'Expected if');
 
   const condition = parseExpression(state);
-  consume(state, TokenKind.Then, 'Expected then');
+  const then = consume(state, TokenKind.Then, 'Expected then');
   const thenBody = parseBlock(state);
+  const thenRange = createRange(then.end, current(state).start);
 
   const elseifClauses: ElseifClause[] = [];
 
@@ -1177,6 +1178,7 @@ const parseIfStatement = (state: ParserState): IfStatement => {
     'kind': 'IfStatement',
     condition,
     thenBody,
+    thenRange,
     elseifClauses,
     elseBody,
     'range': createRange(start.start, end.end),
@@ -1234,7 +1236,7 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
       stepExpr = parseExpression(state);
     }
 
-    consume(state, TokenKind.Do, 'Expected do');
+    const bodyStart = consume(state, TokenKind.Do, 'Expected do').end;
     const body = parseBlock(state);
     const end = consume(state, TokenKind.End, 'Expected end');
 
@@ -1245,6 +1247,7 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
       'end': endExpr,
       'step': stepExpr,
       body,
+      bodyStart,
       'range': createRange(start.start, end.end),
     };
   }
@@ -1261,7 +1264,7 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
   do iterators.push(parseExpression(state));
   while (match(state, TokenKind.Comma));
 
-  consume(state, TokenKind.Do, 'Expected do');
+  const bodyStart = consume(state, TokenKind.Do, 'Expected do').end;
   const body = parseBlock(state);
   const end = consume(state, TokenKind.End, 'Expected end');
 
@@ -1270,6 +1273,7 @@ const parseForStatement = (state: ParserState): ForNumeric | ForGeneric => {
     variables,
     iterators,
     body,
+    bodyStart,
     'range': createRange(start.start, end.end),
   };
 };

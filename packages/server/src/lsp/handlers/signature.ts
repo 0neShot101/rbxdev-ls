@@ -1,13 +1,15 @@
+import { getVisibleLocals } from '@lsp/handlers/lexical';
 import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
-import type { Scope, Symbol } from '@typings/environment';
-import type { DocumentManager } from '@typings/lsp';
+import type { Symbol } from '@typings/environment';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { DocComment } from '@typings/parser';
 import type { FunctionType } from '@typings/types';
 import type {
   Connection,
   ParameterInformation,
+  Position,
   SignatureHelp,
   SignatureHelpParams,
   SignatureInformation,
@@ -146,25 +148,15 @@ export const findFunctionCall = (
 
 const findSymbol = (
   documentManager: DocumentManager,
-  document: import('@typings/lsp').ParsedDocument,
+  document: ParsedDocument,
   name: string,
+  position: Position,
 ): Symbol | undefined => {
-  const globalSymbol = documentManager.globalEnv.env.globalScope.symbols.get(name);
-  if (globalSymbol !== undefined) return globalSymbol;
+  const local = getVisibleLocals(document, position).get(name);
+  const builtin = documentManager.globalEnv.env.globalScope.symbols.get(name);
+  const checked = document.typeCheckResult?.environment.globalScope.symbols.get(name);
 
-  if (document.typeCheckResult !== undefined) {
-    let scope: Scope | undefined = document.typeCheckResult.environment.currentScope;
-    while (scope !== undefined) {
-      const localSymbol = scope.symbols.get(name);
-      if (localSymbol !== undefined) return localSymbol;
-      scope = scope.parent;
-    }
-
-    const tcGlobalSymbol = document.typeCheckResult.environment.globalScope.symbols.get(name);
-    if (tcGlobalSymbol !== undefined) return tcGlobalSymbol;
-  }
-
-  return undefined;
+  return local ?? builtin ?? (checked?.kind === 'Global' ? checked : undefined);
 };
 
 /** Registers the signature help handler with the LSP connection. */
@@ -176,7 +168,7 @@ export const setupSignatureHelpHandler = (connection: Connection, documentManage
     const call = findFunctionCall(document.content, params.position.line, params.position.character);
     if (call === undefined) return null;
 
-    const symbol = findSymbol(documentManager, document, call.name);
+    const symbol = findSymbol(documentManager, document, call.name, params.position);
     if (symbol === undefined || symbol.type.kind !== 'Function') return null;
 
     const signature = createSignatureInfo(call.name, symbol.type, symbol.docComment);

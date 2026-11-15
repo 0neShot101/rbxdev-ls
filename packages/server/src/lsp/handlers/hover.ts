@@ -1,4 +1,5 @@
 import { getCommonChildType } from '@definitions/commonChildren';
+import { getVisibleLocals } from '@lsp/handlers/lexical';
 import { formatDocCommentForDisplay } from '@parser/docComment';
 import type { ExecutorBridge } from '@typings/bridge';
 import type { DocComment } from '@typings/parser';
@@ -558,12 +559,25 @@ export const setupHoverHandler = (
         };
     }
 
+    const localSymbol = getVisibleLocals(document, params.position).get(word);
+
+    if (localSymbol !== undefined)
+      return {
+        'contents': {
+          'kind': MarkupKind.Markdown,
+          'value': formatSymbolWithDocComment(word, localSymbol.type, localSymbol.docComment),
+        },
+      };
+
     const symbol = documentManager.globalEnv.env.globalScope.symbols.get(word);
     if (symbol !== undefined)
       return {
         'contents': {
           'kind': MarkupKind.Markdown,
-          'value': formatTypeDocFull(word, symbol.type),
+          'value':
+            symbol.docComment === undefined
+              ? formatTypeDocFull(word, symbol.type)
+              : formatSymbolWithDocComment(word, symbol.type, symbol.docComment),
         },
       };
 
