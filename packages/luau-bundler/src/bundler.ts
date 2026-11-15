@@ -11,7 +11,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { dirname, join, relative } from 'path';
 
-import type { BundleResult, BundlerOptions, RojoProject } from './types/bundler';
+import type { BundleResult, BundlerOptions, RojoProject } from '@bundler/types/bundler';
 
 /**
  * Reads a Rojo default.project.json and returns the resolved source directory.
@@ -66,28 +66,44 @@ const getAliases = (filePath: string): string[] => {
 };
 
 /**
+ * Quotes a module path as a single-quoted Lua string.
+ * @param value - Module path or alias.
+ * @returns An escaped Lua string literal.
+ */
+const quote = (value: string): string =>
+  `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r/g, '\\r').replace(/\n/g, '\\n')}'`;
+
+/**
  * Emits the require shim that modules use to load each other at runtime.
  * Falls back to the original require for built-in modules (e.g. game services).
  * @param lines - The output line buffer to append to.
  * @param passVarargs - Whether to capture and forward varargs.
  */
 const emitRequireShim = (lines: string[], passVarargs: boolean): void => {
-  if (passVarargs) lines.push('local _vararg = {...}');
-  lines.push('local _modules = {}');
+  if (passVarargs) lines.push('  local _vararg = { ... }');
+  lines.push('  local _modules = {}');
   lines.push('');
-  lines.push('local require = function(path)');
-  lines.push('\tif _modules[path] == nil then');
-  lines.push('\t\tlocal fallback');
-  lines.push('\t\tpcall(function() fallback = oldRequire(path) end)');
-  lines.push('\t\tif typeof(fallback) ~= "nil" then return fallback end');
-  lines.push("\t\terror('[bundler] module not found: ' .. path)");
-  lines.push('\tend');
-  lines.push('\tlocal mod = _modules[path]');
-  lines.push('\tif mod.cached then return mod.value end');
-  lines.push('\tmod.value = mod.load()');
-  lines.push('\tmod.cached = true');
-  lines.push('\treturn mod.value');
-  lines.push('end');
+  lines.push('  local require = function(path)');
+  lines.push('    if _modules[path] == nil then');
+  lines.push('      local fallback');
+  lines.push('      pcall(function()');
+  lines.push('        fallback = oldRequire(path)');
+  lines.push('      end)');
+  lines.push("      if typeof(fallback) ~= 'nil' then");
+  lines.push('        return fallback');
+  lines.push('      end');
+  lines.push("      error('[bundler] module not found: ' .. path)");
+  lines.push('    end');
+  lines.push('');
+  lines.push('    local mod = _modules[path]');
+  lines.push('    if mod.cached then');
+  lines.push('      return mod.value');
+  lines.push('    end');
+  lines.push('');
+  lines.push('    mod.value = mod.load()');
+  lines.push('    mod.cached = true');
+  lines.push('    return mod.value');
+  lines.push('  end');
 };
 
 /**
@@ -98,19 +114,19 @@ const emitRequireShim = (lines: string[], passVarargs: boolean): void => {
  * @param passVarargs - Whether to wrap the module body in a vararg closure.
  */
 const emitModule = (lines: string[], moduleId: string, source: string, passVarargs: boolean): void => {
-  lines.push(`_modules["${moduleId}"] = {`);
-  lines.push('\tcached = false,');
-  lines.push('\tvalue = nil,');
-  lines.push('\tload = function()');
+  lines.push(`  _modules[${quote(moduleId)}] = {`);
+  lines.push('    cached = false,');
+  lines.push('    value = nil,');
+  lines.push('    load = function()');
 
   if (passVarargs) {
-    lines.push('\t\treturn (function(...)');
-    for (const line of source.split('\n')) lines.push(line === '' ? '' : '\t\t\t' + line);
-    lines.push('\t\tend)(unpack(_vararg))');
-  } else for (const line of source.split('\n')) lines.push(line === '' ? '' : '\t\t' + line);
+    lines.push('      return (function(...)');
+    for (const line of source.split('\n')) lines.push(line === '' ? '' : '        ' + line);
+    lines.push('      end)(unpack(_vararg))');
+  } else for (const line of source.split('\n')) lines.push(line === '' ? '' : '      ' + line);
 
-  lines.push('\tend,');
-  lines.push('}');
+  lines.push('    end,');
+  lines.push('  }');
 };
 
 /**
@@ -125,7 +141,8 @@ export const bundle = (options: BundlerOptions): BundleResult => {
   const files = walkDir(sourceDir).map(f => relative(sourceDir, f).replace(/\\/g, '/'));
   const lines: string[] = [];
 
-  if (header !== undefined) for (const line of header.split('\n')) lines.push(`-- ${line}`);
+  if (header !== undefined)
+    for (const line of header.split('\n')) lines.push(`--[[ ${line.replace(/\](?=\])/g, '] ')} ]]--`);
 
   lines.push('');
   lines.push('return (function(oldRequire, ...)');
@@ -139,11 +156,13 @@ export const bundle = (options: BundlerOptions): BundleResult => {
   }
 
   for (const file of files)
-    for (const alias of getAliases(file)) if (alias !== file) lines.push(`_modules["${alias}"] = _modules["${file}"]`);
+    for (const alias of getAliases(file))
+      if (alias !== file) lines.push(`  _modules[${quote(alias)}] = _modules[${quote(file)}]`);
 
   lines.push('');
-  lines.push(`return require("${entry}")`);
-  lines.push('end)(require or function() end, ...)');
+  lines.push(`  return require(${quote(entry)})`);
+  lines.push('end)(require or function()');
+  lines.push('end, ...)');
 
   const output = lines.join('\n');
 
