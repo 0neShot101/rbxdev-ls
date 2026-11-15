@@ -1,0 +1,204 @@
+stages:
+  - test
+  - release
+  - deploy
+
+variables:
+  GIT_DEPTH: '2'
+  FORCE_RELEASE:
+    value: 'false'
+    options:
+      - 'false'
+      - 'true'
+    description: 'Publish the current version even when package.json did not change.'
+
+.test_rules: &test_rules
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH'
+
+.release_rules: &release_rules
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
+
+validate:
+  stage: test
+  image: oven/bun:1.3.14
+  <<: *test_rules
+  cache:
+    key:
+      files:
+        - bun.lock
+    paths:
+      - .bun/install/cache
+  script:
+    - bun install --frozen-lockfile
+    - (cd apps/web && bun install --frozen-lockfile && bun run check)
+    - bun run build
+    - bun run build:mcp
+    - bun run type-check
+    - bun run lint:check
+    - bun test --cwd packages/server
+    - bun test --cwd packages/mcp
+    - bun test --cwd packages/vscode
+    - bun test --cwd packages/luau-bundler
+    - bun run --cwd packages/vscode bundle
+    - (cd apps/web && bun run build)
+
+release:
+  stage: release
+  image: node:24-bookworm-slim
+  <<: *release_rules
+  needs:
+    - validate
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git unzip
+    - npm install --global --allow-scripts=bun bun@1.3.14
+  script:
+    - |
+      set -euo pipefail
+      version="$(node -p "require('./package.json').version")"
+      old_version="none"
+      previous_commit="${CI_COMMIT_BEFORE_SHA:-}"
+      if [ -n "${previous_commit}" ] && [ "${previous_commit}" != "0000000000000000000000000000000000000000" ]; then
+        git cat-file -e "${previous_commit}^{commit}" 2>/dev/null || git fetch --no-tags origin "${previous_commit}"
+        if git show "${previous_commit}:package.json" >/dev/null 2>&1; then
+          old_version="$(git show "${previous_commit}:package.json" | node -e "let data=''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => console.log(JSON.parse(data).version));")"
+        fi
+      fi
+      echo "Current version: ${version}; previous version: ${old_version}"
+      if [ "${FORCE_RELEASE}" != "true" ] && [ "${version}" = "${old_version}" ]; then
+        echo "Version unchanged; skipping release."
+        exit 0
+      fi
+
+      bun install --frozen-lockfile
+      bun run fetch-definitions
+      bun test --cwd packages/server tests/roblox-api-validation.test.ts tests/roblox-docs.test.ts
+      bun run build
+      bun run build:mcp
+      (
+        cd packages/vscode
+        bun run bundle
+        bun run copy-server
+        bun run package
+      )
+
+      curl --fail --location --silent --show-error \
+        "https://github.com/rojo-rbx/rojo/releases/download/v7.4.4/rojo-7.4.4-linux-x86_64.zip" \
+        --output /tmp/rojo.zip
+      unzip -q /tmp/rojo.zip -d /usr/local/bin
+      chmod +x /usr/local/bin/rojo
+      bun run build:studio
+
+      vsix="rbxdev-ls-${version}.vsix"
+      plugin="rbxdev-studio-bridge.rbxm"
+      test -f "packages/vscode/${vsix}"
+      test -f "roblox/studio-plugin/dist/${plugin}"
+
+      export RELEASE_VERSION="${version}"
+      export VSIX_URL="${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/raw/packages/vscode/${vsix}"
+      export PLUGIN_URL="${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/raw/roblox/studio-plugin/dist/${plugin}"
+      bun -e "const payload = { name: 'v' + process.env.RELEASE_VERSION, tag_name: 'v' + process.env.RELEASE_VERSION, ref: process.env.CI_COMMIT_SHA, description: 'Automated release for v' + process.env.RELEASE_VERSION + '.', assets: { links: [{ name: 'VS Code extension (.vsix)', url: process.env.VSIX_URL, link_type: 'package' }, { name: 'Roblox Studio bridge (.rbxm)', url: process.env.PLUGIN_URL, link_type: 'package' }] } }; process.stdout.write(JSON.stringify(payload));" > /tmp/release.json
+      curl --fail-with-body --request POST \
+        --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --header "Content-Type: application/json" \
+        --data @/tmp/release.json \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases"
+
+      bunx @vscode/vsce publish \
+        --packagePath "packages/vscode/${vsix}" \
+        --pat "${VSCE_PAT}"
+      bunx ovsx publish "packages/vscode/${vsix}" --pat "${OVSX_PAT}" || \
+        echo "Open VSX publish failed; GitLab release and VS Code Marketplace publish remain available."
+  artifacts:
+    when: always
+    name: 'rbxdev-ls-${CI_COMMIT_SHORT_SHA}'
+    expire_in: never
+    paths:
+      - packages/vscode/*.vsix
+      - roblox/studio-plugin/dist/*.rbxm
+
+publish-npm:
+  stage: release
+  image: node:24-bookworm-slim
+  <<: *release_rules
+  needs:
+    - validate
+  id_tokens:
+    NPM_ID_TOKEN:
+      aud: 'npm:registry.npmjs.org'
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates git
+    - npm install --global npm@latest
+    - npm install --global --allow-scripts=bun bun@1.3.14
+  script:
+    - |
+      set -euo pipefail
+      version="$(node -p "require('./package.json').version")"
+      old_version="none"
+      previous_commit="${CI_COMMIT_BEFORE_SHA:-}"
+      if [ -n "${previous_commit}" ] && [ "${previous_commit}" != "0000000000000000000000000000000000000000" ]; then
+        git cat-file -e "${previous_commit}^{commit}" 2>/dev/null || git fetch --no-tags origin "${previous_commit}"
+        if git show "${previous_commit}:package.json" >/dev/null 2>&1; then
+          old_version="$(git show "${previous_commit}:package.json" | node -e "let data=''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => console.log(JSON.parse(data).version));")"
+        fi
+      fi
+      echo "Current version: ${version}; previous version: ${old_version}"
+      if [ "${FORCE_RELEASE}" != "true" ] && [ "${version}" = "${old_version}" ]; then
+        echo "Version unchanged; skipping npm publish."
+        exit 0
+      fi
+
+      publish_mcp="true"
+      publish_bundler="true"
+      npm view "@oneshot101/rbxdev-mcp@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1 && publish_mcp="false"
+      npm view "@oneshot101/luau-bundler@${version}" version --registry=https://registry.npmjs.org >/dev/null 2>&1 && publish_bundler="false"
+      if [ "${publish_mcp}" = "false" ] && [ "${publish_bundler}" = "false" ]; then
+        echo "Both npm packages already have version ${version}; skipping."
+        exit 0
+      fi
+
+      bun install --frozen-lockfile
+      if [ "${publish_mcp}" = "true" ]; then
+        bun run build
+        bun run build:mcp
+      fi
+      if [ "${publish_bundler}" = "true" ]; then
+        bun run --cwd packages/luau-bundler build
+      fi
+
+      for package_file in packages/mcp/package.json packages/luau-bundler/package.json; do
+        node -e "const fs = require('fs'); const file = process.argv[1]; const data = JSON.parse(fs.readFileSync(file, 'utf8')); data.version = process.argv[2]; fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n');" "${package_file}" "${version}"
+      done
+
+      if [ "${publish_mcp}" = "true" ]; then
+        (cd packages/mcp && npm publish --access public)
+      fi
+      if [ "${publish_bundler}" = "true" ]; then
+        (cd packages/luau-bundler && npm publish --access public)
+      fi
+
+docker:
+  stage: deploy
+  image: docker:27-cli
+  <<: *release_rules
+  needs:
+    - validate
+  services:
+    - name: docker:27-dind
+      command:
+        - --tls=false
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ''
+  before_script:
+    - echo "${CI_REGISTRY_PASSWORD}" | docker login --username "${CI_REGISTRY_USER}" --password-stdin "${CI_REGISTRY}"
+  script:
+    - version="$(awk -F '"' '/"version"/ { print $4; exit }' package.json)"
+    - docker build --tag "${CI_REGISTRY_IMAGE}/web:latest" --tag "${CI_REGISTRY_IMAGE}/web:${version}" apps/web
+    - docker push "${CI_REGISTRY_IMAGE}/web:latest"
+    - docker push "${CI_REGISTRY_IMAGE}/web:${version}"

@@ -3,3 +3,4 @@ dist
 coverage.data
 data
 .github
+tools/oxlint/anti-slop

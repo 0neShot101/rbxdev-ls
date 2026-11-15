@@ -108,6 +108,31 @@ jobs:
         if: steps.npm_status.outputs.publish_luau_bundler == 'true'
         run: bun run --cwd packages/luau-bundler build
 
+      - name: Install website dependencies
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
+        run: bun install --frozen-lockfile
+        working-directory: apps/web
+
+      - name: Check website
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
+        run: bun run --cwd apps/web check
+
+      - name: Build shared server and MCP for checks
+        if: steps.npm_status.outputs.publish_luau_bundler == 'true' && steps.npm_status.outputs.publish_mcp != 'true'
+        run: bun run build:all
+
+      - name: Type check
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
+        run: bun run type-check
+
+      - name: Lint
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
+        run: bun run lint:check
+
+      - name: Test
+        if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
+        run: bun run test
+
       - name: Sync package versions
         if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
         shell: bash

@@ -27,8 +27,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Type check
-        run: bun run type-check
+      - name: Install website dependencies
+        run: bun install --frozen-lockfile
+        working-directory: apps/web
+
+      - name: Check website
+        run: bun run --cwd apps/web check
 
       - name: Build server
         run: bun run build
@@ -36,21 +40,26 @@ jobs:
       - name: Build MCP
         run: bun run build:mcp
 
+      - name: Type check
+        run: bun run type-check
+
+      - name: Lint
+        run: bun run lint:check
+
       - name: Run server tests
         run: bun test --cwd packages/server
 
       - name: Run MCP tests
         run: bun test --cwd packages/mcp
 
+      - name: Run VS Code extension tests
+        run: bun test --cwd packages/vscode
+
+      - name: Run Luau bundler tests
+        run: bun test --cwd packages/luau-bundler
+
       - name: Bundle VS Code extension
         run: bun run --cwd packages/vscode bundle
-
-      - name: Install website dependencies
-        run: bun install --frozen-lockfile
-        working-directory: apps/web
-
-      - name: Check website
-        run: bun run --cwd apps/web check
 
       - name: Build website
         run: bun run --cwd apps/web build
@@ -108,6 +117,14 @@ jobs:
       - name: Install dependencies
         if: steps.version.outputs.changed == 'true'
         run: bun install --frozen-lockfile
+
+      - name: Refresh Roblox API and documentation data
+        if: steps.version.outputs.changed == 'true'
+        run: bun run fetch-definitions
+
+      - name: Validate refreshed definition data
+        if: steps.version.outputs.changed == 'true'
+        run: bun test --cwd packages/server tests/roblox-api-validation.test.ts tests/roblox-docs.test.ts
 
       - name: Build server
         if: steps.version.outputs.changed == 'true'
