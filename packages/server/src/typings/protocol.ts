@@ -102,10 +102,14 @@ export interface CloneInstanceMessage {
   readonly path: ReadonlyArray<string>;
 }
 
+/** Which caller origins the remote spy captures. */
+export type RemoteSpySource = 'game' | 'executor' | 'both';
+
 export interface SetRemoteSpyEnabledMessage {
   readonly type: 'setRemoteSpyEnabled';
   readonly id: string;
   readonly enabled: boolean;
+  readonly source?: RemoteSpySource;
 }
 
 export interface SetRemoteSpyFilterMessage {
@@ -124,6 +128,12 @@ export interface SetRemoteSpyBlockListMessage {
   readonly id: string;
   readonly blocks: ReadonlyArray<RemoteSpyBlockEntry>;
 }
+
+/** A request that changes the Remote Spy policy shared by every editor attached to one executor socket. */
+export type RemoteSpyPolicyMessage =
+  | SetRemoteSpyEnabledMessage
+  | SetRemoteSpyFilterMessage
+  | SetRemoteSpyBlockListMessage;
 
 export interface SetScriptSourceMessage {
   readonly type: 'setScriptSource';
@@ -294,6 +304,7 @@ export interface SetRemoteSpyEnabledResultMessage {
   readonly id: string;
   readonly success: boolean;
   readonly enabled?: boolean;
+  readonly source?: RemoteSpySource;
   readonly error?: string;
 }
 
@@ -312,6 +323,11 @@ export interface SetRemoteSpyBlockListResultMessage {
 }
 
 export interface RemoteSpyCall {
+  readonly source?: 'game' | 'executor' | 'unknown';
+  readonly id?: string;
+  readonly returnStatus?: 'pending' | 'returned' | 'blocked' | 'unavailable';
+  readonly returns?: string;
+  readonly returnCount?: number;
   readonly remoteName: string;
   readonly remotePath: ReadonlyArray<string>;
   readonly remoteType: string;

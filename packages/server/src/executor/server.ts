@@ -35,6 +35,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     message => sendFn(message),
     () => isReadyFn(),
     log,
+    () => isProxyMode === false,
   );
 
   const setServerTransport = (): void => {
@@ -110,7 +111,9 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
 
     ws.on('message', (data: Buffer | string) => {
       if (executorClient === undefined || executorClient.readyState !== WebSocket.OPEN) return;
-      executorClient.send(typeof data === 'string' ? data : data.toString('utf-8'));
+      const raw = typeof data === 'string' ? data : data.toString('utf-8');
+      core.observeForwardedRequest(raw);
+      executorClient.send(raw);
     });
 
     ws.on('close', () => {

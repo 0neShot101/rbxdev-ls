@@ -11,7 +11,10 @@ import type {
   MessageRecord,
   ModuleInterfaceMessage,
   PropertiesResultMessage,
+  RemoteSpyBlockEntry,
   RemoteSpyMessage,
+  RemoteSpyPolicyMessage,
+  RemoteSpySource,
   ReparentInstanceResultMessage,
   RuntimeErrorMessage,
   ScriptSourceResultMessage,
@@ -76,9 +79,15 @@ export const isScriptSourceResultMessage = createResultGuard<ScriptSourceResultM
 export const isCreateInstanceResultMessage = createResultGuard<CreateInstanceResultMessage>('createInstanceResult');
 /** Type guard for a clone instance result message. */
 export const isCloneInstanceResultMessage = createResultGuard<CloneInstanceResultMessage>('cloneInstanceResult');
-/** Type guard for a set remote spy enabled result message. */
-export const isSetRemoteSpyEnabledResultMessage =
-  createResultGuard<SetRemoteSpyEnabledResultMessage>('setRemoteSpyEnabledResult');
+const isRemoteSpySource = (value: unknown): value is RemoteSpySource =>
+  value === 'game' || value === 'executor' || value === 'both';
+const isSetRemoteSpyEnabledResult = createResultGuard<SetRemoteSpyEnabledResultMessage>('setRemoteSpyEnabledResult');
+/** Type guard for a set remote spy enabled result message, including its optional echoed state and capture source. */
+export const isSetRemoteSpyEnabledResultMessage = (msg: unknown): msg is SetRemoteSpyEnabledResultMessage =>
+  isSetRemoteSpyEnabledResult(msg) &&
+  isRecord(msg) &&
+  (msg['enabled'] === undefined || typeof msg['enabled'] === 'boolean') &&
+  (msg['source'] === undefined || isRemoteSpySource(msg['source']));
 /** Type guard for a set remote spy filter result message. */
 export const isSetRemoteSpyFilterResultMessage =
   createResultGuard<SetRemoteSpyFilterResultMessage>('setRemoteSpyFilterResult');
@@ -128,6 +137,29 @@ export const parseClientMessage = (data: string): ClientMessage | undefined => {
     if (validator === undefined) return undefined;
 
     return validator(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const isRemoteSpyBlockEntry = (value: unknown): value is RemoteSpyBlockEntry =>
+  isRecord(value) && (value['type'] === 'path' || value['type'] === 'name') && hasStringField(value, 'value');
+
+const isRemoteSpyPolicyMessage = (msg: unknown): msg is RemoteSpyPolicyMessage => {
+  if (isRecord(msg) === false || hasStringField(msg, 'id') === false) return false;
+  if (msg['type'] === 'setRemoteSpyEnabled')
+    return typeof msg['enabled'] === 'boolean' && (msg['source'] === undefined || isRemoteSpySource(msg['source']));
+  if (msg['type'] === 'setRemoteSpyFilter') return hasStringField(msg, 'filter');
+  if (msg['type'] !== 'setRemoteSpyBlockList') return false;
+  const blocks = msg['blocks'];
+  return Array.isArray(blocks) && blocks.every(isRemoteSpyBlockEntry);
+};
+
+/** Parses a frame a proxy forwards to the executor; defined only for Remote Spy policy requests. */
+export const parseRemoteSpyPolicyMessage = (data: string): RemoteSpyPolicyMessage | undefined => {
+  try {
+    const parsed: unknown = JSON.parse(data);
+    return isRemoteSpyPolicyMessage(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }

@@ -20,6 +20,7 @@ const withoutEntry = <T extends ListEntry>(list: ReadonlyArray<T>, entry: T): T[
  * @returns A fresh state with no calls, lists, or selection.
  */
 export const createRemoteSpyState = (): RemoteSpyState => ({
+  'captureSource': 'game',
   'calls': [],
   'ignoreList': [],
   'blockList': [],
@@ -63,8 +64,20 @@ export const isCallBlocked = (call: RemoteSpyCallEntry, blockList: ReadonlyArray
  * @param call - The call to record.
  */
 export const addCall = (state: RemoteSpyState, call: RemoteSpyCallEntry): void => {
+  const index = call.id === undefined ? -1 : state.calls.findIndex(entry => entry.id === call.id);
+
+  if (index >= 0) {
+    state.calls[index] = call;
+    return;
+  }
+
+  if (call.returnStatus === 'returned' || call.returnStatus === 'unavailable') return;
+
   state.calls.push(call);
-  if (state.calls.length > MAX_CALLS) state.calls.shift();
+  if (state.calls.length > MAX_CALLS) {
+    state.calls.shift();
+    state.selectedIndex = Math.max(-1, state.selectedIndex - 1);
+  }
 };
 
 /**

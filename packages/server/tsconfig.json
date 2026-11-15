@@ -28,7 +28,8 @@
       "@utils/*": ["./src/utils/*"],
       "@workspace/*": ["./src/workspace/*"],
       "@executor": ["./src/executor/index.ts"],
-      "@executor/*": ["./src/executor/*"]
+      "@executor/*": ["./src/executor/*"],
+      "@tests/*": ["./tests/*"]
     }
   },
   "include": ["src/**/*", "tests/**/*"],

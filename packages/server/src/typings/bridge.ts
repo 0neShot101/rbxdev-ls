@@ -6,6 +6,8 @@ import type {
   PropertyEntry,
   RemoteSpyBlockEntry,
   RemoteSpyCall,
+  RemoteSpyPolicyMessage,
+  RemoteSpySource,
   RuntimeError,
 } from '@typings/protocol';
 
@@ -21,9 +23,17 @@ export interface PendingRequest<T> {
   readonly timeout: ReturnType<typeof setTimeout>;
 }
 
+/** A Remote Spy policy request a proxy forwarded through the primary bridge, awaiting the executor's acknowledgement. */
+export interface ForwardedSpyRequest {
+  readonly request: RemoteSpyPolicyMessage;
+  readonly timeout: ReturnType<typeof setTimeout>;
+}
+
 export interface BridgeCore {
   readonly liveGameModel: LiveGameModel;
   readonly handleMessage: (data: string) => void;
+  /** Records a proxy-forwarded spy policy request so its acknowledgement updates the policy replayed after reload. */
+  readonly observeForwardedRequest: (data: string) => void;
   readonly setStatus: (status: BridgeStatus) => void;
   readonly setConnected: (connected: boolean) => void;
   readonly setExecutorName: (name: string | undefined) => void;
@@ -64,7 +74,7 @@ export interface BridgeCore {
   ) => Promise<CreateInstanceResult>;
   readonly cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
   readonly setScriptSource: (path: ReadonlyArray<string>, source: string) => Promise<SetScriptSourceResult>;
-  readonly setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
+  readonly setRemoteSpyEnabled: (enabled: boolean, source?: RemoteSpySource) => Promise<SetRemoteSpyEnabledResult>;
   readonly setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
   readonly setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;
   readonly onStatusChange: (callback: (status: BridgeStatus) => void) => void;
@@ -127,6 +137,7 @@ export interface CloneInstanceResult extends BridgeResult {
 
 export interface SetRemoteSpyEnabledResult extends BridgeResult {
   readonly enabled?: boolean | undefined;
+  readonly source?: RemoteSpySource | undefined;
 }
 
 export interface SetRemoteSpyFilterResult extends BridgeResult {}
@@ -167,7 +178,7 @@ export interface ExecutorBridge {
   ) => Promise<CreateInstanceResult>;
   cloneInstance: (path: ReadonlyArray<string>) => Promise<CloneInstanceResult>;
   setScriptSource: (path: ReadonlyArray<string>, source: string) => Promise<SetScriptSourceResult>;
-  setRemoteSpyEnabled: (enabled: boolean) => Promise<SetRemoteSpyEnabledResult>;
+  setRemoteSpyEnabled: (enabled: boolean, source?: RemoteSpySource) => Promise<SetRemoteSpyEnabledResult>;
   setRemoteSpyFilter: (filter: string) => Promise<SetRemoteSpyFilterResult>;
   setRemoteSpyBlockList: (blocks: ReadonlyArray<RemoteSpyBlockEntry>) => Promise<SetRemoteSpyBlockListResult>;
   readonly isRemoteSpyEnabled: boolean;

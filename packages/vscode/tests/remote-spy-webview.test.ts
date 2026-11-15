@@ -14,7 +14,9 @@ describe('Remote Spy Webview - Markup Regression', () => {
     expect(/\boninput\s*=/i.test(source)).toBe(false);
     expect(/<button[^>]*\bdata-action\s*=\s*"copyCode"/i.test(source)).toBe(true);
     expect(/<button[^>]*\bdata-action\s*=\s*"copyPath"/i.test(source)).toBe(true);
-    expect(/<button[^>]*\bdata-action\s*=\s*"copyArgs"/i.test(source)).toBe(true);
+    expect(/<button[^>]*\bdata-action\s*=\s*"showArgs"/i.test(source)).toBe(true);
+    expect(/<button[^>]*\bdata-action\s*=\s*"showReturns"/i.test(source)).toBe(true);
+    expect(/<select[^>]*\bid\s*=\s*"capture-source"/i.test(source)).toBe(true);
   });
 });
 

@@ -5,14 +5,59 @@
 
 import { randomBytes } from 'crypto';
 
-import { Disposable, ExtensionContext, ViewColumn, WebviewPanel, window } from 'vscode';
+import { ViewColumn, window } from 'vscode';
 
+import type { Disposable, ExtensionContext, WebviewPanel } from 'vscode';
 import type {
   FromWebviewMessage,
   RemoteSpyCallEntry,
   RemoteSpyMessageHandler,
   RemoteSpyState,
 } from '@typings/remoteSpy';
+import { isBoolean, isListEntry, isNumber, isObject, isRemoteSpySource, isString } from '#extension/utils/guards';
+
+/** Message kinds the remote spy webview posts to the extension host. */
+const MESSAGE_TYPES: ReadonlyArray<FromWebviewMessage['type']> = [
+  'ready',
+  'setCaptureSource',
+  'selectCall',
+  'copyCode',
+  'copyPath',
+  'copyReturns',
+  'copyArgs',
+  'ignoreByPath',
+  'ignoreByName',
+  'blockByPath',
+  'blockByName',
+  'clearIgnores',
+  'clearBlocks',
+  'pause',
+  'resume',
+  'toggleSpy',
+  'search',
+  'clear',
+  'removeIgnore',
+  'removeBlock',
+];
+
+/**
+ * Checks that a decoded value names a remote spy webview message kind.
+ */
+const isMessageType = (value: unknown): value is FromWebviewMessage['type'] =>
+  MESSAGE_TYPES.some(type => type === value);
+
+/**
+ * Checks that a message posted by the remote spy webview matches its message contract.
+ */
+const isFromWebviewMessage = (value: unknown): value is FromWebviewMessage =>
+  isObject(value) &&
+  'type' in value &&
+  isMessageType(value.type) &&
+  ('index' in value === false || isNumber(value.index)) &&
+  ('query' in value === false || isString(value.query)) &&
+  ('enabled' in value === false || isBoolean(value.enabled)) &&
+  ('source' in value === false || isRemoteSpySource(value.source)) &&
+  ('entry' in value === false || isListEntry(value.entry));
 
 /**
  * Manages the Remote Spy WebView panel lifecycle
@@ -27,7 +72,7 @@ export class RemoteSpyPanel {
   private debounceTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingCalls: Array<RemoteSpyCallEntry & { readonly index: number }> = [];
 
-  constructor(private readonly context: ExtensionContext) {}
+  constructor(private readonly context: Pick<ExtensionContext, 'extensionUri'>) {}
 
   /**
    * Registers the callback for messages from the WebView
@@ -54,8 +99,8 @@ export class RemoteSpyPanel {
     this.panel.webview.html = this.getHtml();
 
     this.panel.webview.onDidReceiveMessage(
-      (message: FromWebviewMessage) => {
-        if (this.messageHandler !== undefined) this.messageHandler(message);
+      message => {
+        if (this.messageHandler !== undefined && isFromWebviewMessage(message)) this.messageHandler(message);
       },
       undefined,
       this.disposables,
@@ -66,13 +111,11 @@ export class RemoteSpyPanel {
         this.panel = undefined;
         this.disposables.forEach(d => d.dispose());
         this.disposables = [];
-        if (this.debounceTimer !== undefined) clearTimeout(this.debounceTimer);
+        this.resetPending();
       },
       undefined,
       this.disposables,
     );
-
-    setTimeout(() => this.sendFullState(state, spyEnabled), 100);
   };
 
   /**
@@ -102,15 +145,18 @@ export class RemoteSpyPanel {
   /**
    * Sends the full state snapshot to the WebView
    */
-  sendFullState = (state: RemoteSpyState, spyEnabled: boolean): void => {
+  sendFullState = (state: RemoteSpyState, spyEnabled: boolean, controlSettled = false): void => {
     if (this.panel === undefined) return;
+    this.resetPending();
 
     this.panel.webview.postMessage({
       'type': 'updateState',
+      controlSettled,
       'state': {
         'calls': state.calls,
         'selectedIndex': state.selectedIndex,
         'paused': state.paused,
+        'captureSource': state.captureSource,
         'ignoreCount': state.ignoreList.length,
         'blockCount': state.blockList.length,
         spyEnabled,
@@ -123,12 +169,21 @@ export class RemoteSpyPanel {
   /**
    * Clears the WebView display
    */
-  clear = (): void => void this.panel?.webview.postMessage({ 'type': 'clear' });
+  clear = (): void => {
+    this.resetPending();
+    this.panel?.webview.postMessage({ 'type': 'clear' });
+  };
 
   /**
    * Disposes the panel
    */
   dispose = (): void => void this.panel?.dispose();
+
+  private resetPending = (): void => {
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = undefined;
+    this.pendingCalls = [];
+  };
 
   private getHtml = (): string => {
     const nonce = this.getNonce();
@@ -142,465 +197,251 @@ export class RemoteSpyPanel {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 
   <style>
+    * { box-sizing: border-box; }
     :root {
-      --accent-event: #f0c340;
-      --accent-event-dim: rgba(240, 195, 64, 0.12);
-      --accent-event-glow: rgba(240, 195, 64, 0.25);
-      --accent-func: #c084fc;
-      --accent-func-dim: rgba(192, 132, 252, 0.12);
-      --accent-func-glow: rgba(192, 132, 252, 0.25);
-      --accent-danger: #f87171;
-      --accent-danger-dim: rgba(248, 113, 113, 0.12);
-      --accent-success: #4ade80;
-      --radius: 6px;
-      --radius-sm: 4px;
+      color-scheme: light dark;
+      --border: var(--vscode-panel-border, var(--vscode-widget-border, #454545));
+      --muted: var(--vscode-descriptionForeground, #999);
+      --surface: var(--vscode-editor-background, #1f1f1f);
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: var(--vscode-font-family);
-      font-size: var(--vscode-font-size);
-      color: var(--vscode-foreground);
-      background: var(--vscode-editor-background);
+      margin: 0;
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      color: var(--vscode-foreground, #ccc);
+      background: var(--surface);
+      font: var(--vscode-font-size, 13px) var(--vscode-font-family, sans-serif);
     }
-
-    /*  Toolbar  */
+    button, input, select, summary { font: inherit; }
+    button, summary { cursor: pointer; }
+    .source-control { display: flex; align-items: center; gap: 8px; margin-left: 8px; font-size: 12px; }
+    .source-control span { color: var(--muted); }
+    .source-control select { min-height: 28px; padding: 3px 24px 3px 8px; border: 1px solid var(--vscode-dropdown-border, var(--border)); border-radius: 2px; background: var(--vscode-dropdown-background, var(--surface)); color: var(--vscode-dropdown-foreground, inherit); }
+    button:disabled { opacity: .5; cursor: default; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder, #007fd4);
+      outline-offset: -1px;
+    }
+    .btn {
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      background: transparent;
+      color: inherit;
+      white-space: nowrap;
+    }
+    .btn:hover:not(:disabled), summary:hover { background: var(--vscode-toolbar-hoverBackground, #ffffff14); }
+    .btn.primary {
+      color: var(--vscode-button-foreground, #fff);
+      background: var(--vscode-button-background, #0078d4);
+    }
+    .btn.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground, #026ec1); }
+    .btn.secondary { border-color: var(--border); }
+    .btn.danger { color: var(--vscode-errorForeground, #f48771); }
+    .btn[aria-pressed="true"] { background: var(--vscode-toolbar-activeBackground, #ffffff20); }
     .toolbar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      background: var(--vscode-sideBar-background);
-      border-bottom: 1px solid var(--vscode-panel-border);
       flex-wrap: wrap;
-    }
-    .toolbar-group {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .toolbar-sep {
-      width: 1px;
-      height: 22px;
-      background: var(--vscode-panel-border);
-      margin: 0 4px;
-      opacity: 0.6;
-    }
-
-    /*  Buttons  */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 5px 12px;
-      background: var(--vscode-button-secondaryBackground);
-      color: var(--vscode-button-secondaryForeground);
-      border: 1px solid transparent;
-      border-radius: var(--radius);
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      white-space: nowrap;
-      font-family: var(--vscode-font-family);
-      transition: all 0.15s ease;
-      letter-spacing: 0.01em;
-    }
-    .btn:hover {
-      background: var(--vscode-button-secondaryHoverBackground);
-      border-color: var(--vscode-panel-border);
-    }
-    .btn.primary {
-      background: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border-color: transparent;
-    }
-    .btn.primary:hover {
-      background: var(--vscode-button-hoverBackground);
-      box-shadow: 0 0 8px rgba(0,120,212,0.3);
-    }
-    .btn.danger {
-      color: var(--accent-danger);
-      border-color: var(--accent-danger-dim);
-    }
-    .btn.danger:hover {
-      background: var(--accent-danger-dim);
-      border-color: var(--accent-danger);
-    }
-    .btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
-
-    .search-box {
-      flex: 1;
-      min-width: 140px;
-      max-width: 280px;
-      padding: 5px 10px;
-      background: var(--vscode-input-background);
-      color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border, transparent);
-      border-radius: var(--radius);
-      font-size: 12px;
-      font-family: var(--vscode-font-family);
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .search-box:focus {
-      outline: none;
-      border-color: var(--vscode-focusBorder);
-      box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-    }
-    .search-box::placeholder { opacity: 0.5; }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      background: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      border-radius: 9px;
-      font-size: 10px;
-      font-weight: 600;
-    }
-
-    /*  Main Layout  */
-    .main {
-      flex: 1;
-      display: flex;
-      overflow: hidden;
-    }
-
-    /*  Call List  */
-    .call-list {
-      width: 38%;
-      min-width: 220px;
-      border-right: 1px solid var(--vscode-panel-border);
-      overflow-y: auto;
-      overflow-x: hidden;
-      scrollbar-width: thin;
-    }
-    .call-list::-webkit-scrollbar { width: 6px; }
-    .call-list::-webkit-scrollbar-thumb {
-      background: var(--vscode-scrollbarSlider-background);
-      border-radius: 3px;
-    }
-    .call-list::-webkit-scrollbar-thumb:hover {
-      background: var(--vscode-scrollbarSlider-hoverBackground);
-    }
-
-    .call-item {
-      display: flex;
-      align-items: flex-start;
+      gap: 6px;
       padding: 8px 12px;
-      cursor: pointer;
-      gap: 10px;
-      border-left: 3px solid transparent;
-      transition: background 0.1s ease;
-      position: relative;
+      border-bottom: 1px solid var(--border);
     }
-    .call-item + .call-item { border-top: 1px solid color-mix(in srgb, var(--vscode-panel-border) 40%, transparent); }
-    .call-item:hover { background: var(--vscode-list-hoverBackground); }
-    .call-item.selected {
-      background: var(--vscode-list-activeSelectionBackground);
-      color: var(--vscode-list-activeSelectionForeground);
+    .toolbar-group { display: flex; align-items: center; gap: 4px; }
+    .toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+    .count { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
+    .main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(290px, 40%) minmax(0, 1fr); }
+    .capture-pane { min-height: 0; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+    .pane-heading { min-height: 38px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+    .pane-heading h2 { margin: 0; font-size: 12px; font-weight: 600; }
+    .pane-heading .count { margin-left: auto; font-size: 11px; }
+    .search-box {
+      width: calc(100% - 24px);
+      min-height: 28px;
+      margin: 0 12px 10px;
+      padding: 5px 8px;
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 2px;
+      color: var(--vscode-input-foreground, inherit);
+      background: var(--vscode-input-background, #313131);
     }
-    .call-item.event { border-left-color: var(--accent-event); }
-    .call-item.event:hover { background: var(--accent-event-dim); }
-    .call-item.function { border-left-color: var(--accent-func); }
-    .call-item.function:hover { background: var(--accent-func-dim); }
-    .call-item.blocked { opacity: 0.35; border-left-color: var(--accent-danger); }
-
-    .call-info { flex: 1; min-width: 0; }
-    .call-name {
-      font-weight: 600;
-      font-size: 12.5px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      letter-spacing: 0.01em;
-    }
-    .call-meta {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 3px;
-    }
-    .call-time {
-      font-size: 10px;
-      color: var(--vscode-descriptionForeground);
-      white-space: nowrap;
-      padding-top: 2px;
-      opacity: 0.7;
-      font-variant-numeric: tabular-nums;
-    }
-    .call-type-badge {
-      font-size: 9px;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .call-type-badge.event {
-      background: var(--accent-event-dim);
-      color: var(--accent-event);
-      border: 1px solid var(--accent-event-glow);
-    }
-    .call-type-badge.function {
-      background: var(--accent-func-dim);
-      color: var(--accent-func);
-      border: 1px solid var(--accent-func-glow);
-    }
-
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--vscode-descriptionForeground);
-      padding: 32px;
-      text-align: center;
-      gap: 8px;
-    }
-    .empty-state .empty-icon { font-size: 32px; opacity: 0.3; }
-    .empty-state .empty-text { font-size: 13px; opacity: 0.6; line-height: 1.5; }
-
-    /*  Code Panel  */
-    .code-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .code-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      background: var(--vscode-sideBar-background);
-      border-bottom: 1px solid var(--vscode-panel-border);
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--vscode-descriptionForeground);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .code-header .header-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--accent-event);
-    }
-    .code-header .header-dot.fn { background: var(--accent-func); }
-    .code-actions {
-      display: flex;
-      gap: 5px;
-      padding: 8px 14px;
-      background: color-mix(in srgb, var(--vscode-sideBar-background) 80%, var(--vscode-editor-background));
-      border-bottom: 1px solid var(--vscode-panel-border);
-      flex-wrap: wrap;
-    }
-    .code-view {
-      flex: 1;
-      overflow: auto;
-      padding: 16px 18px;
-      font-family: var(--vscode-editor-font-family, 'Consolas, Courier New, monospace');
-      font-size: var(--vscode-editor-font-size, 13px);
-      line-height: 1.6;
-      white-space: pre-wrap;
-      word-break: break-all;
-      tab-size: 2;
-      scrollbar-width: thin;
-    }
-    .code-view::-webkit-scrollbar { width: 6px; }
-    .code-view::-webkit-scrollbar-thumb {
-      background: var(--vscode-scrollbarSlider-background);
-      border-radius: 3px;
-    }
-    .code-empty {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      color: var(--vscode-descriptionForeground);
-      gap: 6px;
-      opacity: 0.5;
-    }
-    .code-empty .code-empty-icon { font-size: 28px; }
-
-    /*  Luau Syntax  */
-    .kw { color: #c586c0; }
-    .str { color: #ce9178; }
-    .num { color: #b5cea8; }
-    .cm { color: #6a9955; font-style: italic; }
-    .fn { color: #dcdcaa; }
-    .op { color: var(--vscode-foreground); }
-    .gl { color: #4ec9b0; font-weight: 500; }
-
-    /*  Lists Panel  */
-    .lists-panel {
-      border-top: 1px solid var(--vscode-panel-border);
-      max-height: 160px;
-      overflow-y: auto;
-      background: var(--vscode-sideBar-background);
-      scrollbar-width: thin;
-    }
-    .lists-panel .list-header {
-      padding: 6px 14px;
-      font-size: 10px;
-      font-weight: 700;
-      color: var(--vscode-descriptionForeground);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      background: var(--vscode-sideBar-background);
-      position: sticky;
-      top: 0;
-      border-bottom: 1px solid var(--vscode-panel-border);
-    }
-    .list-entry {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 14px;
-      font-size: 12px;
-      transition: background 0.1s ease;
-    }
-    .list-entry:hover { background: var(--vscode-list-hoverBackground); }
-    .list-entry .entry-type {
-      font-size: 9px;
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      background: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-    }
-    .list-entry .entry-value {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-family: var(--vscode-editor-font-family, monospace);
-      font-size: 11.5px;
-    }
-    .list-entry .entry-remove {
-      appearance: none;
-      background: transparent;
+    .search-box::placeholder { color: var(--vscode-input-placeholderForeground, var(--muted)); }
+    .column-head, .call-item { display: grid; grid-template-columns: minmax(0, 1fr) 88px 72px; column-gap: 8px; align-items: center; }
+    .column-head { padding: 6px 12px; border-block: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+    .column-head span:last-child { text-align: right; }
+    .call-list { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+    .call-item {
+      width: 100%;
+      text-align: left;
+      padding: 8px 12px;
       border: 0;
-      cursor: pointer;
-      color: var(--vscode-descriptionForeground);
-      font-size: 16px;
-      width: 20px;
-      height: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-sm);
-      transition: all 0.1s ease;
-      opacity: 0.5;
+      border-bottom: 1px solid var(--vscode-tree-tableColumnsBorder, #ffffff08);
+      border-radius: 0;
+      color: inherit;
+      background: transparent;
     }
-    .list-entry:hover .entry-remove { opacity: 1; }
-    .list-entry .entry-remove:hover {
-      color: var(--accent-danger);
-      background: var(--accent-danger-dim);
+    .call-item:hover { background: var(--vscode-list-hoverBackground, #ffffff0a); }
+    .call-item.selected {
+      color: var(--vscode-list-activeSelectionForeground, #fff);
+      background: var(--vscode-list-activeSelectionBackground, #04395e);
     }
-
-    /*  Status Bar  */
-    .status-bar {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 4px 14px;
-      background: var(--vscode-statusBar-background);
-      color: var(--vscode-statusBar-foreground);
-      font-size: 11px;
-      border-top: 1px solid var(--vscode-panel-border);
-    }
+    .call-info { min-width: 0; }
+    .call-name, .call-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .call-name { font-size: 12px; line-height: 18px; }
+    .call-path { color: var(--muted); font-size: 11px; line-height: 17px; }
+    .selected .call-path, .selected .call-time { color: inherit; opacity: .8; }
+    .call-method, .call-time { font-size: 11px; font-variant-numeric: tabular-nums; }
+    .call-time { text-align: right; color: var(--muted); }
+    .blocked-label { color: var(--vscode-errorForeground, #f48771); font-size: 10px; margin-left: 6px; }
+    .empty-state, .code-empty { padding: 28px 20px; color: var(--muted); line-height: 1.6; }
+    .empty-title { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 500; color: var(--vscode-foreground, #ccc); }
+    .empty-text { margin: 0; max-width: 44ch; font-size: 12px; }
+    .code-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .code-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+    .detail-title { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+    .detail-title h2 { font-size: 15px; font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+    .detail-type { color: var(--muted); font-size: 11px; }
+    .detail-path { font: 11px/1.6 var(--vscode-editor-font-family, monospace); overflow-wrap: anywhere; margin: 8px 0; }
+    .detail-meta { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 11px; }
+    .code-actions { min-height: 38px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 10px; border-bottom: 1px solid var(--border); }
+    .view-tabs { display: flex; align-self: stretch; }
+    .view-tab { border-bottom: 2px solid transparent; border-radius: 0; }
+    .view-tab[aria-selected="true"] { border-bottom-color: var(--vscode-focusBorder, #007fd4); }
+    .detail-actions { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; }
+    .remote-actions { position: relative; }
+    .remote-actions summary { list-style: none; min-height: 28px; padding: 5px 10px; border-radius: 2px; }
+    .remote-actions summary::-webkit-details-marker { display: none; }
+    .remote-actions[open] summary { background: var(--vscode-toolbar-activeBackground, #ffffff20); }
+    .action-menu { position: absolute; top: 32px; right: 0; z-index: 2; width: 230px; max-height: calc(100vh - 24px); overflow-y: auto; border: 1px solid var(--border); background: var(--vscode-menu-background, var(--surface)); box-shadow: 0 2px 8px var(--vscode-widget-shadow, #0005); padding: 4px; }
+    .action-menu .btn { display: block; width: 100%; text-align: left; }
+    .action-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px; }
+    .action-label { display: block; padding: 6px 10px 3px; color: var(--muted); font-size: 11px; }
+    .code-view { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 16px; font: var(--vscode-editor-font-size, 13px)/1.6 var(--vscode-editor-font-family, monospace); white-space: pre; tab-size: 2; scrollbar-width: thin; }
+    .kw { color: var(--vscode-debugTokenExpression-keyword, var(--vscode-foreground)); }
+    .str { color: var(--vscode-debugTokenExpression-string, var(--vscode-foreground)); }
+    .num { color: var(--vscode-debugTokenExpression-number, var(--vscode-foreground)); }
+    .cm { color: var(--muted); }
+    .gl, .fn { color: var(--vscode-debugTokenExpression-name, var(--vscode-foreground)); }
+    .lists-panel { border-top: 1px solid var(--border); max-height: 220px; overflow: auto; background: var(--vscode-sideBar-background, var(--surface)); }
+    .list-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+    .list-header .btn { margin-left: auto; }
+    .list-description { margin: 0; padding: 0 12px 10px; color: var(--muted); font-size: 12px; }
+    .list-entry { display: flex; align-items: center; gap: 12px; padding: 4px 12px; border-top: 1px solid var(--border); }
+    .entry-type { width: 36px; color: var(--muted); font-size: 11px; }
+    .entry-value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+    .status-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; }
+    .status-dot { width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 50%; flex-shrink: 0; }
+    .status-dot.active { background: var(--vscode-testing-iconPassed, #73c991); border-color: transparent; }
+    .status-dot.paused { background: var(--vscode-editorWarning-foreground, #cca700); border-color: transparent; }
     .status-bar .spacer { flex: 1; }
-    .status-dot {
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      background: var(--vscode-descriptionForeground);
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @media (max-width: 760px) {
+      .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(170px, 42%) minmax(0, 1fr); }
+      .capture-pane { border-right: 0; border-bottom: 1px solid var(--border); }
+      .code-header { padding: 10px 12px; }
+      .detail-meta { gap: 8px; }
+      .detail-path { margin: 4px 0; }
+      .toolbar { padding: 6px 8px; }
+      .toolbar-end { margin-left: 0; }
     }
-    .status-dot.active {
-      background: var(--accent-success);
-      box-shadow: 0 0 6px var(--accent-success);
-      animation: pulse 2s ease-in-out infinite;
-    }
-    .status-dot.paused {
-      background: var(--accent-event);
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    @media (forced-colors: active) {
+      .btn, .call-item.selected { border: 1px solid ButtonText; }
+      .status-dot.active, .status-dot.paused { background: Highlight; }
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
+  <header class="toolbar" aria-label="Capture controls">
     <div class="toolbar-group">
-      <button class="btn primary" id="btn-toggle" data-action="toggleSpy">Enable Spy</button>
-      <button class="btn" id="btn-pause" data-action="togglePause" disabled>Pause</button>
-      <button class="btn" id="btn-clear" data-action="clearCalls">Clear</button>
+      <button class="btn primary" id="btn-toggle" data-action="toggleSpy">Start capture</button>
+      <button class="btn secondary" id="btn-pause" data-action="togglePause" title="Pause the displayed log, not outgoing remote calls" disabled>Pause display</button>
+      <button class="btn" id="btn-clear" data-action="clearCalls">Clear log</button>
     </div>
-    <div class="toolbar-sep"></div>
-    <div class="toolbar-group">
-      <button class="btn" id="btn-ignores" data-action="toggleListsPanel" data-list-mode="ignores">Ignores <span class="badge" id="ignore-count">0</span></button>
-      <button class="btn" id="btn-blocks" data-action="toggleListsPanel" data-list-mode="blocks">Blocks <span class="badge" id="block-count">0</span></button>
+    <label class="source-control" title="Filters new capture and the visible list. Existing log entries are retained.">
+      <span>Capture source</span>
+      <select id="capture-source" aria-label="Capture source">
+        <option value="game">Game</option>
+        <option value="executor">Executor</option>
+        <option value="both">Both</option>
+      </select>
+    </label>
+    <div class="toolbar-end">
+      <button class="btn" id="btn-ignores" data-action="toggleListsPanel" data-list-mode="ignores" aria-pressed="false">Ignored <span class="count" id="ignore-count">0</span></button>
+      <button class="btn" id="btn-blocks" data-action="toggleListsPanel" data-list-mode="blocks" aria-pressed="false">Blocked <span class="count" id="block-count">0</span></button>
     </div>
-    <input type="text" class="search-box" id="search" placeholder="Search remotes...">
-  </div>
+  </header>
 
-  <div class="main">
-    <div class="call-list" id="call-list">
-      <div class="empty-state" id="empty-state">
-        <div class="empty-icon">&#128225;</div>
-        <div class="empty-text">Enable the spy and trigger remotes<br>in-game to see calls here</div>
+  <main class="main">
+    <section class="capture-pane" aria-labelledby="calls-heading">
+      <div class="pane-heading">
+        <h2 id="calls-heading">Captured calls</h2>
+        <span class="count" id="shown-count">0 / 0</span>
       </div>
-    </div>
-    <div class="code-panel">
+      <label class="sr-only" for="search">Filter captured calls by name, path, or method</label>
+      <input type="search" class="search-box" id="search" placeholder="Filter by name, path, or method" autocomplete="off" spellcheck="false">
+      <div class="column-head" aria-hidden="true"><span>Remote / path</span><span>Method</span><span>Time</span></div>
+      <div class="call-list" id="call-list" role="group" aria-label="Captured remote calls">
+        <div class="empty-state" id="empty-state">
+          <span class="empty-title" id="empty-title">No calls captured</span>
+          <p class="empty-text" id="empty-text">Start capture, then use an in-game action that sends a remote call.</p>
+        </div>
+      </div>
+    </section>
+    <section class="code-panel" aria-label="Selected call details">
       <div class="code-header" id="code-header" style="display:none;">
-        <span class="header-dot" id="header-dot"></span>
-        <span id="code-header-text">Code</span>
+        <div class="detail-title"><h2 id="code-header-text"></h2><span class="detail-type" id="detail-type"></span></div>
+        <div class="detail-path" id="detail-path"></div>
+        <div class="detail-meta"><span id="detail-method"></span><span id="detail-time"></span><span id="detail-blocked"></span></div>
+        <div class="detail-meta"><span id="detail-source"></span></div>
       </div>
       <div class="code-actions" id="code-actions" style="display:none;">
-        <button class="btn" data-action="copyCode">Copy Code</button>
-        <button class="btn" data-action="copyPath">Copy Path</button>
-        <button class="btn" data-action="copyArgs">Copy Args</button>
-        <div class="toolbar-sep"></div>
-        <button class="btn" data-action="ignoreByPath">Ignore Path</button>
-        <button class="btn" data-action="ignoreByName">Ignore Name</button>
-        <div class="toolbar-sep"></div>
-        <button class="btn danger" data-action="blockByPath">Block Path</button>
-        <button class="btn danger" data-action="blockByName">Block Name</button>
+        <div class="view-tabs" role="tablist" aria-label="Call content">
+          <button class="btn view-tab" id="tab-code" data-action="showCode" role="tab" aria-selected="true" aria-controls="code-view">Replay code</button>
+          <button class="btn view-tab" id="tab-args" data-action="showArgs" role="tab" aria-selected="false" aria-controls="code-view">Arguments</button>
+          <button class="btn view-tab" id="tab-returns" data-action="showReturns" role="tab" aria-selected="false" aria-controls="code-view">Returns</button>
+        </div>
+        <div class="detail-actions">
+          <button class="btn" id="copy-content" data-action="copyCode">Copy code</button>
+          <details class="remote-actions" id="remote-actions">
+            <summary aria-label="Actions for this remote">Remote actions</summary>
+            <div class="action-menu">
+              <button class="btn" data-action="copyPath">Copy instance path</button>
+              <hr>
+              <span class="action-label">Ignore future calls in this log</span>
+              <button class="btn" data-action="ignoreByPath">Ignore this path</button>
+              <button class="btn" data-action="ignoreByName">Ignore matching names</button>
+              <hr>
+              <span class="action-label">Prevent outgoing calls</span>
+              <button class="btn danger" data-action="blockByPath">Block this path</button>
+              <button class="btn danger" data-action="blockByName">Block matching names</button>
+            </div>
+          </details>
+        </div>
       </div>
       <div class="code-empty" id="code-empty">
-        <div class="code-empty-icon">{ }</div>
-        <span>Select a remote call to view its code</span>
+        <span class="empty-title">Select a captured call</span>
+        <p class="empty-text">Inspect its destination, arguments, and replay code. Ignore or block rules apply to future calls.</p>
       </div>
-      <div class="code-view" id="code-view" style="display:none;"></div>
-    </div>
-  </div>
+      <pre class="code-view" id="code-view" role="tabpanel" aria-labelledby="tab-code" tabindex="0" style="display:none;"></pre>
+    </section>
+  </main>
 
-  <div class="lists-panel" id="lists-panel" style="display:none;"></div>
+  <section class="lists-panel" id="lists-panel" aria-label="Remote rules" style="display:none;"></section>
 
-  <div class="status-bar">
-    <span class="status-dot" id="status-dot"></span>
-    <span id="status-text">Spy disabled</span>
+  <footer class="status-bar">
+    <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+    <span id="status-text" role="status">Capture stopped</span>
     <span class="spacer"></span>
-    <span id="call-count">0 calls</span>
-  </div>
+    <span id="call-count">0 calls · latest 1,000 retained</span>
+  </footer>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    let state = {
+    const state = {
       calls: [],
       selectedIndex: -1,
       paused: false,
@@ -609,6 +450,10 @@ export class RemoteSpyPanel {
       blockList: [],
       searchQuery: '',
       listsMode: null,
+      viewMode: 'code',
+      capturePending: false,
+      captureSource: 'game',
+      sourcePending: false,
     };
 
     const LUAU_KEYWORDS = new Set([
@@ -684,9 +529,10 @@ export class RemoteSpyPanel {
 
     const formatTime = (timestamp) => new Date(timestamp * 1000).toLocaleTimeString();
 
-    const getCallClass = (call) => (call.remoteType === 'RemoteFunction' ? 'function' : 'event');
-
     const matchesSearch = (call) => {
+      if (state.captureSource !== 'both' && call.source !== undefined && call.source !== state.captureSource)
+        return false;
+
       if (state.searchQuery === '') return true;
       const q = state.searchQuery.toLowerCase();
       return call.remoteName.toLowerCase().includes(q)
@@ -697,35 +543,39 @@ export class RemoteSpyPanel {
     const renderCallList = () => {
       const list = document.getElementById('call-list');
       const empty = document.getElementById('empty-state');
-      const filtered = state.calls.filter(matchesSearch);
-
-      if (filtered.length === 0) {
-        empty.style.display = 'flex';
-        list.querySelectorAll('.call-item').forEach((item) => item.remove());
-        return;
-      }
-
-      empty.style.display = 'none';
+      const filtered = state.calls.map((call, index) => ({ call, index })).filter(entry => matchesSearch(entry.call));
+      const focused = document.activeElement?.closest('.call-item')?.getAttribute('data-index');
+      document.getElementById('shown-count').textContent = filtered.length + ' / ' + state.calls.length;
+      document.getElementById('empty-title').textContent = state.searchQuery !== ''
+        ? 'No matching calls'
+        : state.calls.length > 0 ? 'No calls from this source' : 'No calls captured';
+      document.getElementById('empty-text').textContent = state.searchQuery !== ''
+        ? 'Try a different name, path, or method. Filtering does not change capture.'
+        : state.paused
+          ? 'The display is paused. Resume it to add new calls to this log.'
+          : state.spyEnabled
+            ? (state.captureSource === 'game'
+              ? 'Waiting for a game-origin remote call. Executor calls are excluded; choose Both to include them.'
+              : state.captureSource === 'executor'
+                ? 'Waiting for a remote call from your executor. Game-origin calls are excluded.'
+                : 'Waiting for a remote call from the game or your executor.')
+            : 'Start capture, then trigger a remote call from the selected source.';
+      empty.style.display = filtered.length === 0 ? 'block' : 'none';
+      list.querySelectorAll('.call-item').forEach(item => item.remove());
       let html = '';
-      for (let i = 0; i < filtered.length; i++) {
-        const call = filtered[i];
-        const realIndex = state.calls.indexOf(call);
-        const typeClass = getCallClass(call);
-        const selected = realIndex === state.selectedIndex ? ' selected' : '';
-        const blocked = call._blocked === true ? ' blocked' : '';
-        html += '<div class="call-item ' + typeClass + selected + blocked + '" data-index="' + realIndex + '">'
-          + '<div class="call-info">'
-          + '<div class="call-name">' + escapeHtml(call.remoteName) + '</div>'
-          + '<div class="call-meta">'
-          + '<span class="call-type-badge ' + typeClass + '">' + call.method + '</span>'
-          + '<span>' + escapeHtml(call.remoteType) + '</span>'
-          + '</div></div>'
-          + '<span class="call-time">' + formatTime(call.timestamp) + '</span>'
-          + '</div>';
+      for (const { call, index } of filtered) {
+        const selected = index === state.selectedIndex;
+        const path = call.remotePath.join('.');
+        html += '<button type="button" class="call-item' + (selected ? ' selected' : '') + '" data-index="' + index + '" aria-pressed="' + selected + '" title="' + escapeAttr(path) + '">'
+          + '<span class="call-info"><span class="call-name" style="display:block;">' + escapeHtml(call.remoteName)
+          + (call._blocked === true ? '<span class="blocked-label">Blocked</span>' : '') + '</span>'
+          + '<span class="call-path" style="display:block;">' + escapeHtml(path) + '</span></span>'
+          + '<span class="call-method">' + escapeHtml(call.method) + '</span>'
+          + '<span class="call-time">' + escapeHtml(formatTime(call.timestamp)) + '</span></button>';
       }
-      const items = list.querySelectorAll('.call-item');
-      items.forEach((item) => item.remove());
       empty.insertAdjacentHTML('afterend', html);
+      if (focused !== undefined && focused !== null)
+        list.querySelector('[data-index="' + Number(focused) + '"]')?.focus({ preventScroll: true });
     };
 
     const renderCodeView = () => {
@@ -733,63 +583,83 @@ export class RemoteSpyPanel {
       const codeEmpty = document.getElementById('code-empty');
       const codeActions = document.getElementById('code-actions');
       const codeHeader = document.getElementById('code-header');
-      const codeHeaderText = document.getElementById('code-header-text');
-      const headerDot = document.getElementById('header-dot');
+      const call = state.calls[state.selectedIndex];
+      const hasCall = call !== undefined;
+      codeView.style.display = hasCall ? 'block' : 'none';
+      codeEmpty.style.display = hasCall ? 'none' : 'block';
+      codeActions.style.display = hasCall ? 'flex' : 'none';
+      codeHeader.style.display = hasCall ? 'block' : 'none';
+      if (hasCall === false) return;
 
-      if (state.selectedIndex < 0 || state.selectedIndex >= state.calls.length) {
-        codeView.style.display = 'none';
-        codeEmpty.style.display = 'flex';
-        codeActions.style.display = 'none';
-        codeHeader.style.display = 'none';
+      document.getElementById('code-header-text').textContent = call.remoteName;
+      document.getElementById('detail-type').textContent = call.remoteType;
+      document.getElementById('detail-path').textContent = call.remotePath.join('.');
+      document.getElementById('detail-method').textContent = call.method;
+      document.getElementById('detail-source').textContent = 'Caller: ' + (call.source ?? 'unknown');
+      document.getElementById('detail-time').textContent = 'Captured ' + formatTime(call.timestamp);
+      document.getElementById('detail-blocked').textContent = call._blocked === true ? 'Blocked before dispatch' : 'Not blocked by this spy';
+      const tabs = ['code', 'arguments', 'returns'];
+      const buttons = ['tab-code', 'tab-args', 'tab-returns'];
+
+      for (let index = 0; index < tabs.length; index++) {
+        const selected = state.viewMode === tabs[index];
+        const button = document.getElementById(buttons[index]);
+        button.setAttribute('aria-selected', String(selected));
+        button.tabIndex = selected ? 0 : -1;
+      }
+
+      codeView.setAttribute('aria-labelledby', buttons[tabs.indexOf(state.viewMode)]);
+      const copy = document.getElementById('copy-content');
+      copy.disabled = false;
+
+      if (state.viewMode === 'returns') {
+        copy.textContent = 'Copy return values';
+        copy.setAttribute('data-action', 'copyReturns');
+        copy.disabled = call.returnStatus !== 'returned';
+        codeView.innerHTML = highlightLuau(call.returns ?? '');
+
+        if (call.method !== 'InvokeServer')
+          codeView.textContent = 'RemoteEvents are one-way. FireServer does not return a server response.';
+        else if (call.returnStatus === 'blocked')
+          codeView.textContent = 'This call was blocked. The server was not invoked.';
+        else if (call.returnStatus === 'pending')
+          codeView.textContent = 'No response captured yet. The invocation may still be waiting, or may have failed.';
+        else if (call.returnStatus === 'unavailable')
+          codeView.textContent = 'The call returned, but its values could not be serialized.';
+        else if (call.returnStatus !== 'returned')
+          codeView.textContent = 'Return values were not recorded by this bridge version.';
+        else if (call.returnCount === 0)
+          codeView.textContent = 'The call completed with no return values (zero values, not a returned nil).';
         return;
       }
 
-      const call = state.calls[state.selectedIndex];
-      const isFunction = call.remoteType === 'RemoteFunction';
-      codeView.style.display = 'block';
-      codeEmpty.style.display = 'none';
-      codeActions.style.display = 'flex';
-      codeHeader.style.display = 'flex';
-      codeHeaderText.textContent = call.remoteName + ' - ' + call.method;
-      headerDot.className = 'header-dot' + (isFunction ? ' fn' : '');
-      codeView.innerHTML = highlightLuau(call.code);
+      const isCode = state.viewMode === 'code';
+      copy.textContent = isCode ? 'Copy code' : 'Copy arguments';
+      copy.setAttribute('data-action', isCode ? 'copyCode' : 'copyArgs');
+      codeView.innerHTML = highlightLuau(isCode ? call.code : call.arguments);
+      if (isCode === false && call.arguments === '') codeView.textContent = 'No arguments';
     };
 
     const renderListsPanel = () => {
       const panel = document.getElementById('lists-panel');
-      if (state.listsMode === null) {
-        panel.style.display = 'none';
-        return;
-      }
-
-      panel.style.display = 'block';
-      let html = '';
-
-      if (state.listsMode === 'ignores') {
-        html += '<div class="list-header">Ignored Remotes (' + state.ignoreList.length + ')</div>';
-        if (state.ignoreList.length === 0)
-          html += '<div class="list-entry" style="color:var(--vscode-descriptionForeground);font-style:italic;">No ignores set</div>';
-        for (const entry of state.ignoreList) {
-          html += '<div class="list-entry">'
-            + '<span class="entry-type">' + entry.type + '</span>'
-            + '<span class="entry-value">' + escapeHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" aria-label="Remove ignored remote ' + escapeHtml(entry.value) + '" title="Remove ignored remote" data-action="removeIgnore" data-entry-type="' + escapeAttr(entry.type) + '" data-entry-value="' + escapeAttr(entry.value) + '">x</button>'
-            + '</div>';
-        }
-        html += '<div style="padding:4px 10px;"><button class="btn" data-action="clearIgnores" style="width:100%;">Clear All Ignores</button></div>';
-      } else if (state.listsMode === 'blocks') {
-        html += '<div class="list-header">Blocked Remotes (' + state.blockList.length + ')</div>';
-        if (state.blockList.length === 0)
-          html += '<div class="list-entry" style="color:var(--vscode-descriptionForeground);font-style:italic;">No blocks set</div>';
-        for (const entry of state.blockList) {
-          html += '<div class="list-entry">'
-            + '<span class="entry-type">' + entry.type + '</span>'
-            + '<span class="entry-value">' + escapeHtml(entry.value) + '</span>'
-            + '<button class="entry-remove" aria-label="Remove blocked remote ' + escapeHtml(entry.value) + '" title="Remove blocked remote" data-action="removeBlock" data-entry-type="' + escapeAttr(entry.type) + '" data-entry-value="' + escapeAttr(entry.value) + '">x</button>'
-            + '</div>';
-        }
-        html += '<div style="padding:4px 10px;"><button class="btn danger" data-action="clearBlocks" style="width:100%;">Clear All Blocks</button></div>';
-      }
+      document.getElementById('btn-ignores').setAttribute('aria-pressed', String(state.listsMode === 'ignores'));
+      document.getElementById('btn-blocks').setAttribute('aria-pressed', String(state.listsMode === 'blocks'));
+      panel.style.display = state.listsMode === null ? 'none' : 'block';
+      if (state.listsMode === null) return;
+      const ignored = state.listsMode === 'ignores';
+      const entries = ignored ? state.ignoreList : state.blockList;
+      let html = '<div class="list-header">' + (ignored ? 'Ignored remotes' : 'Blocked remotes')
+        + '<button class="btn" data-action="' + (ignored ? 'clearIgnores' : 'clearBlocks') + '"' + (entries.length === 0 ? ' disabled' : '') + '>Clear rules</button></div>'
+        + '<p class="list-description">' + (ignored
+          ? 'Matching future calls are omitted from this log. They still reach the game server.'
+          : 'Matching outgoing calls are stopped by the active spy hook. Stopping capture removes these hooks.')
+        + '</p>';
+      if (entries.length === 0) html += '<p class="list-description">No rules. Select a call and use Remote actions to add one.</p>';
+      for (const entry of entries)
+        html += '<div class="list-entry"><span class="entry-type">' + escapeHtml(entry.type) + '</span>'
+          + '<span class="entry-value" title="' + escapeAttr(entry.value) + '">' + escapeHtml(entry.value) + '</span>'
+          + '<button class="btn" aria-label="Remove rule for ' + escapeAttr(entry.value) + '" data-action="'
+          + (ignored ? 'removeIgnore' : 'removeBlock') + '" data-entry-type="' + escapeAttr(entry.type) + '" data-entry-value="' + escapeAttr(entry.value) + '">Remove</button></div>';
       panel.innerHTML = html;
     };
 
@@ -800,29 +670,26 @@ export class RemoteSpyPanel {
       const pauseButton = document.getElementById('btn-pause');
       const toggleButton = document.getElementById('btn-toggle');
 
-      callCount.textContent = state.calls.length + ' calls';
+      callCount.textContent = state.calls.length + ' calls · latest 1,000 retained';
+      const enabled = state.spyEnabled;
+      const origin = state.captureSource === 'both' ? 'game and executor' : state.captureSource;
+      statusText.textContent = enabled === false ? 'Capture stopped' : state.paused ? 'Display paused · outgoing capture remains active' : 'Capturing ' + origin + ' calls';
+      statusDot.className = 'status-dot' + (enabled ? state.paused ? ' paused' : ' active' : '');
+      toggleButton.disabled = state.capturePending || state.sourcePending;
+      toggleButton.textContent = state.sourcePending
+        ? 'Updating source…'
+        : state.capturePending
+          ? (enabled ? 'Stopping…' : 'Starting…')
+          : (enabled ? 'Stop capture' : 'Start capture');
 
-      if (state.spyEnabled === false) {
-        statusText.textContent = 'Spy disabled';
-        statusDot.className = 'status-dot';
-        toggleButton.textContent = 'Enable Spy';
-        toggleButton.className = 'btn primary';
-        pauseButton.disabled = true;
-      } else if (state.paused) {
-        statusText.textContent = 'Paused';
-        statusDot.className = 'status-dot paused';
-        toggleButton.textContent = 'Disable';
-        toggleButton.className = 'btn danger';
-        pauseButton.textContent = 'Resume';
-        pauseButton.disabled = false;
-      } else {
-        statusText.textContent = 'Listening';
-        statusDot.className = 'status-dot active';
-        toggleButton.textContent = 'Disable';
-        toggleButton.className = 'btn danger';
-        pauseButton.textContent = 'Pause';
-        pauseButton.disabled = false;
-      }
+      const source = document.getElementById('capture-source');
+      source.disabled = state.capturePending || state.sourcePending;
+      if (state.sourcePending === false) source.value = state.captureSource;
+      toggleButton.className = enabled ? 'btn secondary' : 'btn primary';
+      toggleButton.setAttribute('aria-pressed', String(enabled));
+      pauseButton.textContent = state.paused ? 'Resume display' : 'Pause display';
+      pauseButton.disabled = enabled === false;
+      document.getElementById('btn-clear').disabled = state.calls.length === 0;
 
       document.getElementById('ignore-count').textContent = state.ignoreList.length.toString();
       document.getElementById('block-count').textContent = state.blockList.length.toString();
@@ -846,10 +713,16 @@ export class RemoteSpyPanel {
       state.selectedIndex = index;
       renderCallList();
       renderCodeView();
+      document.querySelector('.call-item[data-index="' + index + '"]')?.focus({ preventScroll: true });
       vscode.postMessage({ type: 'selectCall', index });
     };
 
-    const toggleSpy = () => vscode.postMessage({ type: 'toggleSpy', enabled: state.spyEnabled === false });
+    const toggleSpy = () => {
+      if (state.capturePending || state.sourcePending) return;
+      state.capturePending = true;
+      updateStatusBar();
+      vscode.postMessage({ type: 'toggleSpy', enabled: state.spyEnabled === false });
+    };
 
     const togglePause = () => vscode.postMessage({ type: state.paused ? 'resume' : 'pause' });
 
@@ -912,6 +785,15 @@ export class RemoteSpyPanel {
       if (action === null) return;
 
       switch (action) {
+        case 'showCode':
+        case 'showArgs':
+        case 'showReturns':
+          state.viewMode = action === 'showCode' ? 'code' : action === 'showArgs' ? 'arguments' : 'returns';
+          renderCodeView();
+          break;
+        case 'copyReturns':
+          if (state.selectedIndex >= 0) vscode.postMessage({ type: 'copyReturns', index: state.selectedIndex });
+          break;
         case 'toggleSpy':
           toggleSpy();
           break;
@@ -965,6 +847,53 @@ export class RemoteSpyPanel {
           break;
         }
       }
+      if (target.closest('.action-menu') !== null) document.getElementById('remote-actions').open = false;
+    });
+
+    document.addEventListener('keydown', event => {
+      const target = event.target;
+      if (target instanceof HTMLElement === false) return;
+      if (event.key === 'Escape') {
+        const menu = document.getElementById('remote-actions');
+        if (menu.open) {
+          menu.open = false;
+          menu.querySelector('summary').focus();
+        }
+        return;
+      }
+      if (target.classList.contains('view-tab') && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        const modes = ['code', 'arguments', 'returns'];
+        const buttons = ['tab-code', 'tab-args', 'tab-returns'];
+        const direction = event.key === 'ArrowRight' ? 1 : -1;
+        const index = (modes.indexOf(state.viewMode) + direction + modes.length) % modes.length;
+        state.viewMode = modes[index];
+        renderCodeView();
+        document.getElementById(buttons[index]).focus();
+        return;
+      }
+      if (target.classList.contains('call-item') === false) return;
+      const rows = [...document.querySelectorAll('.call-item')];
+      const position = rows.indexOf(target);
+      let next = position;
+      if (event.key === 'ArrowDown') next = Math.min(rows.length - 1, position + 1);
+      else if (event.key === 'ArrowUp') next = Math.max(0, position - 1);
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = rows.length - 1;
+      else return;
+      event.preventDefault();
+      selectCall(Number(rows[next].getAttribute('data-index')));
+    });
+
+    document.getElementById('capture-source').addEventListener('change', event => {
+      const source = event.target.value;
+
+      if (source !== 'game' && source !== 'executor' && source !== 'both') return;
+      if (state.capturePending || state.sourcePending) return;
+
+      state.sourcePending = true;
+      updateStatusBar();
+      vscode.postMessage({ type: 'setCaptureSource', source });
     });
 
     const searchInput = document.getElementById('search');
@@ -973,13 +902,28 @@ export class RemoteSpyPanel {
       if (target instanceof HTMLInputElement) onSearch(target.value);
     });
 
+    document.getElementById('remote-actions').addEventListener('toggle', event => {
+      if (event.currentTarget.open === false) return;
+      const menu = event.currentTarget.querySelector('.action-menu');
+      menu.style.top = '32px';
+      menu.style.bottom = 'auto';
+      if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) {
+        menu.style.top = 'auto';
+        menu.style.bottom = '32px';
+      }
+    });
+
     window.addEventListener('message', (event) => {
       const message = event.data;
 
       if (message.type === 'addCall') {
         state.calls.push(message.call);
-        if (state.calls.length > 1000) state.calls.shift();
+        if (state.calls.length > 1000) {
+          state.calls.shift();
+          state.selectedIndex = Math.max(-1, state.selectedIndex - 1);
+        }
         renderCallList();
+        renderCodeView();
         updateStatusBar();
         if (shouldAutoScroll) requestAnimationFrame(() => (callList.scrollTop = callList.scrollHeight));
         return;
@@ -996,6 +940,11 @@ export class RemoteSpyPanel {
 
       if (message.type === 'updateState') {
         const snapshot = message.state;
+        if (message.controlSettled === true) {
+          state.capturePending = false;
+          state.sourcePending = false;
+        }
+        state.captureSource = snapshot.captureSource ?? 'game';
         state.calls = snapshot.calls ?? [];
         state.selectedIndex = snapshot.selectedIndex;
         state.paused = snapshot.paused;
@@ -1013,6 +962,7 @@ export class RemoteSpyPanel {
     renderCallList();
     renderCodeView();
     updateStatusBar();
+    vscode.postMessage({ type: 'ready' });
   </script>
 </body>
 </html>`;

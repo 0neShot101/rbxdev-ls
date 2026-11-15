@@ -13,6 +13,7 @@ M.reconnectAttemptDelay = nil
 M.healthProbeFailures = 0
 
 M.remoteSpyEnabled = false
+M.remoteSpySource = 'game'
 M.remoteSpyFilter = ''
 M.remoteSpyBlockedNames = {}
 M.remoteSpyBlockedPaths = {}
