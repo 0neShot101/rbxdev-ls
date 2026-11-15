@@ -2,6 +2,8 @@
  * Game tree domain types shared by the tree view, webviews, and MCP tools.
  */
 
+import type { QuickPickItem } from 'vscode';
+
 /**
  * Represents a node in the Roblox game tree hierarchy. The hasChildren flag
  * indicates unexpanded children exist so the tree can lazy-load them.
@@ -42,4 +44,27 @@ export interface SearchOptions {
   readonly query: string;
   readonly searchByName: boolean;
   readonly searchByClass: boolean;
+}
+
+/**
+ * Lazily fetched children of a node, keyed in the provider by the serialized parent path.
+ */
+export interface CachedChildren {
+  readonly path: ReadonlyArray<string>;
+  readonly children: ReadonlyArray<GameTreeNode>;
+}
+
+/**
+ * Fallback icon chosen for classes whose name contains any of the keywords.
+ */
+export interface IconRule {
+  readonly keywords: ReadonlyArray<string>;
+  readonly icon: string;
+}
+
+/**
+ * Quick pick entry of the create-instance command; category separators carry no class name.
+ */
+export interface ClassPickItem extends QuickPickItem {
+  readonly className?: string;
 }

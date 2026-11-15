@@ -1,19 +1,16 @@
-import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http';
+import { createServer } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
+
+import { createBridgeCore } from '@executor/bridgeCore';
+import { frameText, parseProxyHandshake, parseProxyMessage } from '@executor/protocol';
+
+import type { IncomingMessage, Server as HttpServer } from 'node:http';
 
 import type { ExecutorBridge } from '@typings/bridge';
 import type { ProxyStatusChangeMessage, ProxyWelcomeMessage, ServerMessage } from '@typings/protocol';
-import { createBridgeCore } from '@executor/bridgeCore';
+import type { Mutable } from '@typings/types';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-
-const isProxyWelcome = (msg: unknown): msg is ProxyWelcomeMessage =>
-  isRecord(msg) && msg['type'] === 'proxyWelcome' && typeof msg['isConnected'] === 'boolean';
-
-const isProxyStatusChange = (msg: unknown): msg is ProxyStatusChangeMessage =>
-  isRecord(msg) && msg['type'] === 'proxyStatusChange' && typeof msg['status'] === 'string';
 
 /** Creates a new executor bridge instance for managing WebSocket connections with Roblox executors. */
 export const createExecutorBridge = (log: (message: string) => void): ExecutorBridge => {
@@ -87,12 +84,10 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       }
       const name = core.getExecutorName();
       const clientType = core.getClientType();
-      sendProxyMessage({
-        'type': 'proxyStatusChange',
-        'status': 'connected',
-        ...(name !== undefined ? { 'executorName': name } : {}),
-        ...(clientType !== undefined ? { 'clientType': clientType } : {}),
-      });
+      const message: Mutable<ProxyStatusChangeMessage> = { 'type': 'proxyStatusChange', 'status': 'connected' };
+      if (name !== undefined) message.executorName = name;
+      if (clientType !== undefined) message.clientType = clientType;
+      sendProxyMessage(message);
     }
   });
 
@@ -101,17 +96,17 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     log(`[bridge] Proxy client connected (total: ${proxyClients.size})`);
 
     const clientType = core.getClientType();
-    const welcome: ProxyWelcomeMessage = {
+    const welcome: Mutable<ProxyWelcomeMessage> = {
       'type': 'proxyWelcome',
       'isConnected': core.getStatus() === 'connected',
       'executorName': core.getExecutorName(),
-      ...(clientType !== undefined ? { 'clientType': clientType } : {}),
     };
+    if (clientType !== undefined) welcome.clientType = clientType;
     ws.send(JSON.stringify(welcome));
 
     ws.on('message', (data: Buffer | string) => {
       if (executorClient === undefined || executorClient.readyState !== WebSocket.OPEN) return;
-      const raw = typeof data === 'string' ? data : data.toString('utf-8');
+      const raw = frameText(data);
       core.observeForwardedRequest(raw);
       executorClient.send(raw);
     });
@@ -121,7 +116,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       log(`[bridge] Proxy client disconnected (total: ${proxyClients.size})`);
     });
 
-    ws.on('error', (err: Error) => log(`[bridge] Proxy client error: ${err.message}`));
+    ws.on('error', (error: Error) => log(`[bridge] Proxy client error: ${error.message}`));
   };
 
   const handleExecutorConnection = (ws: WebSocket, firstMessage: string): void => {
@@ -154,7 +149,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     broadcastToProxies(firstMessage);
 
     ws.on('message', (data: Buffer | string) => {
-      const raw = typeof data === 'string' ? data : data.toString('utf-8');
+      const raw = frameText(data);
       core.handleMessage(raw);
       broadcastToProxies(raw);
     });
@@ -177,7 +172,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       });
     });
 
-    ws.on('error', (err: Error) => log(`[bridge] WebSocket error: ${err.message}`));
+    ws.on('error', (error: Error) => log(`[bridge] WebSocket error: ${error.message}`));
   };
 
   const handleProxyWelcome = (message: ProxyWelcomeMessage): void => {
@@ -224,17 +219,11 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       });
 
       proxyWs.on('message', (data: Buffer | string) => {
-        const raw = typeof data === 'string' ? data : data.toString('utf-8');
-
-        try {
-          const parsed: unknown = JSON.parse(raw);
-          if (isProxyWelcome(parsed)) return handleProxyWelcome(parsed);
-          if (isProxyStatusChange(parsed)) return handleProxyStatusChange(parsed);
-        } catch {
-          /* not valid JSON */
-        }
-
-        core.handleMessage(raw);
+        const raw = frameText(data);
+        const message = parseProxyMessage(raw);
+        if (message === undefined) return core.handleMessage(raw);
+        if (message.type === 'proxyWelcome') return handleProxyWelcome(message);
+        return handleProxyStatusChange(message);
       });
 
       proxyWs.on('close', () => {
@@ -246,9 +235,9 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         core.rejectAllPending('Bridge server disconnected');
       });
 
-      proxyWs.on('error', (err: Error) => log(`[bridge] Proxy WebSocket error: ${err.message}`));
-    } catch (err) {
-      log(`[bridge] Failed to connect as proxy: ${err instanceof Error ? err.message : String(err)}`);
+      proxyWs.on('error', (error: Error) => log(`[bridge] Proxy WebSocket error: ${error.message}`));
+    } catch (cause) {
+      log(`[bridge] Failed to connect as proxy: ${cause instanceof Error ? cause.message : String(cause)}`);
       core.setStatus('error');
     }
   };
@@ -263,57 +252,49 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
     setServerTransport();
 
     try {
-      httpServer = createServer((req, res) => {
-        if (req.method === 'GET' && req.url === '/health') {
+      httpServer = createServer((request, response) => {
+        if (request.method === 'GET' && request.url === '/health') {
           const payload = JSON.stringify({
             'ok': true,
             'connected': core.getStatus() === 'connected',
             'executorName': core.getExecutorName(),
             'clientType': core.getClientType(),
           });
-          res.writeHead(200, {
+          response.writeHead(200, {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload),
             'Cache-Control': 'no-store',
           });
-          res.end(payload);
+          response.end(payload);
           return;
         }
 
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        res.end('Not found');
+        response.writeHead(404, { 'Content-Type': 'text/plain' });
+        response.end('Not found');
       });
 
       server = new WebSocketServer({ 'noServer': true });
       core.setStatus('waiting');
 
-      httpServer.on('upgrade', (req: IncomingMessage, socket, head) => {
+      httpServer.on('upgrade', (request: IncomingMessage, socket, head) => {
         if (server === undefined) {
           socket.destroy();
           return;
         }
 
-        server.handleUpgrade(req, socket, head, (ws: WebSocket) => server?.emit('connection', ws, req));
+        server.handleUpgrade(request, socket, head, (ws: WebSocket) => server?.emit('connection', ws, request));
       });
 
-      server.on('connection', (ws: WebSocket) => {
+      server.on('connection', (ws: WebSocket) =>
         ws.once('message', (data: Buffer | string) => {
-          const raw = typeof data === 'string' ? data : data.toString('utf-8');
+          const raw = frameText(data);
+          if (parseProxyHandshake(raw) !== undefined) return handleProxyConnection(ws);
+          return handleExecutorConnection(ws, raw);
+        }),
+      );
 
-          try {
-            const parsed = JSON.parse(raw);
-            if (typeof parsed === 'object' && parsed !== null && parsed.type === 'proxyHandshake')
-              return handleProxyConnection(ws);
-          } catch {
-            /* not valid JSON, treat as executor */
-          }
-
-          handleExecutorConnection(ws, raw);
-        });
-      });
-
-      server.on('error', (err: Error & { code?: string }) => {
-        if (err.code === 'EADDRINUSE' && isProxyMode === false) {
+      server.on('error', (error: Error & { code?: string }) => {
+        if (error.code === 'EADDRINUSE' && isProxyMode === false) {
           try {
             server?.close();
           } catch {
@@ -323,12 +304,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
           startAsProxy(port);
           return;
         }
-        log(`[bridge] Server error: ${err.message}`);
+        log(`[bridge] Server error: ${error.message}`);
         core.setStatus('error');
       });
 
-      httpServer.on('error', (err: Error & { code?: string }) => {
-        if (err.code === 'EADDRINUSE' && isProxyMode === false) {
+      httpServer.on('error', (error: Error & { code?: string }) => {
+        if (error.code === 'EADDRINUSE' && isProxyMode === false) {
           try {
             server?.close();
           } catch {
@@ -351,14 +332,14 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
         }
         server = undefined;
         closeHttpServer();
-        log(`[bridge] HTTP server error: ${err.message}`);
+        log(`[bridge] HTTP server error: ${error.message}`);
         core.setStatus('error');
       });
       httpServer.listen(port, '127.0.0.1', () => {
         isStoppingHttpServer = false;
         log(`[bridge] WebSocket server started on port ${port}`);
       });
-    } catch (err) {
+    } catch (cause) {
       try {
         server?.close();
       } catch {
@@ -366,7 +347,7 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       }
       server = undefined;
       closeHttpServer();
-      log(`[bridge] Failed to start server: ${err instanceof Error ? err.message : String(err)}`);
+      log(`[bridge] Failed to start server: ${cause instanceof Error ? cause.message : String(cause)}`);
       core.setStatus('error');
     }
   };
@@ -387,13 +368,12 @@ export const createExecutorBridge = (log: (message: string) => void): ExecutorBr
       executorClient.close(1000, 'Server shutting down');
       executorClient = undefined;
     }
-    for (const proxy of proxyClients) {
+    for (const proxy of proxyClients)
       try {
         proxy.close(1000, 'Server shutting down');
       } catch {
         /* noop */
       }
-    }
     proxyClients.clear();
     if (server !== undefined) {
       server.close();

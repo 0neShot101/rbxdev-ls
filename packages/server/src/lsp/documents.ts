@@ -1,28 +1,21 @@
+import { checkProgram } from '@analyzer/checker';
+import { isLineIgnored, parseIgnoreDirectives } from '@analyzer/ignoreDirectives';
+import { AnyType, createFunctionType, createTableType } from '@analyzer/values';
 import { buildGlobalEnvironment } from '@definitions/globals';
 import { parse } from '@parser/parser';
-import { checkProgram, type RequireResolver, type TypeCheckResult, type TypeDiagnostic } from '@typings/checker';
-import { isLineIgnored, parseIgnoreDirectives } from '@typings/ignoreDirectives';
-import type { LuauType, PropertyType } from '@typings/types';
-import { AnyType, createFunctionType, createTableType } from '@typings/types';
 import { buildModuleIndex, searchExports } from '@workspace/moduleIndex';
 import { loadRojoState } from '@workspace/rojo';
 import { loadSourcemapState } from '@workspace/sourcemap';
 
-import type { Comment } from '@typings/ast';
-import type { DocumentManager, ParsedDocument } from '@typings/lsp';
-import type { TypeCheckMode } from '@typings/subtyping';
-import type { ModuleExport, ModuleInfo, RojoState } from '@typings/workspace';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
-/** Simple string hash for cache key generation */
-const hashString = (str: string): number => {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
-  return hash >>> 0;
-};
-
-/** Cache for parsed documents keyed by URI + content hash */
-const documentCache = new Map<string, { hash: number; doc: ParsedDocument }>();
+import type { Comment } from '@typings/ast';
+import type { RequireResolver, TypeCheckResult, TypeDiagnostic } from '@typings/checker';
+import type { LoadedDefinitions } from '@typings/definitions';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
+import type { TypeCheckMode } from '@typings/subtyping';
+import type { LuauType, PropertyType } from '@typings/types';
+import type { ModuleExport, ModuleInfo, RojoState } from '@typings/workspace';
 
 /** Maximum number of cached documents */
 const MAX_CACHE_SIZE = 100;
@@ -46,32 +39,22 @@ const detectTypeCheckMode = (comments: ReadonlyArray<Comment>): TypeCheckMode =>
   return 'nonstrict';
 };
 
-/** Creates a new DocumentManager instance. */
-export const createDocumentManager = (): DocumentManager => {
-  const globalEnv = buildGlobalEnvironment();
+/** Creates a new DocumentManager instance, building its global environment from the supplied or bundled definitions. */
+export const createDocumentManager = (definitions?: LoadedDefinitions): DocumentManager => {
+  const globalEnv = buildGlobalEnvironment(definitions);
   const documents = new Map<string, ParsedDocument>();
-
-  let cachedClassMap: Map<string, import('@typings/types').ClassType> | undefined;
-  const getClassMap = (): Map<string, import('@typings/types').ClassType> => {
-    if (cachedClassMap === undefined) {
-      cachedClassMap = new Map();
-      for (const [name, type] of globalEnv.robloxClasses) if (type.kind === 'Class') cachedClassMap.set(name, type);
-    }
-    return cachedClassMap;
-  };
+  const documentCache = new Map<string, ParsedDocument>();
 
   const parseDocument = (doc: TextDocument): ParsedDocument => {
     const uri = doc.uri;
     const version = doc.version;
     const content = doc.getText();
 
-    // Check cache first - skip expensive parsing if content hasn't changed
-    const contentHash = hashString(content);
+    /** An unchanged version with identical text reuses the previous analysis; the comparison is exact. */
     const cached = documentCache.get(uri);
-    if (cached !== undefined && cached.hash === contentHash && cached.doc.version === version) {
-      const cachedDoc = cached.doc;
-      documents.set(uri, cachedDoc);
-      return cachedDoc;
+    if (cached !== undefined && cached.version === version && cached.content === content) {
+      documents.set(uri, cached);
+      return cached;
     }
 
     const parseResult = parse(content);
@@ -140,8 +123,7 @@ export const createDocumentManager = (): DocumentManager => {
       };
 
       typeCheckResult = checkProgram(ast, {
-        'classes': getClassMap(),
-        'dataTypes': globalEnv.robloxDataTypes,
+        'globals': globalEnv,
         'mode': mode,
         requireResolver,
       });
@@ -168,10 +150,9 @@ export const createDocumentManager = (): DocumentManager => {
       typeCheckResult,
     };
 
-    // Update cache with size limit
-    documentCache.set(uri, { 'hash': contentHash, 'doc': parsed });
+    documentCache.set(uri, parsed);
     if (documentCache.size > MAX_CACHE_SIZE) {
-      // Evict oldest entries (simple strategy: clear half when over limit)
+      /** Over the limit, the oldest half of the cache is evicted. */
       const keys = [...documentCache.keys()].slice(0, Math.floor(MAX_CACHE_SIZE / 2));
       for (const key of keys) documentCache.delete(key);
     }
@@ -184,6 +165,7 @@ export const createDocumentManager = (): DocumentManager => {
 
   const removeDocument = (uri: string): void => {
     documents.delete(uri);
+    documentCache.delete(uri);
   };
 
   let rojoState: RojoState | undefined;

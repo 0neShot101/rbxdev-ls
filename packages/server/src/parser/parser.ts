@@ -1,16 +1,18 @@
-import {
-  TokenKind,
-  TokenKindName,
-  type DocComment,
-  type ParseResult,
-  type ParserState,
-  type Token,
-  type TokenPosition,
-} from '@typings/parser';
+import { TokenKind } from '@typings/parser';
+import { parseDocComment } from '@parser/docComment';
+import { lex } from '@parser/lexer';
+import { TokenKindName, createPosition, createToken } from '@parser/tokens';
 
 import type {
-  AssignmentTarget,
-  BinaryOperator,
+  BinaryOpInfo,
+  DocComment,
+  ParseResult,
+  ParserState,
+  Token,
+  TokenKindValue,
+  TokenPosition,
+} from '@typings/parser';
+import type {
   Chunk,
   Comment,
   CompoundOperator,
@@ -41,14 +43,9 @@ import type {
   UnaryOperator,
   WhileStatement,
 } from '@typings/ast';
-import { parseDocComment } from '@parser/docComment';
-import { createLexer } from '@parser/lexer';
-import { isTrivia } from '@parser/tokens';
 
 /** Binary operator info for precedence parsing - uses object for faster lookups than Map */
-const BINARY_OP_INFO: Partial<
-  Record<TokenKind, { operator: BinaryOperator; precedence: number; rightAssociative: boolean }>
-> = {
+const BINARY_OP_INFO: Partial<Record<TokenKindValue, BinaryOpInfo>> = {
   [TokenKind.Or]: { 'operator': 'or', 'precedence': 1, 'rightAssociative': false },
   [TokenKind.And]: { 'operator': 'and', 'precedence': 2, 'rightAssociative': false },
   [TokenKind.Less]: { 'operator': '<', 'precedence': 3, 'rightAssociative': false },
@@ -67,19 +64,15 @@ const BINARY_OP_INFO: Partial<
   [TokenKind.Caret]: { 'operator': '^', 'precedence': 8, 'rightAssociative': true },
 };
 
-const peek = (state: ParserState, offset = 0): Token => {
-  const index = state.current + offset;
-  if (index >= state.tokens.length) return state.tokens[state.tokens.length - 1]!;
-  return state.tokens[index]!;
-};
+const peek = (state: ParserState, offset = 0): Token => state.tokens[state.current + offset] ?? state.eof;
 
 const current = (state: ParserState): Token => peek(state, 0);
 
 const isAtEnd = (state: ParserState): boolean => current(state).kind === TokenKind.EOF;
 
-const check = (state: ParserState, kind: TokenKind): boolean => current(state).kind === kind;
+const check = (state: ParserState, kind: TokenKindValue): boolean => current(state).kind === kind;
 
-const checkAhead = (state: ParserState, offset: number, kind: TokenKind): boolean => {
+const checkAhead = (state: ParserState, offset: number, kind: TokenKindValue): boolean => {
   const index = state.current + offset;
   if (index >= state.tokens.length) return false;
   return state.tokens[index]?.kind === kind;
@@ -87,10 +80,10 @@ const checkAhead = (state: ParserState, offset: number, kind: TokenKind): boolea
 
 const advance = (state: ParserState): Token => {
   if (isAtEnd(state) === false) state.current++;
-  return state.tokens[state.current - 1]!;
+  return peek(state, -1);
 };
 
-const consume = (state: ParserState, kind: TokenKind, message: string): Token => {
+const consume = (state: ParserState, kind: TokenKindValue, message: string): Token => {
   if (check(state, kind)) return advance(state);
 
   const token = current(state);
@@ -101,7 +94,7 @@ const consume = (state: ParserState, kind: TokenKind, message: string): Token =>
   return token;
 };
 
-const match = (state: ParserState, ...kinds: TokenKind[]): boolean => {
+const match = (state: ParserState, ...kinds: TokenKindValue[]): boolean => {
   for (const kind of kinds)
     if (check(state, kind)) {
       advance(state);
@@ -112,7 +105,7 @@ const match = (state: ParserState, ...kinds: TokenKind[]): boolean => {
 
 const createRange = (start: TokenPosition, end: TokenPosition): NodeRange => ({ start, end });
 
-const SYNC_TOKENS: ReadonlySet<TokenKind> = new Set([
+const SYNC_TOKENS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.End,
   TokenKind.Local,
   TokenKind.Function,
@@ -126,14 +119,14 @@ const SYNC_TOKENS: ReadonlySet<TokenKind> = new Set([
   TokenKind.Export,
 ]);
 
-const BLOCK_END_TOKENS: ReadonlySet<TokenKind> = new Set([
+const BLOCK_END_TOKENS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.End,
   TokenKind.Else,
   TokenKind.Elseif,
   TokenKind.Until,
 ]);
 
-const RETURN_END_TOKENS: ReadonlySet<TokenKind> = new Set([
+const RETURN_END_TOKENS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.End,
   TokenKind.Else,
   TokenKind.Elseif,
@@ -240,8 +233,9 @@ const parsePrimaryExpression = (state: ParserState): Expression => {
 };
 
 const parseStringValue = (raw: string): string => {
-  if (raw.startsWith('[[') || raw.startsWith('[=')) {
-    const level = raw.match(/^\[=*\[/)![0].length - 2;
+  const opener = raw.startsWith('[') ? /^\[=*\[/.exec(raw) : null;
+  if (opener !== null) {
+    const level = opener[0].length - 2;
     const endPattern = ']' + '='.repeat(level) + ']';
     const startIndex = level + 2;
     const endIndex = raw.lastIndexOf(endPattern);
@@ -249,6 +243,7 @@ const parseStringValue = (raw: string): string => {
   }
 
   const content = raw.slice(1, -1);
+  if (content.includes('\\') === false) return content;
   return content.replace(/\\(.)/g, (_, char) => {
     switch (char) {
       case 'n':
@@ -320,7 +315,7 @@ const parseTableExpression = (state: ParserState): Expression => {
   };
 };
 
-const CONTEXTUAL_KEYWORDS = new Set<TokenKind>([
+const CONTEXTUAL_KEYWORDS = new Set<TokenKindValue>([
   TokenKind.Type,
   TokenKind.Typeof,
   TokenKind.And,
@@ -434,14 +429,11 @@ const parseOptionalTypeParameters = (state: ParserState): ReadonlyArray<TypePara
     const start = current(state);
     const name = consume(state, TokenKind.Identifier, 'Expected type parameter name').value;
 
-    let constraint: TypeAnnotation | undefined;
-    let defaultType: TypeAnnotation | undefined;
-
     params.push({
       'kind': 'TypeParameter',
       name,
-      constraint,
-      defaultType,
+      'constraint': undefined,
+      'defaultType': undefined,
       'range': createRange(start.start, current(state).start),
     });
   } while (match(state, TokenKind.Comma));
@@ -450,7 +442,7 @@ const parseOptionalTypeParameters = (state: ParserState): ReadonlyArray<TypePara
   return params;
 };
 
-const parseParameters = (state: ParserState): { params: Parameter[]; isVariadic: boolean } => {
+const parseParameters = (state: ParserState) => {
   consume(state, TokenKind.LeftParen, 'Expected (');
 
   const params: Parameter[] = [];
@@ -640,20 +632,24 @@ const parseCallArguments = (state: ParserState): Expression[] => {
   return args;
 };
 
-const parseUnaryExpression = (state: ParserState): Expression => {
-  if (check(state, TokenKind.Minus) || check(state, TokenKind.Not) || check(state, TokenKind.Hash)) {
-    const start = current(state);
-    const operator = advance(state).value as UnaryOperator;
-    const operand = parseUnaryExpression(state);
-    return {
-      'kind': 'UnaryExpression',
-      operator,
-      operand,
-      'range': createRange(start.start, operand.range.end),
-    };
-  }
+const UNARY_OP_MAP: Partial<Record<TokenKindValue, UnaryOperator>> = {
+  [TokenKind.Minus]: '-',
+  [TokenKind.Not]: 'not',
+  [TokenKind.Hash]: '#',
+};
 
-  return parseSuffixExpression(state);
+const parseUnaryExpression = (state: ParserState): Expression => {
+  const operator = UNARY_OP_MAP[current(state).kind];
+  if (operator === undefined) return parseSuffixExpression(state);
+
+  const start = advance(state);
+  const operand = parseUnaryExpression(state);
+  return {
+    'kind': 'UnaryExpression',
+    operator,
+    operand,
+    'range': createRange(start.start, operand.range.end),
+  };
 };
 
 const parseBinaryExpression = (state: ParserState, minPrecedence = 0): Expression => {
@@ -744,6 +740,7 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
     const token = advance(state);
     type = {
       'kind': 'TypeLiteral',
+      'baseType': 'string',
       'value': parseStringValue(token.value),
       'range': createRange(start.start, token.end),
     };
@@ -751,15 +748,26 @@ const parsePrimaryType = (state: ParserState): TypeAnnotation => {
     const token = advance(state);
     type = {
       'kind': 'TypeLiteral',
+      'baseType': 'number',
       'value': Number(token.value),
       'range': createRange(start.start, token.end),
     };
   } else if (check(state, TokenKind.True)) {
     advance(state);
-    type = { 'kind': 'TypeLiteral', 'value': true, 'range': createRange(start.start, start.end) };
+    type = {
+      'kind': 'TypeLiteral',
+      'baseType': 'boolean',
+      'value': true,
+      'range': createRange(start.start, start.end),
+    };
   } else if (check(state, TokenKind.False)) {
     advance(state);
-    type = { 'kind': 'TypeLiteral', 'value': false, 'range': createRange(start.start, start.end) };
+    type = {
+      'kind': 'TypeLiteral',
+      'baseType': 'boolean',
+      'value': false,
+      'range': createRange(start.start, start.end),
+    };
   } else if (check(state, TokenKind.Nil)) {
     advance(state);
     type = {
@@ -894,7 +902,8 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
     };
   }
 
-  if (params.length === 0)
+  const [first] = params;
+  if (first === undefined)
     return {
       'kind': 'TypeReference',
       'name': 'nil',
@@ -903,17 +912,10 @@ const parseFunctionOrParenType = (state: ParserState): TypeAnnotation => {
       'range': createRange(start.start, current(state).start),
     };
 
-  if (params.length === 1 && params[0]!.name === undefined)
+  if (params.length > 1 || first.name === undefined)
     return {
       'kind': 'ParenthesizedType',
-      'type': params[0]!.type,
-      'range': createRange(start.start, current(state).start),
-    };
-
-  if (params.length > 1 && params[0] !== undefined)
-    return {
-      'kind': 'ParenthesizedType',
-      'type': params[0].type,
+      'type': first.type,
       'range': createRange(start.start, current(state).start),
     };
 
@@ -1347,11 +1349,11 @@ const parseExpressionStatement = (state: ParserState): Statement => {
   const expr = parseSuffixExpression(state);
 
   if (check(state, TokenKind.Assign) || check(state, TokenKind.Comma)) {
-    const targets: AssignmentTarget[] = [expr as AssignmentTarget];
+    const targets: Expression[] = [expr];
 
     while (check(state, TokenKind.Comma)) {
       advance(state);
-      targets.push(parseSuffixExpression(state) as AssignmentTarget);
+      targets.push(parseSuffixExpression(state));
     }
 
     consume(state, TokenKind.Assign, 'Expected =');
@@ -1375,7 +1377,7 @@ const parseExpressionStatement = (state: ParserState): Statement => {
 
     return {
       'kind': 'CompoundAssignment',
-      'target': expr as AssignmentTarget,
+      'target': expr,
       'operator': compoundOp,
       value,
       'range': createRange(start.start, value.range.end),
@@ -1401,7 +1403,7 @@ const parseExpressionStatement = (state: ParserState): Statement => {
   };
 };
 
-const COMPOUND_OP_MAP: Partial<Record<TokenKind, CompoundOperator>> = {
+const COMPOUND_OP_MAP: Partial<Record<TokenKindValue, CompoundOperator>> = {
   [TokenKind.PlusAssign]: '+=',
   [TokenKind.MinusAssign]: '-=',
   [TokenKind.StarAssign]: '*=',
@@ -1432,61 +1434,48 @@ const parseBlock = (state: ParserState): Statement[] => {
   return statements;
 };
 
-const tokenIndexCache = new WeakMap<ReadonlyArray<Token>, Map<number, number>>();
+/**
+ * Collects the `---` comment lines directly above the current token. Only trivia separates adjacent significant
+ * tokens, so the candidates are the comments after the previous token; any other comment ends the run.
+ */
+const collectDocComment = (state: ParserState): DocComment | undefined => {
+  const { comments } = state;
+  const target = current(state).start.offset;
+  const floor = state.current === 0 ? 0 : peek(state, -1).end.offset;
 
-const tokenIndexByOffset = (tokens: ReadonlyArray<Token>): Map<number, number> => {
-  const cached = tokenIndexCache.get(tokens);
-  if (cached !== undefined) return cached;
-
-  const byOffset = new Map<number, number>();
-  for (let i = 0; i < tokens.length; i++) byOffset.set(tokens[i]!.start.offset, i);
-  tokenIndexCache.set(tokens, byOffset);
-  return byOffset;
-};
-
-const findPrecedingDocComment = (state: ParserState, tokenOffset: number): DocComment | undefined => {
-  const target = tokenIndexByOffset(state.allTokens).get(tokenOffset);
-  if (target === undefined) return undefined;
-
-  const docCommentLines: string[] = [];
-
-  for (let i = target - 1; i >= 0; i--) {
-    const token = state.allTokens[i]!;
-    if (token.kind === TokenKind.Whitespace || token.kind === TokenKind.Newline) continue;
-    if (token.kind === TokenKind.Comment && token.value.startsWith('---')) {
-      docCommentLines.push(token.value);
-      continue;
-    }
-    break;
+  let low = 0;
+  let high = comments.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if ((comments[middle]?.range.start.offset ?? target) < target) low = middle + 1;
+    else high = middle;
   }
 
-  if (docCommentLines.length === 0) return undefined;
+  const lines: string[] = [];
+  for (let i = low - 1; i >= 0; i--) {
+    const comment = comments[i];
+    if (comment === undefined || comment.range.start.offset < floor || comment.value.startsWith('---') === false) break;
+    lines.push(comment.value);
+  }
 
-  docCommentLines.reverse();
-  return parseDocComment(docCommentLines.join('\n'));
-};
-
-const collectDocComment = (state: ParserState): DocComment | undefined => {
-  const currentToken = current(state);
-  return findPrecedingDocComment(state, currentToken.start.offset);
+  if (lines.length === 0) return undefined;
+  return parseDocComment(lines.reverse().join('\n'));
 };
 
 /** Parses Luau source code into an Abstract Syntax Tree (AST). */
 export const parse = (source: string): ParseResult => {
-  const allTokens = createLexer(source).tokens();
-  const tokens = allTokens.filter(t => isTrivia(t.kind) === false);
-  const comments: Comment[] = allTokens
-    .filter(t => t.kind === TokenKind.Comment)
-    .map(t => ({
-      'kind': 'Comment' as const,
-      'value': t.value,
-      'isBlock': t.value.startsWith('--[[') || t.value.startsWith('--[='),
-      'range': createRange(t.start, t.end),
-    }));
+  const lexed = lex(source);
+  const { tokens } = lexed;
+  const comments: Comment[] = lexed.comments.map(token => ({
+    'kind': 'Comment',
+    'value': token.value,
+    'isBlock': token.value.startsWith('--[[') || token.value.startsWith('--[='),
+    'range': createRange(token.start, token.end),
+  }));
 
   const state: ParserState = {
     tokens,
-    allTokens,
+    'eof': tokens.at(-1) ?? createToken(TokenKind.EOF, '', createPosition(0, 1, 1), createPosition(0, 1, 1)),
     comments,
     'errors': [],
     'current': 0,

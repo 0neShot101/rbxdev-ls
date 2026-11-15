@@ -1,18 +1,12 @@
 import { WebSocket } from 'ws';
 
+import { createBridgeCore } from '@executor/bridgeCore';
+import { frameText, parseProxyMessage } from '@executor/protocol';
+
 import type { ExecutorBridge } from '@typings/bridge';
 import type { ProxyStatusChangeMessage, ProxyWelcomeMessage } from '@typings/protocol';
-import { createBridgeCore } from '@executor/bridgeCore';
 
 const RECONNECT_DELAY_MS = 3000;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
-
-const isProxyWelcome = (msg: unknown): msg is ProxyWelcomeMessage =>
-  isRecord(msg) && msg['type'] === 'proxyWelcome' && typeof msg['isConnected'] === 'boolean';
-
-const isProxyStatusChange = (msg: unknown): msg is ProxyStatusChangeMessage =>
-  isRecord(msg) && msg['type'] === 'proxyStatusChange' && typeof msg['status'] === 'string';
 
 /** Creates a proxy bridge that connects as a WebSocket client to an existing bridge server. */
 export const createProxyBridge = (log: (message: string) => void): ExecutorBridge => {
@@ -77,17 +71,10 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
       });
 
       ws.on('message', (data: Buffer | string) => {
-        const raw = typeof data === 'string' ? data : data.toString('utf-8');
-
-        try {
-          const parsed: unknown = JSON.parse(raw);
-          if (isProxyWelcome(parsed)) return handleProxyMessage(parsed);
-          if (isProxyStatusChange(parsed)) return handleProxyMessage(parsed);
-        } catch {
-          /* not valid JSON */
-        }
-
-        core.handleMessage(raw);
+        const raw = frameText(data);
+        const message = parseProxyMessage(raw);
+        if (message === undefined) return core.handleMessage(raw);
+        return handleProxyMessage(message);
       });
 
       ws.on('close', () => {

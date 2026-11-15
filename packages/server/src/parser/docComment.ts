@@ -2,7 +2,9 @@ import type { DocComment, DocField, DocParam, DocReturn } from '@typings/parser'
 
 const isDocComment = (commentValue: string): boolean => commentValue.startsWith('---');
 
-const parseDocLine = (line: string): { tag: string | undefined; content: string } => {
+const nonEmpty = (text: string | undefined): string | undefined => (text === '' ? undefined : text);
+
+const parseDocLine = (line: string) => {
   const trimmed = line.replace(/^---\s*/, '');
 
   if (trimmed.startsWith('@')) {
@@ -19,7 +21,7 @@ const parseParamTag = (content: string): DocParam => {
     return {
       'name': simpleMatch[1] ?? '',
       'type': simpleMatch[2]?.trim(),
-      'description': simpleMatch[3]?.trim() || undefined,
+      'description': nonEmpty(simpleMatch[3]?.trim()),
     };
 
   const nameMatch = content.match(/^(\w+)\s*(.*)?$/);
@@ -27,7 +29,7 @@ const parseParamTag = (content: string): DocParam => {
     return {
       'name': nameMatch[1] ?? '',
       'type': undefined,
-      'description': nameMatch[2]?.trim() || undefined,
+      'description': nonEmpty(nameMatch[2]?.trim()),
     };
 
   return { 'name': content.trim(), 'type': undefined, 'description': undefined };
@@ -38,9 +40,9 @@ const parseReturnTag = (content: string): DocReturn => {
   if (match !== null)
     return {
       'type': match[1]?.trim(),
-      'description': match[2]?.trim() || undefined,
+      'description': nonEmpty(match[2]?.trim()),
     };
-  return { 'type': undefined, 'description': content.trim() || undefined };
+  return { 'type': undefined, 'description': nonEmpty(content.trim()) };
 };
 
 const parseFieldTag = (content: string): DocField => {
@@ -49,7 +51,7 @@ const parseFieldTag = (content: string): DocField => {
     return {
       'name': match[1] ?? '',
       'type': match[2],
-      'description': match[3] || undefined,
+      'description': nonEmpty(match[3]),
     };
   return { 'name': content.trim(), 'type': undefined, 'description': undefined };
 };
@@ -72,27 +74,28 @@ export const parseDocComment = (commentValue: string): DocComment | undefined =>
 
     if (tag === undefined) {
       if (content.trim() !== '') descriptionLines.push(content);
-    } else {
-      switch (tag) {
-        case 'param':
-          params.push(parseParamTag(content));
-          break;
-        case 'return':
-          returns.push(parseReturnTag(content));
-          break;
-        case 'type':
-          typeAnnotation = content.trim() || undefined;
-          break;
-        case 'class':
-          className = content.trim() || undefined;
-          break;
-        case 'field':
-          fields.push(parseFieldTag(content));
-          break;
-        case 'deprecated':
-          deprecated = content.trim() || 'Deprecated';
-          break;
-      }
+      continue;
+    }
+
+    switch (tag) {
+      case 'param':
+        params.push(parseParamTag(content));
+        break;
+      case 'return':
+        returns.push(parseReturnTag(content));
+        break;
+      case 'type':
+        typeAnnotation = nonEmpty(content.trim());
+        break;
+      case 'class':
+        className = nonEmpty(content.trim());
+        break;
+      case 'field':
+        fields.push(parseFieldTag(content));
+        break;
+      case 'deprecated':
+        deprecated = nonEmpty(content.trim()) ?? 'Deprecated';
+        break;
     }
   }
 

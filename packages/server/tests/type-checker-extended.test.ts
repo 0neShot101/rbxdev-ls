@@ -1,8 +1,17 @@
-import { parse } from '@parser/parser';
-import { checkProgram } from '@typings/checker';
-import { typeToString } from '@typings/types';
 import { describe, expect, test } from 'bun:test';
-
+import { expectDefined } from '@tests/helpers/expect';
+import { parse } from '@parser/parser';
+import { checkProgram } from '@analyzer/checker';
+import {
+  AnyType,
+  BooleanType,
+  NeverType,
+  NilType,
+  NumberType,
+  StringType,
+  typeToString,
+  UnknownType,
+} from '@analyzer/values';
 import type { LuauType } from '@typings/types';
 
 const getSymbolType = (code: string, varName: string): LuauType | undefined => {
@@ -19,107 +28,87 @@ const getDiagnostics = (code: string) => {
 };
 
 const expectNoDiagnostics = (code: string) => {
-  const diags = getDiagnostics(code);
-  expect(diags.length).toBe(0);
+  const diagnostics = getDiagnostics(code);
+  expect(diagnostics.length).toBe(0);
 };
 
 describe('Type Checker Extended', () => {
   describe('Type Inference - Tables', () => {
     test('infers table with string values', () => {
-      const type = getSymbolType('local t = { name = "hello", greeting = "world" }', 't');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local t = { name = "hello", greeting = "world" }', 't'));
+      expect(type.kind).toBe('Table');
     });
 
     test('infers table with mixed types', () => {
-      const type = getSymbolType('local t = { x = 1, y = "str", z = true }', 't');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local t = { x = 1, y = "str", z = true }', 't'));
+      expect(type.kind).toBe('Table');
     });
 
     test('infers empty table', () => {
-      const type = getSymbolType('local t = {}', 't');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local t = {}', 't'));
+      expect(type.kind).toBe('Table');
     });
 
     test('infers array-style table', () => {
-      const type = getSymbolType('local arr = { 1, 2, 3 }', 'arr');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local arr = { 1, 2, 3 }', 'arr'));
+      expect(type.kind).toBe('Table');
     });
 
     test('infers nested table', () => {
-      const type = getSymbolType('local t = { inner = { x = 1 } }', 't');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local t = { inner = { x = 1 } }', 't'));
+      expect(type.kind).toBe('Table');
     });
 
     test('infers table with function values', () => {
-      const type = getSymbolType('local t = { f = function() return 1 end }', 't');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      const type = expectDefined(getSymbolType('local t = { f = function() return 1 end }', 't'));
+      expect(type.kind).toBe('Table');
     });
   });
 
   describe('Type Inference - Functions', () => {
     test('infers function return type from declaration', () => {
-      const type = getSymbolType('local function add(a: number, b: number) return a + b end', 'add');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      const type = expectDefined(getSymbolType('local function add(a: number, b: number) return a + b end', 'add'));
+      expect(type.kind).toBe('Function');
     });
 
     test('infers function with no return', () => {
-      const type = getSymbolType('local function noop() end', 'noop');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      const type = expectDefined(getSymbolType('local function noop() end', 'noop'));
+      expect(type.kind).toBe('Function');
     });
 
     test('infers multi-param function with 3 parameters', () => {
       const code = 'local function multi(a: string, b: number, c: boolean) end';
-      const type = getSymbolType(code, 'multi');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
-      if (type!.kind === 'Function') {
-        expect(type!.params.length).toBe(3);
-      }
+      const type = expectDefined(getSymbolType(code, 'multi'));
+      expect(type.kind).toBe('Function');
+      if (type.kind === 'Function') expect(type.params.length).toBe(3);
     });
 
     test('infers function expression assigned to variable', () => {
-      const type = getSymbolType('local fn = function(x: number) return x * 2 end', 'fn');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      const type = expectDefined(getSymbolType('local fn = function(x: number) return x * 2 end', 'fn'));
+      expect(type.kind).toBe('Function');
     });
 
     test('infers function with explicit return type', () => {
       const code = 'local function typed(): string return "hello" end';
-      const type = getSymbolType(code, 'typed');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
-      if (type!.kind === 'Function') {
-        expect(typeToString(type!.returnType)).toBe('string');
-      }
+      const type = expectDefined(getSymbolType(code, 'typed'));
+      expect(type.kind).toBe('Function');
+      if (type.kind === 'Function') expect(typeToString(type.returnType)).toBe('string');
     });
 
     test('infers variadic function', () => {
-      const type = getSymbolType('local function varargs(...) end', 'varargs');
-      expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      const type = expectDefined(getSymbolType('local function varargs(...) end', 'varargs'));
+      expect(type.kind).toBe('Function');
     });
   });
 
   describe('Type Annotations - Complex', () => {
-    test('optional type annotation with nil value', () => {
-      expectNoDiagnostics('local x: string? = nil');
-    });
+    test('optional type annotation with nil value', () => expectNoDiagnostics('local x: string? = nil'));
 
-    test('union type annotation with valid assignment', () => {
-      expectNoDiagnostics('local x: string | number = "hello"');
-    });
+    test('union type annotation with valid assignment', () =>
+      expectNoDiagnostics('local x: string | number = "hello"'));
 
-    test('table type annotation with matching table', () => {
-      expectNoDiagnostics('local t: { x: number, y: number } = { x = 1, y = 2 }');
-    });
+    test('table type annotation with matching table', () =>
+      expectNoDiagnostics('local t: { x: number, y: number } = { x = 1, y = 2 }'));
 
     test('function type annotation creates symbol', () => {
       const code = 'local fn: (number) -> string';
@@ -138,9 +127,7 @@ describe('Type Checker Extended', () => {
       }
     });
 
-    test('type alias used in annotation', () => {
-      expectNoDiagnostics('type Name = string\nlocal name: Name = "hello"');
-    });
+    test('type alias used in annotation', () => expectNoDiagnostics('type Name = string\nlocal name: Name = "hello"'));
   });
 
   describe('Type Aliases - Advanced', () => {
@@ -152,13 +139,9 @@ describe('Type Checker Extended', () => {
       expect(Array.isArray(typeCheckResult.diagnostics)).toBe(true);
     });
 
-    test('type alias referencing another alias', () => {
-      expectNoDiagnostics('type A = number\ntype B = A');
-    });
+    test('type alias referencing another alias', () => expectNoDiagnostics('type A = number\ntype B = A'));
 
-    test('union type alias', () => {
-      expectNoDiagnostics('type Result = string | number | boolean');
-    });
+    test('union type alias', () => expectNoDiagnostics('type Result = string | number | boolean'));
 
     test('table type alias with methods', () => {
       const code = 'type API = { get: (string) -> string, post: (string, string) -> boolean }';
@@ -250,125 +233,44 @@ describe('Type Checker Extended', () => {
   });
 
   describe('Diagnostics - Valid Code', () => {
-    test('no diagnostics for typed number assignment', () => {
-      expectNoDiagnostics('local x: number = 42');
-    });
+    test('no diagnostics for typed number assignment', () => expectNoDiagnostics('local x: number = 42'));
 
-    test('no diagnostics for function with typed params and return', () => {
-      expectNoDiagnostics('local function f(a: number): number return a end');
-    });
+    test('no diagnostics for function with typed params and return', () =>
+      expectNoDiagnostics('local function f(a: number): number return a end'));
 
-    test('no diagnostics for type alias with matching table', () => {
-      expectNoDiagnostics('type Point = { x: number, y: number }\nlocal p: Point = { x = 1, y = 2 }');
-    });
+    test('no diagnostics for type alias with matching table', () =>
+      expectNoDiagnostics('type Point = { x: number, y: number }\nlocal p: Point = { x = 1, y = 2 }'));
 
-    test('no diagnostics for optional type with nil', () => {
-      expectNoDiagnostics('local x: string? = nil');
-    });
+    test('no diagnostics for optional type with nil', () => expectNoDiagnostics('local x: string? = nil'));
 
-    test('no diagnostics for function with tuple return', () => {
-      const code = 'local function swap(a: number, b: number): (number, number) return b, a end';
-      const result = parse(code);
-      if (result.errors.length === 0) {
-        const typeCheckResult = checkProgram(result.ast);
-        expect(Array.isArray(typeCheckResult.diagnostics)).toBe(true);
-      }
-    });
+    test('no diagnostics for function with tuple return', () =>
+      expectNoDiagnostics('local function swap(a: number, b: number): (number, number) return b, a end'));
 
-    test('no diagnostics for numeric for loop with local', () => {
-      expectNoDiagnostics('for i = 1, 10 do\n  local x = i * 2\nend');
-    });
+    test('no diagnostics for numeric for loop with local', () =>
+      expectNoDiagnostics('for i = 1, 10 do\n  local x = i * 2\nend'));
   });
 
-  describe('Diagnostics - Invalid Code', () => {
-    test('type mismatch on number assigned string', () => {
-      const code = 'local x: number = "hello"';
-      const diags = getDiagnostics(code);
-      expect(Array.isArray(diags)).toBe(true);
-      // The checker should emit a type mismatch diagnostic (E002)
-      expect(diags.length).toBeGreaterThanOrEqual(0);
-    });
-
-    test('unknown function call in strict mode may produce diagnostic', () => {
-      const code = 'unknownFunc()';
-      const diags = getDiagnostics(code);
-      expect(Array.isArray(diags)).toBe(true);
-      // Depending on mode, this may or may not produce diagnostics
-      expect(diags.length).toBeGreaterThanOrEqual(0);
-    });
-
-    test('break outside loop produces diagnostic', () => {
-      const code = 'break';
-      const result = parse(code);
-      if (result.errors.length === 0) {
-        const typeCheckResult = checkProgram(result.ast);
-        const breakDiags = typeCheckResult.diagnostics.filter(d => d.message.includes('break'));
-        expect(breakDiags.length).toBeGreaterThanOrEqual(1);
-      }
-    });
-
-    test('continue outside loop produces diagnostic', () => {
-      const code = 'continue';
-      const result = parse(code);
-      if (result.errors.length === 0) {
-        const typeCheckResult = checkProgram(result.ast);
-        const continueDiags = typeCheckResult.diagnostics.filter(d => d.message.includes('continue'));
-        expect(continueDiags.length).toBeGreaterThanOrEqual(1);
-      }
-    });
-
-    test('missing return value in strict mode may produce diagnostic', () => {
-      const code = 'local function f(): number end';
-      const diags = getDiagnostics(code);
-      expect(Array.isArray(diags)).toBe(true);
-      // In strict mode, a function declaring a return type but not returning should emit E013
-      expect(diags.length).toBeGreaterThanOrEqual(0);
-    });
-
-    test('duplicate type alias may produce diagnostic', () => {
-      const code = 'type A = number\ntype A = string';
-      const diags = getDiagnostics(code);
-      expect(Array.isArray(diags)).toBe(true);
-      // Duplicate type aliases may or may not be flagged depending on checker strictness
-      expect(diags.length).toBeGreaterThanOrEqual(0);
-    });
-  });
+  describe('Diagnostics - Invalid Code', () =>
+    test.each([
+      ['type mismatch on number assigned string', 'local x: number = "hello"', 'E002'],
+      ['unknown function call', 'unknownFunc()', 'E006'],
+      ['break outside loop', 'break', 'E001'],
+      ['continue outside loop', 'continue', 'E001'],
+      ['missing return value for declared return type', 'local function f(): number end', 'E013'],
+    ])('%s produces a diagnostic', (_name, code, diagnosticCode) =>
+      expect(getDiagnostics(code).map(diagnostic => diagnostic.code)).toEqual([diagnosticCode]),
+    ));
 
   describe('typeToString Output', () => {
-    test('converts number primitive to "number"', () => {
-      const result = typeToString({ 'kind': 'Primitive', 'name': 'number' } as LuauType);
-      expect(result).toBe('number');
-    });
-
-    test('converts string primitive to "string"', () => {
-      const result = typeToString({ 'kind': 'Primitive', 'name': 'string' } as LuauType);
-      expect(result).toBe('string');
-    });
-
-    test('converts boolean primitive to "boolean"', () => {
-      const result = typeToString({ 'kind': 'Primitive', 'name': 'boolean' } as LuauType);
-      expect(result).toBe('boolean');
-    });
-
-    test('converts nil primitive to "nil"', () => {
-      const result = typeToString({ 'kind': 'Primitive', 'name': 'nil' } as LuauType);
-      expect(result).toBe('nil');
-    });
-
-    test('converts Any type to "any"', () => {
-      const result = typeToString({ 'kind': 'Any' } as LuauType);
-      expect(result).toBe('any');
-    });
-
-    test('converts Unknown type to "unknown"', () => {
-      const result = typeToString({ 'kind': 'Unknown' } as LuauType);
-      expect(result).toBe('unknown');
-    });
-
-    test('converts Never type to "never"', () => {
-      const result = typeToString({ 'kind': 'Never' } as LuauType);
-      expect(result).toBe('never');
-    });
+    test.each([
+      ['number', NumberType],
+      ['string', StringType],
+      ['boolean', BooleanType],
+      ['nil', NilType],
+      ['any', AnyType],
+      ['unknown', UnknownType],
+      ['never', NeverType],
+    ])('renders the %s type by name', (expected, type) => expect(typeToString(type)).toBe(expected));
 
     test('converts Union type containing string and number', () => {
       const unionType: LuauType = {
@@ -400,9 +302,8 @@ describe('Type Checker Extended', () => {
       expect(typeCheckResult.allSymbols.has('result')).toBe(true);
       expect(typeCheckResult.allSymbols.has('double')).toBe(true);
 
-      const doubleType = typeCheckResult.allSymbols.get('double');
-      expect(doubleType).toBeDefined();
-      expect(doubleType!.kind).toBe('Function');
+      const doubleType = expectDefined(typeCheckResult.allSymbols.get('double'));
+      expect(doubleType.kind).toBe('Function');
     });
 
     test('table manipulation tracks config symbol as Table', () => {
@@ -420,9 +321,8 @@ describe('Type Checker Extended', () => {
       const typeCheckResult = checkProgram(result.ast);
       expect(typeCheckResult.allSymbols.has('config')).toBe(true);
 
-      const configType = typeCheckResult.allSymbols.get('config');
-      expect(configType).toBeDefined();
-      expect(configType!.kind).toBe('Table');
+      const configType = expectDefined(typeCheckResult.allSymbols.get('config'));
+      expect(configType.kind).toBe('Table');
     });
 
     test('if-expression assigns variable tracked in allSymbols', () => {

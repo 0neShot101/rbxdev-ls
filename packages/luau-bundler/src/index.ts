@@ -7,5 +7,5 @@
  * @module luau-bundler
  */
 
-export { bundle, resolveRojoProject } from './bundler';
-export type { BundleResult, BundlerOptions, RojoProject } from './types/bundler';
+export { bundle, resolveRojoProject } from '@bundler/bundler';
+export type { BundleResult, BundlerOptions, RojoProject } from '@bundler/types/bundler';

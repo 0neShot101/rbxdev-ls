@@ -33,6 +33,18 @@ M.registerGlobal = function()
   end
 end
 
+M.bindHandlers = function(dispatch, onClose)
+  if getgenv == nil then
+    return
+  end
+  local bridge = getgenv()._RBXDEV_BRIDGE
+  if bridge == nil or bridge.id ~= M.BRIDGE_ID then
+    return
+  end
+  bridge.dispatch = dispatch
+  bridge.onClose = onClose
+end
+
 M.isBridgeAlive = function()
   if getgenv == nil then
     return M.bridgeAlive

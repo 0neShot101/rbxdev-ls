@@ -1,208 +1,135 @@
-import { parse } from '@parser/parser';
-import { walk } from '@parser/visitor';
-import { checkProgram } from '@typings/checker';
-import { typeToString } from '@typings/types';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { CodeActionKind } from 'vscode-languageserver';
+import { createDocumentManager } from '@lsp/documents';
+import { setupCodeActionHandler } from '@lsp/handlers/codeAction';
+import { expectDefined } from '@tests/helpers/expect';
+import { createLspHarness } from '@tests/helpers/lsp';
+import type { CodeAction, Diagnostic, Range, TextEdit } from 'vscode-languageserver';
 
-const DEPRECATION_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
-  ['IsInGroup', 'IsInGroupAsync'],
-  ['GetRankInGroup', 'GetRankInGroupAsync'],
-  ['GetRoleInGroup', 'GetRoleInGroupAsync'],
-  ['children', 'GetChildren'],
-  ['getChildren', 'GetChildren'],
-  ['isA', 'IsA'],
-  ['findFirstChild', 'FindFirstChild'],
-  ['waitForChild', 'WaitForChild'],
-  ['clone', 'Clone'],
-  ['destroy', 'Destroy'],
-  ['remove', 'Destroy'],
-  ['Remove', 'Destroy'],
-  ['connect', 'Connect'],
-  ['p', 'Position'],
-]);
+const documentManager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+const harness = createLspHarness(documentManager);
+setupCodeActionHandler(harness.connection, harness.documents, documentManager);
+
+beforeAll(() => harness.start());
+afterAll(() => harness.dispose());
+
+const rangeOf = (line: number, start: number, end = start): Range => ({
+  'start': { line, 'character': start },
+  'end': { line, 'character': end },
+});
+
+const diagnosticOf = (message: string, range: Range): Diagnostic => ({ range, message, 'source': 'rbxdev-ls' });
+
+const requestActions = async (
+  text: string,
+  range: Range,
+  diagnostics: Diagnostic[] = [],
+): Promise<{ uri: string; actions: ReadonlyArray<CodeAction> }> => {
+  const uri = await harness.open(text);
+  const actions = await harness.codeActions({ 'textDocument': { uri }, range, 'context': { diagnostics } });
+  return { uri, actions };
+};
+
+const editsFor = (actions: ReadonlyArray<CodeAction>, title: string, uri: string): ReadonlyArray<TextEdit> =>
+  expectDefined(expectDefined(actions.find(action => action.title === title)).edit?.changes?.[uri]);
 
 describe('Code Actions', () => {
-  describe('Deprecation Replacements', () => {
-    test('has replacement for children -> GetChildren', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('children')).toBe('GetChildren');
-    });
-
-    test('has replacement for findFirstChild -> FindFirstChild', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('findFirstChild')).toBe('FindFirstChild');
-    });
-
-    test('has replacement for destroy -> Destroy', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('destroy')).toBe('Destroy');
-    });
-
-    test('has replacement for remove -> Destroy', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('remove')).toBe('Destroy');
-    });
-
-    test('has replacement for connect -> Connect', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('connect')).toBe('Connect');
-    });
-
-    test('has replacement for clone -> Clone', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('clone')).toBe('Clone');
-    });
-
-    test('has replacement for isA -> IsA', () => {
-      expect(DEPRECATION_REPLACEMENTS.get('isA')).toBe('IsA');
-    });
-  });
+  describe('Deprecation Replacements', () =>
+    test.each([
+      ['children', 'GetChildren'],
+      ['findFirstChild', 'FindFirstChild'],
+      ['destroy', 'Destroy'],
+      ['remove', 'Destroy'],
+      ['connect', 'Connect'],
+      ['clone', 'Clone'],
+      ['isA', 'IsA'],
+    ])('replaces deprecated %s with %s', async (name, replacement) => {
+      const range = rangeOf(0, 5, 5 + name.length);
+      const diagnostic = diagnosticOf(`'${name}' is deprecated`, range);
+      const { actions } = await requestActions(`part:${name}()`, rangeOf(0, 5), [diagnostic]);
+      const action = expectDefined(
+        actions.find(candidate => candidate.title === `Replace '${name}' with '${replacement}'`),
+      );
+      expect(action.kind).toBe(CodeActionKind.QuickFix);
+      expect(action.isPreferred).toBe(true);
+      expect(action.diagnostics).toEqual([diagnostic]);
+    }));
 
   describe('Deprecation Message Parsing', () => {
-    test('extracts name from deprecation message with single quotes', () => {
-      const msg = "'children' is deprecated";
-      const match = msg.match(/'([^']+)' is deprecated/);
-      expect(match).toBeDefined();
-      expect(match![1]).toBe('children');
+    test('offers the suggestion named in a "Use ... instead" message', async () => {
+      const range = rangeOf(0, 5, 12);
+      const diagnostic = diagnosticOf("'getKids' is deprecated. Use 'GetChildren' instead", range);
+      const { uri, actions } = await requestActions('part:getKids()', rangeOf(0, 5), [diagnostic]);
+      expect(editsFor(actions, "Replace with 'GetChildren'", uri)).toEqual([{ range, 'newText': 'GetChildren' }]);
     });
 
-    test('extracts name from deprecation message with smart quotes', () => {
-      const msg = '\u2018children\u2019 is deprecated';
-      const match = msg.match(/['\u2018]([^'\u2019]+)['\u2019] is deprecated/);
-      expect(match).toBeDefined();
-      expect(match![1]).toBe('children');
-    });
-
-    test('extracts suggestion from Use instead message', () => {
-      const msg = "Use 'GetChildren' instead";
-      const match = msg.match(/Use '([^']+)' instead/);
-      expect(match).toBeDefined();
-      expect(match![1]).toBe('GetChildren');
+    test('ignores deprecation messages from other sources', async () => {
+      const diagnostic: Diagnostic = {
+        'range': rangeOf(0, 5, 13),
+        'message': "'children' is deprecated",
+        'source': 'other',
+      };
+      const { actions } = await requestActions('part:children()', rangeOf(0, 5), [diagnostic]);
+      expect(actions.some(action => action.title.startsWith('Replace'))).toBe(false);
     });
   });
 
-  describe('Unknown Identifier Fix', () => {
-    test('extracts identifier from unknown identifier message', () => {
-      const msg = "Unknown identifier 'myVar'";
-      const match = msg.match(/Unknown identifier [''\u2018]([^''\u2019]+)[''\u2019]/);
-      expect(match).toBeDefined();
-      expect(match![1]).toBe('myVar');
-    });
-  });
+  describe('Unknown Identifier Fix', () =>
+    test('declares the unknown identifier above its line with matching indentation', async () => {
+      const diagnostic = diagnosticOf("Unknown identifier 'myVar'", rangeOf(1, 7, 12));
+      const { uri, actions } = await requestActions('do\n\tprint(myVar)\nend', rangeOf(1, 7), [diagnostic]);
+      expect(editsFor(actions, "Add 'local myVar = nil' above", uri)).toEqual([
+        { 'range': rangeOf(1, 0), 'newText': '\tlocal myVar = nil\n' },
+      ]);
+    }));
 
   describe('Unused Variable Prefix', () => {
-    test('detects unused variable message', () => {
-      const msg = "'x' is unused";
-      expect(msg.includes('unused')).toBe(true);
+    test('prefixes an unused variable with an underscore', async () => {
+      const range = rangeOf(0, 6, 11);
+      const { uri, actions } = await requestActions('local myVar = 1', rangeOf(0, 6), [
+        diagnosticOf("'myVar' is unused", range),
+      ]);
+      expect(editsFor(actions, "Prefix 'myVar' with '_'", uri)).toEqual([{ range, 'newText': '_myVar' }]);
     });
 
-    test('extracts variable name from unused message', () => {
-      const msg = "'myVar' is unused";
-      const match = msg.match(/[''\u2018]([^''\u2019]+)[''\u2019]/);
-      expect(match).toBeDefined();
-      expect(match![1]).toBe('myVar');
-    });
-
-    test('does not prefix already-prefixed variables', () => {
-      const varName = '_unused';
-      expect(varName.startsWith('_')).toBe(true);
+    test('does not prefix an already-prefixed variable', async () => {
+      const diagnostic = diagnosticOf("'_unused' is unused", rangeOf(0, 6, 13));
+      const { actions } = await requestActions('local _unused = 1', rangeOf(0, 6), [diagnostic]);
+      expect(actions.some(action => action.title.startsWith('Prefix'))).toBe(false);
     });
   });
 
-  describe('String Quote Conversion', () => {
-    test('detects double-quoted strings', () => {
-      const result = parse('local x = "hello"');
-      expect(result.errors.length).toBe(0);
-
-      let foundDoubleQuote = false;
-      walk(result.ast, {
-        'visitStringLiteral': node => {
-          if (node.raw.startsWith('"')) foundDoubleQuote = true;
-        },
-      });
-
-      expect(foundDoubleQuote).toBe(true);
-    });
-
-    test('detects single-quoted strings', () => {
-      const result = parse("local x = 'hello'");
-      expect(result.errors.length).toBe(0);
-
-      let foundSingleQuote = false;
-      walk(result.ast, {
-        'visitStringLiteral': node => {
-          if (node.raw.startsWith("'")) foundSingleQuote = true;
-        },
-      });
-
-      expect(foundSingleQuote).toBe(true);
-    });
-
-    test('can convert double to single quotes', () => {
-      const value = 'hello';
-      const converted = `'${value.replace(/'/g, "\\'")}'`;
-      expect(converted).toBe("'hello'");
-    });
-
-    test('can convert single to double quotes', () => {
-      const value = 'hello';
-      const converted = `"${value.replace(/"/g, '\\"')}"`;
-      expect(converted).toBe('"hello"');
-    });
-
-    test('escapes quotes during conversion', () => {
-      const value = "it's";
-      const converted = `'${value.replace(/'/g, "\\'")}'`;
-      expect(converted).toBe("'it\\'s'");
-    });
-  });
+  describe('String Quote Conversion', () =>
+    test.each([
+      ['local x = "hello"', 'Convert to single quotes', "'hello'"],
+      ["local x = 'hello'", 'Convert to double quotes', '"hello"'],
+      ['local x = "it\'s"', 'Convert to single quotes', "'it\\'s'"],
+    ])('%s offers "%s"', async (text, title, newText) => {
+      const { uri, actions } = await requestActions(text, rangeOf(0, 12));
+      expect(editsFor(actions, title, uri)).toEqual([{ 'range': rangeOf(0, 10, text.length), newText }]);
+    }));
 
   describe('Add Type Annotation', () => {
-    test('identifies variables without type annotations', () => {
-      const code = 'local x = 42';
-      const result = parse(code);
-      expect(result.errors.length).toBe(0);
-
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        const hasAnnotation = stmt.types[0] !== undefined;
-        expect(hasAnnotation).toBe(false);
-      }
+    test('annotates an unannotated local with its inferred type', async () => {
+      const { uri, actions } = await requestActions('local x = 42', rangeOf(0, 6));
+      expect(editsFor(actions, 'Add type annotation: number', uri)).toEqual([
+        { 'range': rangeOf(0, 7), 'newText': ': number' },
+      ]);
     });
 
-    test('identifies variables with type annotations', () => {
-      const code = 'local x: number = 42';
-      const result = parse(code);
-      expect(result.errors.length).toBe(0);
-
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        const hasAnnotation = stmt.types[0] !== undefined;
-        expect(hasAnnotation).toBe(true);
-      }
-    });
-
-    test('type checker infers type for unannotated variable', () => {
-      const code = 'local x = 42';
-      const result = parse(code);
-      const typeCheckResult = checkProgram(result.ast);
-
-      const symbolType = typeCheckResult.allSymbols.get('x');
-      expect(symbolType).toBeDefined();
-
-      if (symbolType !== undefined) {
-        const typeStr = typeToString(symbolType);
-        expect(typeStr.length).toBeGreaterThan(0);
-      }
+    test('does not annotate an already annotated local', async () => {
+      const { actions } = await requestActions('local x: number = 42', rangeOf(0, 6));
+      expect(actions.some(action => action.title.startsWith('Add type annotation'))).toBe(false);
     });
   });
 
-  describe('Extract to Local Variable', () => {
-    test('selection text extraction works', () => {
-      const text = 'local result = someFunc(a + b)';
-      const selectedText = text.slice(15, 29);
-      expect(selectedText).toBe('someFunc(a + b');
-    });
-
-    test('generates correct extracted code', () => {
-      const selectedText = 'a + b';
-      const indent = '\t';
-      const extractedLine = `${indent}local extracted = ${selectedText}\n`;
-      expect(extractedLine).toBe('\tlocal extracted = a + b\n');
-    });
-  });
+  describe('Extract to Local Variable', () =>
+    test('extracts the selection into a local above the current line', async () => {
+      const selection = rangeOf(0, 15, 30);
+      const { uri, actions } = await requestActions('local result = someFunc(a + b)', selection);
+      expect(editsFor(actions, 'Extract to local variable', uri)).toEqual([
+        { 'range': rangeOf(0, 0), 'newText': 'local extracted = someFunc(a + b)\n' },
+        { 'range': selection, 'newText': 'extracted' },
+      ]);
+    }));
 });

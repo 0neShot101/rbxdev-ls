@@ -6,15 +6,20 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { createExecutorBridge, createProxyBridge, type ExecutorBridge, type LogEntry } from 'rbxdev-server';
+import { createExecutorBridge, createProxyBridge } from 'rbxdev-server';
 
 import { MAX_LOG_BUFFER, MCP_INSTRUCTIONS } from '@mcp/constants';
 import { readResource, resources } from '@mcp/handlers/resources';
 import { handleToolCall } from '@mcp/handlers/toolCalls';
 import { tools } from '@mcp/handlers/tools/definitions';
 import { formatGameTreeNode, formatLogEntry, formatServicesTree, serializeGameTreeNode } from '@mcp/utils/formatters';
-import { errorResult, requirePath, textResult } from '@mcp/utils/results';
+import { errorResult, textResult } from '@mcp/utils/results';
 import { getConfiguredPort, isPortAvailable } from '@mcp/utils/runtime';
+import { requirePath } from '@mcp/utils/validation';
+
+import type { ExecutorBridge, LogEntry } from 'rbxdev-server';
+
+import type { McpServerHandle } from '@mcp/types/server';
 
 export {
   errorResult,
@@ -28,7 +33,7 @@ export {
 };
 
 /** Creates and configures the MCP server with all tools and resources. */
-export const createMcpServer = (injectedBridge?: ExecutorBridge): { server: McpServer; bridge: ExecutorBridge } => {
+export const createMcpServer = (injectedBridge?: ExecutorBridge): McpServerHandle => {
   const logBuffer: LogEntry[] = [];
   const bridge = injectedBridge ?? createExecutorBridge((message: string) => console.error(`[mcp] ${message}`));
 

@@ -1,25 +1,25 @@
-import { parse } from '@parser/parser';
-import { checkProgram } from '@typings/checker';
 import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
+import { parse } from '@parser/parser';
+import { checkProgram } from '@analyzer/checker';
 
 const testTableType = (code: string, varName: string, expectedKeys: string[]) => {
   const result = parse(code);
   expect(result.errors.length).toBe(0);
 
   const typeCheckResult = checkProgram(result.ast);
-  const symbol = typeCheckResult.environment.globalScope.symbols.get(varName);
-  expect(symbol).toBeDefined();
-  expect(symbol!.type.kind).toBe('Table');
+  const symbol = expectDefined(typeCheckResult.environment.globalScope.symbols.get(varName));
+  expect(symbol.type.kind).toBe('Table');
 
-  if (symbol!.type.kind === 'Table') {
-    const actualKeys = Array.from(symbol!.type.properties.keys()).sort();
+  if (symbol.type.kind === 'Table') {
+    const actualKeys = Array.from(symbol.type.properties.keys()).sort();
     expect(actualKeys).toEqual([...expectedKeys].sort());
   }
 };
 
 describe('Table Literal Completions', () => {
   describe('Bracket String Key Syntax', () => {
-    test('single-quoted bracket keys', () => {
+    test('single-quoted bracket keys', () =>
       testTableType(
         `local aaaa = {
     ['aaa'] = 1,
@@ -28,10 +28,9 @@ describe('Table Literal Completions', () => {
 }`,
         'aaaa',
         ['aaa', 'vvv', 'ccc'],
-      );
-    });
+      ));
 
-    test('double-quoted bracket keys', () => {
+    test('double-quoted bracket keys', () =>
       testTableType(
         `local t = {
     ["key1"] = "value1",
@@ -39,12 +38,11 @@ describe('Table Literal Completions', () => {
 }`,
         't',
         ['key1', 'key2'],
-      );
-    });
+      ));
   });
 
-  describe('Identifier Key Syntax', () => {
-    test('plain identifier keys', () => {
+  describe('Identifier Key Syntax', () =>
+    test('plain identifier keys', () =>
       testTableType(
         `local obj = {
     name = "test",
@@ -53,12 +51,10 @@ describe('Table Literal Completions', () => {
 }`,
         'obj',
         ['name', 'value', 'active'],
-      );
-    });
-  });
+      )));
 
-  describe('Mixed Key Syntax', () => {
-    test('mix of identifier and bracket keys', () => {
+  describe('Mixed Key Syntax', () =>
+    test('mix of identifier and bracket keys', () =>
       testTableType(
         `local mixed = {
     normalKey = 1,
@@ -67,12 +63,10 @@ describe('Table Literal Completions', () => {
 }`,
         'mixed',
         ['normalKey', 'bracketKey', 'doubleQuoteKey'],
-      );
-    });
-  });
+      )));
 
-  describe('Nested Tables', () => {
-    test('outer table has correct keys', () => {
+  describe('Nested Tables', () =>
+    test('outer table has correct keys', () =>
       testTableType(
         `local outer = {
     inner = {
@@ -83,7 +77,5 @@ describe('Table Literal Completions', () => {
 }`,
         'outer',
         ['inner', 'value'],
-      );
-    });
-  });
+      )));
 });

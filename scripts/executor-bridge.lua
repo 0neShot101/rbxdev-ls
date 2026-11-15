@@ -279,7 +279,6 @@ return (function(oldRequire, ...)
         M.WebSocket = WebSocket
           or (syn and syn.websocket)
           or (Fluxus and Fluxus.websocket)
-          or (krnl and krnl.websocket)
           or (Xeno and Xeno.websocket)
           or websocket
 
@@ -1686,6 +1685,8 @@ return (function(oldRequire, ...)
           scheduleReconnect()
         end
 
+        state.bindHandlers(handleMessage, onSocketClose)
+
         local adoptSocket = function(ws)
           state.connection = ws
           state.connected = true
@@ -2544,6 +2545,18 @@ return (function(oldRequire, ...)
               alive = true,
             }
           end
+        end
+
+        M.bindHandlers = function(dispatch, onClose)
+          if getgenv == nil then
+            return
+          end
+          local bridge = getgenv()._RBXDEV_BRIDGE
+          if bridge == nil or bridge.id ~= M.BRIDGE_ID then
+            return
+          end
+          bridge.dispatch = dispatch
+          bridge.onClose = onClose
         end
 
         M.isBridgeAlive = function()

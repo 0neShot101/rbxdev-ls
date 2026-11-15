@@ -153,8 +153,8 @@ export const collectWorkspaceSymbols = (chunk: Chunk, uri: string): SymbolInform
 };
 
 /** Provides workspace-wide symbol search across all indexed modules and open documents. */
-export const setupWorkspaceSymbolHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onWorkspaceSymbol((params: WorkspaceSymbolParams): SymbolInformation[] => {
+export const setupWorkspaceSymbolHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onWorkspaceSymbol((params: WorkspaceSymbolParams): SymbolInformation[] => {
     const query = params.query.toLowerCase();
     const results: SymbolInformation[] = [];
     const seen = new Set<string>();
@@ -179,4 +179,3 @@ export const setupWorkspaceSymbolHandler = (connection: Connection, documentMana
 
     return results;
   });
-};

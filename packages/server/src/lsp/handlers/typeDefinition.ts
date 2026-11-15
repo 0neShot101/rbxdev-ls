@@ -1,4 +1,4 @@
-import { typeToString } from '@typings/types';
+import { typeToString } from '@analyzer/values';
 import { walk } from '@parser/visitor';
 
 import type { Chunk, Statement } from '@typings/ast';
@@ -30,7 +30,7 @@ export const collectTypeDeclarations = (chunk: Chunk): Map<string, TypeDeclarati
   const declarations = new Map<string, TypeDeclarationLocation>();
 
   const processStatements = (statements: ReadonlyArray<Statement>) => {
-    for (const stmt of statements) {
+    for (const stmt of statements)
       switch (stmt.kind) {
         case 'TypeAlias':
           declarations.set(stmt.name.name, {
@@ -78,7 +78,6 @@ export const collectTypeDeclarations = (chunk: Chunk): Map<string, TypeDeclarati
           processStatements(stmt.func.body);
           break;
       }
-    }
   };
 
   processStatements(chunk.body);
@@ -91,16 +90,13 @@ export const collectTypeDeclarations = (chunk: Chunk): Map<string, TypeDeclarati
  * @returns The type name, or undefined if not available.
  */
 export const getTypeName = (typeDef: { kind: string; name?: string }): string | undefined => {
-  if (typeDef.kind === 'Class') return (typeDef as { name: string }).name;
-  if (typeDef.kind === 'Table') return undefined;
-  if (typeDef.kind === 'Function') return undefined;
-  if (typeDef.kind === 'TypeReference') return (typeDef as { name: string }).name;
+  if (typeDef.kind === 'Class' || typeDef.kind === 'TypeReference') return typeDef.name;
   return undefined;
 };
 
 /** Navigates to the type definition of the symbol at the cursor position. */
-export const setupTypeDefinitionHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onTypeDefinition((params: TypeDefinitionParams): Location | null => {
+export const setupTypeDefinitionHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onTypeDefinition((params: TypeDefinitionParams): Location | null => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return null;
 
@@ -167,4 +163,3 @@ export const setupTypeDefinitionHandler = (connection: Connection, documentManag
 
     return foundLocation;
   });
-};

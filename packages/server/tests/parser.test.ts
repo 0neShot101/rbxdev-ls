@@ -1,5 +1,6 @@
-import { parse } from '@parser/parser';
 import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
+import { parse } from '@parser/parser';
 
 describe('Parser', () => {
   describe('Basic Parsing', () => {
@@ -13,7 +14,7 @@ describe('Parser', () => {
       const result = parse('local x = 42');
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
-      expect(result.ast.body[0]!.kind).toBe('LocalDeclaration');
+      expect(result.ast.body[0]?.kind).toBe('LocalDeclaration');
     });
 
     test('parses multiple statements', () => {
@@ -26,7 +27,7 @@ describe('Parser', () => {
       const result = parse('print("hello")');
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
-      expect(result.ast.body[0]!.kind).toBe('CallStatement');
+      expect(result.ast.body[0]?.kind).toBe('CallStatement');
     });
   });
 
@@ -36,7 +37,7 @@ describe('Parser', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
       if (stmt.kind === 'LocalFunction') {
         expect(stmt.name.name).toBe('foo');
@@ -49,12 +50,12 @@ describe('Parser', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('FunctionDeclaration');
       if (stmt.kind === 'FunctionDeclaration') {
         expect(stmt.name.base.name).toBe('MyModule');
         expect(stmt.name.path.length).toBe(1);
-        expect(stmt.name.path[0]!.name).toBe('init');
+        expect(stmt.name.path[0]?.name).toBe('init');
       }
     });
 
@@ -62,10 +63,10 @@ describe('Parser', () => {
       const result = parse('function MyClass:method(self)\nend');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'FunctionDeclaration') {
         expect(stmt.name.method).toBeDefined();
-        expect(stmt.name.method!.name).toBe('method');
+        expect(stmt.name.method?.name).toBe('method');
       }
     });
 
@@ -73,10 +74,10 @@ describe('Parser', () => {
       const result = parse('local function add(a: number, b: number): number\n  return a + b\nend');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalFunction') {
-        expect(stmt.func.params[0]!.type).toBeDefined();
-        expect(stmt.func.params[0]!.type!.kind).toBe('TypeReference');
+        expect(stmt.func.params[0]?.type).toBeDefined();
+        expect(stmt.func.params[0]?.type?.kind).toBe('TypeReference');
         expect(stmt.func.returnType).toBeDefined();
       }
     });
@@ -86,14 +87,14 @@ describe('Parser', () => {
     test('parses if statement', () => {
       const result = parse('if true then\n  print("yes")\nend');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('IfStatement');
+      expect(result.ast.body[0]?.kind).toBe('IfStatement');
     });
 
     test('parses if-elseif-else', () => {
       const result = parse('if a then\n  x()\nelseif b then\n  y()\nelse\n  z()\nend');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'IfStatement') {
         expect(stmt.elseifClauses.length).toBe(1);
         expect(stmt.elseBody).toBeDefined();
@@ -103,25 +104,25 @@ describe('Parser', () => {
     test('parses while loop', () => {
       const result = parse('while true do\n  break\nend');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('WhileStatement');
+      expect(result.ast.body[0]?.kind).toBe('WhileStatement');
     });
 
     test('parses for numeric loop', () => {
       const result = parse('for i = 1, 10 do\n  print(i)\nend');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('ForNumeric');
+      expect(result.ast.body[0]?.kind).toBe('ForNumeric');
     });
 
     test('parses for generic loop', () => {
       const result = parse('for k, v in pairs(t) do\n  print(k, v)\nend');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('ForGeneric');
+      expect(result.ast.body[0]?.kind).toBe('ForGeneric');
     });
 
     test('parses repeat-until loop', () => {
       const result = parse('repeat\n  x = x + 1\nuntil x > 10');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('RepeatStatement');
+      expect(result.ast.body[0]?.kind).toBe('RepeatStatement');
     });
   });
 
@@ -129,9 +130,9 @@ describe('Parser', () => {
     test('parses type alias', () => {
       const result = parse('type Point = { x: number, y: number }');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('TypeAlias');
+      expect(result.ast.body[0]?.kind).toBe('TypeAlias');
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.name.name).toBe('Point');
         expect(stmt.type.kind).toBe('TableType');
@@ -141,12 +142,10 @@ describe('Parser', () => {
     test('parses export type', () => {
       const result = parse('export type MyType = string | number');
       expect(result.errors.length).toBe(0);
-      expect(result.ast.body[0]!.kind).toBe('ExportStatement');
+      expect(result.ast.body[0]?.kind).toBe('ExportStatement');
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'ExportStatement') {
-        expect(stmt.declaration.kind).toBe('TypeAlias');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'ExportStatement') expect(stmt.declaration.kind).toBe('TypeAlias');
     });
 
     test('parses union type annotation', () => {
@@ -168,11 +167,11 @@ describe('Parser', () => {
       const result = parse('type Container<T> = { value: T }');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.typeParams).toBeDefined();
-        expect(stmt.typeParams!.length).toBe(1);
-        expect(stmt.typeParams![0]!.name).toBe('T');
+        expect(stmt.typeParams?.length).toBe(1);
+        expect(stmt.typeParams?.[0]?.name).toBe('T');
       }
     });
   });
@@ -182,60 +181,48 @@ describe('Parser', () => {
       const result = parse('local t = { a = 1, b = 2 }');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        expect(stmt.values[0]!.kind).toBe('TableExpression');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'LocalDeclaration') expect(stmt.values[0]?.kind).toBe('TableExpression');
     });
 
     test('parses function expression', () => {
       const result = parse('local fn = function(x) return x end');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        expect(stmt.values[0]!.kind).toBe('FunctionExpression');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'LocalDeclaration') expect(stmt.values[0]?.kind).toBe('FunctionExpression');
     });
 
     test('parses method call', () => {
       const result = parse('obj:method(arg)');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'CallStatement') {
-        expect(stmt.expression.kind).toBe('MethodCallExpression');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'CallStatement') expect(stmt.expression.kind).toBe('MethodCallExpression');
     });
 
     test('parses member expression', () => {
       const result = parse('local x = obj.field');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        expect(stmt.values[0]!.kind).toBe('MemberExpression');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'LocalDeclaration') expect(stmt.values[0]?.kind).toBe('MemberExpression');
     });
 
     test('parses string interpolation', () => {
       const result = parse('local s = `hello {name}`');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        expect(stmt.values[0]!.kind).toBe('InterpolatedString');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'LocalDeclaration') expect(stmt.values[0]?.kind).toBe('InterpolatedString');
     });
 
     test('parses if expression', () => {
       const result = parse('local x = if a then b else c');
       expect(result.errors.length).toBe(0);
 
-      const stmt = result.ast.body[0]!;
-      if (stmt.kind === 'LocalDeclaration') {
-        expect(stmt.values[0]!.kind).toBe('IfExpression');
-      }
+      const stmt = expectDefined(result.ast.body[0]);
+      if (stmt.kind === 'LocalDeclaration') expect(stmt.values[0]?.kind).toBe('IfExpression');
     });
   });
 

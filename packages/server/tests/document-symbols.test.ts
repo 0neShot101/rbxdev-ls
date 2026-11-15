@@ -1,10 +1,11 @@
+import { describe, expect, test } from 'bun:test';
+import { SymbolKind } from 'vscode-languageserver';
+import { expectDefined } from '@tests/helpers/expect';
 import { collectCallHierarchyFunctions, collectCallSites } from '@lsp/handlers/callHierarchy';
 import { collectCodeLensReferences } from '@lsp/handlers/codeLens';
 import { collectDocumentSymbols } from '@lsp/handlers/documentSymbol';
 import { collectWorkspaceSymbols } from '@lsp/handlers/workspaceSymbol';
 import { parse } from '@parser/parser';
-import { describe, expect, test } from 'bun:test';
-import { SymbolKind } from 'vscode-languageserver';
 
 import type { Chunk } from '@typings/ast';
 import type { DocumentSymbol } from 'vscode-languageserver';
@@ -93,8 +94,8 @@ describe('Document Symbols', () => {
     const symbols = collectDocumentSymbols(parseCode('local function outer(a, b)\n  local function inner() end\nend'));
 
     expect(symbols.length).toBe(1);
-    expect(symbols[0]!.name).toBe('outer');
-    expect(symbols[0]!.children!.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
+    expect(symbols[0]?.name).toBe('outer');
+    expect(symbols[0]?.children?.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
       { 'name': 'a', 'kind': SymbolKind.Variable },
       { 'name': 'b', 'kind': SymbolKind.Variable },
       { 'name': 'inner', 'kind': SymbolKind.Function },
@@ -106,9 +107,9 @@ describe('Document Symbols', () => {
     const symbols = collectDocumentSymbols(parseCode(code));
 
     expect(symbols.length).toBe(1);
-    expect(symbols[0]!.children!.map(c => c.name)).toEqual(['inner']);
-    expect(symbols[0]!.children![0]!.kind).toBe(SymbolKind.Function);
-    expect(symbols[0]!.children![0]!.range.start.line).toBe(2);
+    expect(symbols[0]?.children?.map(c => c.name)).toEqual(['inner']);
+    expect(symbols[0]?.children?.[0]?.kind).toBe(SymbolKind.Function);
+    expect(symbols[0]?.children?.[0]?.range.start.line).toBe(2);
   });
 
   test('collects functions inside while loops within a function body', () => {
@@ -116,7 +117,7 @@ describe('Document Symbols', () => {
     const symbols = collectDocumentSymbols(parseCode(code));
 
     expect(symbols.length).toBe(1);
-    expect(symbols[0]!.children!.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
+    expect(symbols[0]?.children?.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
       { 'name': 'loopFunc', 'kind': SymbolKind.Function },
     ]);
   });
@@ -125,11 +126,11 @@ describe('Document Symbols', () => {
     const code = 'local function wrapper()\n  for i = 1, 10 do\n    local total = 0\n  end\nend';
     const symbols = collectDocumentSymbols(parseCode(code));
 
-    expect(symbols[0]!.children!.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
+    expect(symbols[0]?.children?.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
       { 'name': 'i', 'kind': SymbolKind.Variable },
       { 'name': 'total', 'kind': SymbolKind.Variable },
     ]);
-    expect(symbols[0]!.children![0]!.range).toEqual({
+    expect(symbols[0]?.children?.[0]?.range).toEqual({
       'start': { 'line': 1, 'character': 6 },
       'end': { 'line': 1, 'character': 7 },
     });
@@ -139,7 +140,7 @@ describe('Document Symbols', () => {
     const code = 'local function wrapper()\n  for key, value in pairs(t) do end\nend';
     const symbols = collectDocumentSymbols(parseCode(code));
 
-    expect(symbols[0]!.children!.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
+    expect(symbols[0]?.children?.map(c => ({ 'name': c.name, 'kind': c.kind }))).toEqual([
       { 'name': 'key', 'kind': SymbolKind.Variable },
       { 'name': 'value', 'kind': SymbolKind.Variable },
     ]);
@@ -162,8 +163,8 @@ describe('Document Symbols', () => {
     const symbols = collectDocumentSymbols(parseCode('export type Config = { debug: boolean }'));
 
     expect(symbols.length).toBe(1);
-    expect(symbols[0]!.name).toBe('export Config');
-    expect(symbols[0]!.kind).toBe(SymbolKind.TypeParameter);
+    expect(symbols[0]?.name).toBe('export Config');
+    expect(symbols[0]?.kind).toBe(SymbolKind.TypeParameter);
   });
 
   test('returns zero-based line numbers', () => {
@@ -207,7 +208,7 @@ describe('Workspace Symbols', () => {
     const symbols = collectWorkspaceSymbols(parseCode('local config = {}'), TEST_URI);
 
     expect(symbols.length).toBe(1);
-    expect(symbols[0]!.containerName).toBeUndefined();
+    expect(symbols[0]?.containerName).toBeUndefined();
   });
 
   test('reaches functions nested in top-level control flow', () => {
@@ -267,19 +268,19 @@ describe('Code Lens - Reference Counting', () => {
     const code = 'local function myFunc()\nend\nmyFunc()\nmyFunc()';
     const references = collectCodeLensReferences(parseCode(code));
 
-    expect(references.get('myFunc')!.map(l => l.line)).toEqual([0, 0, 2, 3]);
+    expect(references.get('myFunc')?.map(l => l.line)).toEqual([0, 0, 2, 3]);
   });
 
   test('records every reference to a variable', () => {
     const code = 'local x = 1\nprint(x)\nlocal y = x + 1';
     const references = collectCodeLensReferences(parseCode(code));
 
-    expect(references.get('x')!.map(l => l.line)).toEqual([0, 0, 1, 2]);
+    expect(references.get('x')?.map(l => l.line)).toEqual([0, 0, 1, 2]);
   });
 
   test('records declaration-only variable references', () => {
     const references = collectCodeLensReferences(parseCode('local unused = 42'));
-    const locations = references.get('unused')!;
+    const locations = expectDefined(references.get('unused'));
 
     expect(locations.length).toBeGreaterThanOrEqual(1);
     expect(locations.every(l => l.line === 0)).toBe(true);

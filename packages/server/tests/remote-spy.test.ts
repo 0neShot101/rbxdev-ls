@@ -1,36 +1,37 @@
+import { describe, expect, test } from 'bun:test';
 import { createBridgeCore } from '@executor/bridgeCore';
 import { isSetRemoteSpyBlockListResultMessage, parseClientMessage } from '@executor/protocol';
-import { describe, expect, test } from 'bun:test';
+
 import type { RemoteSpyCall, RemoteSpySource, ServerMessage } from '@typings/protocol';
 
 const noop = (): void => {};
 
 describe('Remote Spy Block List - Protocol Guards', () => {
   test('isSetRemoteSpyBlockListResultMessage accepts valid message', () => {
-    const msg = { 'type': 'setRemoteSpyBlockListResult', 'id': 'abc123', 'success': true };
-    expect(isSetRemoteSpyBlockListResultMessage(msg)).toBe(true);
+    const message = { 'type': 'setRemoteSpyBlockListResult', 'id': 'abc123', 'success': true };
+    expect(isSetRemoteSpyBlockListResultMessage(message)).toBe(true);
   });
 
   test('isSetRemoteSpyBlockListResultMessage rejects wrong type', () => {
-    const msg = { 'type': 'otherMessage', 'id': 'abc123', 'success': true };
-    expect(isSetRemoteSpyBlockListResultMessage(msg)).toBe(false);
+    const message = { 'type': 'otherMessage', 'id': 'abc123', 'success': true };
+    expect(isSetRemoteSpyBlockListResultMessage(message)).toBe(false);
   });
 
   test('isSetRemoteSpyBlockListResultMessage rejects missing id', () => {
-    const msg = { 'type': 'setRemoteSpyBlockListResult', 'success': true };
-    expect(isSetRemoteSpyBlockListResultMessage(msg)).toBe(false);
+    const message = { 'type': 'setRemoteSpyBlockListResult', 'success': true };
+    expect(isSetRemoteSpyBlockListResultMessage(message)).toBe(false);
   });
 
   test('isSetRemoteSpyBlockListResultMessage rejects missing success', () => {
-    const msg = { 'type': 'setRemoteSpyBlockListResult', 'id': 'abc123' };
-    expect(isSetRemoteSpyBlockListResultMessage(msg)).toBe(false);
+    const message = { 'type': 'setRemoteSpyBlockListResult', 'id': 'abc123' };
+    expect(isSetRemoteSpyBlockListResultMessage(message)).toBe(false);
   });
 
   test('parseClientMessage parses setRemoteSpyBlockListResult', () => {
     const raw = JSON.stringify({ 'type': 'setRemoteSpyBlockListResult', 'id': 'test1', 'success': true });
     const result = parseClientMessage(raw);
     expect(result).toBeDefined();
-    expect(result!.type).toBe('setRemoteSpyBlockListResult');
+    expect(result?.type).toBe('setRemoteSpyBlockListResult');
   });
 
   test('parseClientMessage parses setRemoteSpyBlockListResult with error', () => {
@@ -42,31 +43,25 @@ describe('Remote Spy Block List - Protocol Guards', () => {
     });
     const result = parseClientMessage(raw);
     expect(result).toBeDefined();
-    expect(result!.type).toBe('setRemoteSpyBlockListResult');
+    expect(result?.type).toBe('setRemoteSpyBlockListResult');
   });
 });
 
 describe('Remote Spy Block List - BridgeCore', () => {
-  test('bridge core exposes setRemoteSpyBlockList method', () => {
-    const core = createBridgeCore(noop, () => false, noop);
-    expect(typeof core.setRemoteSpyBlockList).toBe('function');
-  });
-
   test('setRemoteSpyBlockList rejects when not connected', async () => {
     const core = createBridgeCore(noop, () => false, noop);
-    try {
-      await core.setRemoteSpyBlockList([{ 'type': 'name', 'value': 'TestRemote' }]);
-      expect(true).toBe(false);
-    } catch (err) {
-      expect(err instanceof Error).toBe(true);
-      expect((err as Error).message).toContain('No executor connected');
-    }
+    const failure = await core.setRemoteSpyBlockList([{ 'type': 'name', 'value': 'TestRemote' }]).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain('No executor connected');
   });
 
   test('bridge core handles setRemoteSpyBlockListResult message', () => {
-    const sent: unknown[] = [];
+    const sent: ServerMessage[] = [];
     const core = createBridgeCore(
-      msg => sent.push(msg),
+      message => void sent.push(message),
       () => true,
       noop,
     );
@@ -77,21 +72,19 @@ describe('Remote Spy Block List - BridgeCore', () => {
     const promise = core.setRemoteSpyBlockList([{ 'type': 'name', 'value': 'ChatEvent' }]);
 
     expect(sent.length).toBe(1);
-    const sentMsg = sent[0] as { type: string; id: string; blocks: unknown[] };
-    expect(sentMsg.type).toBe('setRemoteSpyBlockList');
-    expect(sentMsg.blocks.length).toBe(1);
+    const sentMessage = sent[0];
+    if (sentMessage?.type !== 'setRemoteSpyBlockList') throw new Error('expected setRemoteSpyBlockList message');
+    expect(sentMessage.blocks.length).toBe(1);
 
     core.handleMessage(
       JSON.stringify({
         'type': 'setRemoteSpyBlockListResult',
-        'id': sentMsg.id,
+        'id': sentMessage.id,
         'success': true,
       }),
     );
 
-    return promise.then(result => {
-      expect(result.success).toBe(true);
-    });
+    return promise.then(result => expect(result.success).toBe(true));
   });
 
   test('remote spy calls buffer captures calls', () => {
@@ -114,9 +107,9 @@ describe('Remote Spy Block List - BridgeCore', () => {
     );
 
     expect(core.getRemoteSpyCalls().length).toBe(1);
-    const call = core.getRemoteSpyCalls()[0]!;
-    expect(call.remoteName).toBe('TestRemote');
-    expect(call.method).toBe('FireServer');
+    const call = core.getRemoteSpyCalls()[0];
+    expect(call?.remoteName).toBe('TestRemote');
+    expect(call?.method).toBe('FireServer');
   });
 
   test('remote spy onRemoteSpy callback fires', () => {
@@ -160,9 +153,15 @@ describe('Remote Spy - executor session reload', () => {
         progress?.();
       },
     );
-    const handshake = (): void =>
-      core.handleMessage(JSON.stringify({ 'type': 'connected', 'executorName': 'TestExecutor', 'version': '1' }));
-    const reply = (type: string, success = true, enabled?: boolean, source?: RemoteSpySource): void => {
+    const handshake = () =>
+      core.handleMessage(
+        JSON.stringify({
+          'type': 'connected',
+          'executorName': 'TestExecutor',
+          'version': '1',
+        }),
+      );
+    const reply = (type: string, success = true, enabled?: boolean, source?: RemoteSpySource) => {
       const request = [...sent].reverse().find(message => message.type === type);
       if (request === undefined || !('id' in request)) throw new Error(`Missing ${type} request`);
       core.handleMessage(
@@ -245,7 +244,12 @@ describe('Remote Spy - executor session reload', () => {
     handshake();
     expect(await enabling).toMatchObject({ 'success': false, 'error': 'Executor session replaced' });
     core.handleMessage(
-      JSON.stringify({ 'type': 'setRemoteSpyEnabledResult', 'id': oldRequest.id, 'success': true, 'enabled': true }),
+      JSON.stringify({
+        'type': 'setRemoteSpyEnabledResult',
+        'id': oldRequest.id,
+        'success': true,
+        'enabled': true,
+      }),
     );
     expect(core.getRemoteSpyEnabled()).toBe(false);
     await advance('setRemoteSpyFilter');

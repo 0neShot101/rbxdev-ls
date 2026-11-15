@@ -9,10 +9,10 @@ import {
   ThreadType,
   UnknownType,
   VectorType,
-} from '@typings/types';
+} from '@analyzer/values';
+import type { LuauType, PrimitiveType } from '@typings/types';
 
 import type { TypeAnnotation } from '@typings/ast';
-import type { LuauType, PrimitiveType } from '@typings/types';
 
 /**
  * Resolves a subset of Luau type annotations to `LuauType` without needing
@@ -50,10 +50,7 @@ export const resolveAnnotationToType = (annotation: TypeAnnotation | undefined):
       return resolveAnnotationToType(annotation.type);
 
     case 'TypeLiteral':
-      if (typeof annotation.value === 'string') return StringType;
-      if (typeof annotation.value === 'number') return NumberType;
-      if (typeof annotation.value === 'boolean') return BooleanType;
-      return AnyType;
+      return resolvePrimitiveByName(annotation.baseType) ?? AnyType;
 
     default:
       return AnyType;

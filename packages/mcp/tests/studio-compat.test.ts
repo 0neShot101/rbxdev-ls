@@ -1,6 +1,6 @@
 import { createBridgeCore, hasCapability, resolveCapabilities, type BridgeCapability } from 'rbxdev-server';
 import { describe, expect, test } from 'bun:test';
-import { tools } from '../src/server';
+import { tools } from '@mcp/server';
 
 const noop = (): void => {};
 
@@ -52,9 +52,7 @@ describe('ClientType & Capabilities', () => {
   });
 
   describe('hasCapability', () => {
-    test('returns false for undefined capabilities', () => {
-      expect(hasCapability(undefined, 'execute')).toBe(false);
-    });
+    test('returns false for undefined capabilities', () => expect(hasCapability(undefined, 'execute')).toBe(false));
 
     test('returns true for present capability', () => {
       const caps = resolveCapabilities('executor');
@@ -225,11 +223,11 @@ describe('Protocol - ConnectedMessage validation', () => {
     expect(core.getExecutorName()).toBeUndefined();
   });
 
-  test('setScriptSourceResult message resolves pending request', () => {
-    let sentMessage: unknown;
+  test('setScriptSourceResult message resolves pending request', async () => {
+    const ids: string[] = [];
     const core = createBridgeCore(
-      msg => {
-        sentMessage = msg;
+      message => {
+        if (message.type === 'setScriptSource') ids.push(message.id);
       },
       () => true,
       noop,
@@ -239,21 +237,18 @@ describe('Protocol - ConnectedMessage validation', () => {
     );
 
     const promise = core.setScriptSource(['Workspace', 'Script'], 'print("hello")');
-    expect(sentMessage).toBeDefined();
+    expect(ids.length).toBe(1);
 
-    const sent = sentMessage as { type: string; id: string; path: string[]; source: string };
-    core.handleMessage(JSON.stringify({ 'type': 'setScriptSourceResult', 'id': sent.id, 'success': true }));
+    core.handleMessage(JSON.stringify({ 'type': 'setScriptSourceResult', 'id': ids[0], 'success': true }));
 
-    return promise.then(result => {
-      expect(result.success).toBe(true);
-    });
+    expect((await promise).success).toBe(true);
   });
 
-  test('setScriptSourceResult with error resolves with error', () => {
-    let sentMessage: unknown;
+  test('setScriptSourceResult with error resolves with error', async () => {
+    const ids: string[] = [];
     const core = createBridgeCore(
-      msg => {
-        sentMessage = msg;
+      message => {
+        if (message.type === 'setScriptSource') ids.push(message.id);
       },
       () => true,
       noop,
@@ -264,20 +259,18 @@ describe('Protocol - ConnectedMessage validation', () => {
 
     const promise = core.setScriptSource(['Workspace', 'Script'], 'bad code');
 
-    const sent = sentMessage as { type: string; id: string };
     core.handleMessage(
       JSON.stringify({
         'type': 'setScriptSourceResult',
-        'id': sent.id,
+        'id': ids[0],
         'success': false,
         'error': 'Permission denied',
       }),
     );
 
-    return promise.then(result => {
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('Permission denied');
-    });
+    const result = await promise;
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Permission denied');
   });
 });
 
@@ -289,22 +282,16 @@ describe('MCP Tools - Studio compatibility', () => {
   });
 
   test('set_script_source requires path and source parameters', () => {
-    const tool = tools.find(t => t.name === 'set_script_source');
-    expect(tool).toBeDefined();
-    const schema = tool?.inputSchema as { required?: string[] };
-    expect(schema.required).toContain('path');
-    expect(schema.required).toContain('source');
+    const required = tools.find(t => t.name === 'set_script_source')?.inputSchema.required;
+    expect(required).toContain('path');
+    expect(required).toContain('source');
   });
 
-  test('tools array has 19 tools total', () => {
-    expect(tools.length).toBe(19);
-  });
+  test('tools array has 19 tools total', () => expect(tools.length).toBe(19));
 
   test('all executor-only tools exist', () => {
     const executorTools = ['execute_code', 'set_remote_spy_enabled', 'set_remote_spy_block_list', 'save_instance'];
-    for (const name of executorTools) {
-      expect(tools.find(t => t.name === name)).toBeDefined();
-    }
+    for (const name of executorTools) expect(tools.find(t => t.name === name)).toBeDefined();
   });
 
   test('all shared tools exist', () => {
@@ -324,8 +311,6 @@ describe('MCP Tools - Studio compatibility', () => {
       'clone_instance',
       'get_remote_calls',
     ];
-    for (const name of sharedTools) {
-      expect(tools.find(t => t.name === name)).toBeDefined();
-    }
+    for (const name of sharedTools) expect(tools.find(t => t.name === name)).toBeDefined();
   });
 });

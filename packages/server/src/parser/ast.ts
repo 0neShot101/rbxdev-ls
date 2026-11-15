@@ -65,14 +65,13 @@ const LITERAL_NODE_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Type guard to check if a node is a Statement. */
-export const isStatement = (node: BaseNode): node is Statement => STATEMENT_KINDS.has((node as Statement).kind);
+export const isStatement = (node: BaseNode): node is Statement => STATEMENT_KINDS.has(node.kind);
 
 /** Type guard to check if a node is an Expression. */
-export const isExpression = (node: BaseNode): node is Expression => EXPRESSION_KINDS.has((node as Expression).kind);
+export const isExpression = (node: BaseNode): node is Expression => EXPRESSION_KINDS.has(node.kind);
 
 /** Type guard to check if a node is a TypeAnnotation. */
-export const isTypeAnnotation = (node: BaseNode): node is TypeAnnotation =>
-  TYPE_ANNOTATION_KINDS.has((node as TypeAnnotation).kind);
+export const isTypeAnnotation = (node: BaseNode): node is TypeAnnotation => TYPE_ANNOTATION_KINDS.has(node.kind);
 
 /** Type guard to check if a node is a Literal. */
-export const isLiteral = (node: BaseNode): node is Literal => LITERAL_NODE_KINDS.has((node as Literal).kind);
+export const isLiteral = (node: BaseNode): node is Literal => LITERAL_NODE_KINDS.has(node.kind);

@@ -10,22 +10,22 @@ const parsePort = (rawPort: string): number | undefined => {
   return undefined;
 };
 
+/** Resolves the bridge port from `RBXDEV_BRIDGE_PORT`, then `--port`, then the default. */
 export const getConfiguredPort = (): number => {
   const envPort = process.env['RBXDEV_BRIDGE_PORT'];
-  if (envPort !== undefined) {
-    const parsed = parsePort(envPort);
-    if (parsed !== undefined) return parsed;
-  }
+  const fromEnv = envPort === undefined ? undefined : parsePort(envPort);
+  if (fromEnv !== undefined) return fromEnv;
 
   const portArgIndex = process.argv.indexOf('--port');
-  if (portArgIndex !== -1 && process.argv[portArgIndex + 1] !== undefined) {
-    const parsed = parsePort(process.argv[portArgIndex + 1] as string);
-    if (parsed !== undefined) return parsed;
-  }
-
-  return DEFAULT_BRIDGE_PORT;
+  const portArg = portArgIndex === -1 ? undefined : process.argv[portArgIndex + 1];
+  const fromArgs = portArg === undefined ? undefined : parsePort(portArg);
+  return fromArgs ?? DEFAULT_BRIDGE_PORT;
 };
 
+/**
+ * Checks whether a loopback TCP port can be bound.
+ * @param port - Port to test.
+ */
 export const isPortAvailable = (port: number): Promise<boolean> =>
   new Promise(resolve => {
     const tester = createServer();

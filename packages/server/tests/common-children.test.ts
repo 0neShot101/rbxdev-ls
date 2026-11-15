@@ -1,16 +1,16 @@
+import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
 import { getCommonChildType } from '@definitions/commonChildren';
 import { buildGlobalEnvironment } from '@definitions/globals';
-import { describe, expect, test } from 'bun:test';
 
-import type { ClassType, LuauType } from '@typings/types';
+import type { LuauType } from '@typings/types';
 
 const globalEnv = buildGlobalEnvironment();
 
 const getSuperclassName = (className: string): string | undefined => {
   const classType = globalEnv.robloxClasses.get(className);
-  if (classType === undefined || classType.kind !== 'Class' || classType.superclass === undefined) {
-    return undefined;
-  }
+  if (classType === undefined || classType.kind !== 'Class' || classType.superclass === undefined) return undefined;
+
   return classType.superclass.name;
 };
 
@@ -50,27 +50,22 @@ const resolveMemberType = (type: LuauType, memberName: string): LuauType | undef
   return undefined;
 };
 
-const expectChildType = (parentClass: string, childName: string, expectedType: string) => {
+const classNameOf = (type: LuauType | undefined): string | undefined =>
+  type?.kind === 'Class' ? type.name : undefined;
+
+const expectChildType = (parentClass: string, childName: string, expectedType: string) =>
   test(`${parentClass}.${childName} resolves to ${expectedType}`, () => {
-    const parentType = globalEnv.robloxClasses.get(parentClass);
-    expect(parentType).toBeDefined();
-
-    const result = resolveMemberType(parentType!, childName);
-    expect(result).toBeDefined();
-    expect(result!.kind).toBe('Class');
-    expect((result as ClassType).name).toBe(expectedType);
+    const parentType = expectDefined(globalEnv.robloxClasses.get(parentClass));
+    const result = resolveMemberType(parentType, childName);
+    expect(result?.kind).toBe('Class');
+    expect(classNameOf(result)).toBe(expectedType);
   });
-};
 
-const expectChildUndefined = (parentClass: string, childName: string) => {
+const expectChildUndefined = (parentClass: string, childName: string) =>
   test(`${parentClass}.${childName} resolves to undefined`, () => {
-    const parentType = globalEnv.robloxClasses.get(parentClass);
-    expect(parentType).toBeDefined();
-
-    const result = resolveMemberType(parentType!, childName);
-    expect(result).toBeUndefined();
+    const parentType = expectDefined(globalEnv.robloxClasses.get(parentClass));
+    expect(resolveMemberType(parentType, childName)).toBeUndefined();
   });
-};
 
 describe('Common Children Type Hints', () => {
   describe('Model Children (Character)', () => {
@@ -138,31 +133,23 @@ describe('Common Children Type Hints', () => {
 
   describe('Chained Access Tests', () => {
     test('Player.Character.Humanoid resolves to Humanoid', () => {
-      const playerType = globalEnv.robloxClasses.get('Player');
-      expect(playerType).toBeDefined();
+      const playerType = expectDefined(globalEnv.robloxClasses.get('Player'));
+      const characterType = expectDefined(resolveMemberType(playerType, 'Character'));
+      expect(characterType.kind).toBe('Class');
 
-      const characterType = resolveMemberType(playerType!, 'Character');
-      expect(characterType).toBeDefined();
-      expect(characterType!.kind).toBe('Class');
-
-      const humanoidType = resolveMemberType(characterType!, 'Humanoid');
-      expect(humanoidType).toBeDefined();
-      expect(humanoidType!.kind).toBe('Class');
-      expect((humanoidType as ClassType).name).toBe('Humanoid');
+      const humanoidType = resolveMemberType(characterType, 'Humanoid');
+      expect(humanoidType?.kind).toBe('Class');
+      expect(classNameOf(humanoidType)).toBe('Humanoid');
     });
 
     test('Player.Character.HumanoidRootPart resolves to BasePart', () => {
-      const playerType = globalEnv.robloxClasses.get('Player');
-      expect(playerType).toBeDefined();
+      const playerType = expectDefined(globalEnv.robloxClasses.get('Player'));
+      const characterType = expectDefined(resolveMemberType(playerType, 'Character'));
+      expect(characterType.kind).toBe('Class');
 
-      const characterType = resolveMemberType(playerType!, 'Character');
-      expect(characterType).toBeDefined();
-      expect(characterType!.kind).toBe('Class');
-
-      const hrpType = resolveMemberType(characterType!, 'HumanoidRootPart');
-      expect(hrpType).toBeDefined();
-      expect(hrpType!.kind).toBe('Class');
-      expect((hrpType as ClassType).name).toBe('BasePart');
+      const rootPartType = resolveMemberType(characterType, 'HumanoidRootPart');
+      expect(rootPartType?.kind).toBe('Class');
+      expect(classNameOf(rootPartType)).toBe('BasePart');
     });
   });
 });

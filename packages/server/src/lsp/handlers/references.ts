@@ -68,8 +68,8 @@ export const getWordAtPosition = (content: string, position: Position): string |
 };
 
 /** Registers the find references handler with the LSP connection. */
-export const setupReferencesHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onReferences((params: ReferenceParams): Location[] => {
+export const setupReferencesHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onReferences((params: ReferenceParams): Location[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
@@ -89,4 +89,3 @@ export const setupReferencesHandler = (connection: Connection, documentManager: 
       },
     }));
   });
-};

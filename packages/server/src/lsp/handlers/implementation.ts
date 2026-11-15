@@ -51,8 +51,8 @@ export const isTypeAlias = (chunk: Chunk, name: string): boolean => {
 };
 
 /** Finds concrete usages of type aliases in variable declarations and function parameters. */
-export const setupImplementationHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onImplementation((params: ImplementationParams): Location[] => {
+export const setupImplementationHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onImplementation((params: ImplementationParams): Location[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
@@ -65,13 +65,13 @@ export const setupImplementationHandler = (connection: Connection, documentManag
 
     walk(document.ast, {
       'visitLocalDeclaration': node => {
-        for (let i = 0; i < node.names.length; i++) {
+        for (const [i, name] of node.names.entries()) {
           const typeAnnotation = node.types[i];
           if (typeAnnotation === undefined) continue;
           if (typeAnnotation.kind === 'TypeReference' && typeAnnotation.name === word)
             locations.push({
               'uri': params.textDocument.uri,
-              'range': convertRange(node.names[i]!.range),
+              'range': convertRange(name.range),
             });
         }
       },
@@ -113,4 +113,3 @@ export const setupImplementationHandler = (connection: Connection, documentManag
 
     return locations;
   });
-};

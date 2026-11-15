@@ -1,15 +1,18 @@
-import { getCommonChildType } from '@definitions/commonChildren';
-import { getVisibleLocals } from '@lsp/handlers/lexical';
-import { formatDocCommentForDisplay } from '@parser/docComment';
-import type { ExecutorBridge } from '@typings/bridge';
-import type { DocComment } from '@typings/parser';
-import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
+import { getCommonChildType } from '@definitions/commonChildren';
+import { lookupGlobalDoc, lookupLibraryDoc, lookupMemberDoc, renderDocsEntry } from '@definitions/docs';
+import { getVisibleLocals } from '@lsp/handlers/lexical';
+import { formatDocCommentForDisplay } from '@parser/docComment';
+import { createClassType, typeToString } from '@analyzer/values';
+
+import type { ExecutorBridge } from '@typings/bridge';
+import type { DocComment } from '@typings/parser';
 import type { Scope } from '@typings/environment';
+import type { ClassMethod, ClassProperty, ClassType, FunctionType, LuauType, TableType } from '@typings/types';
+import type { DocsSource } from '@typings/docs';
 import type { ClassMemberLookupResult, DeprecationInfo, MemberAccessInfo } from '@typings/handlers';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
-import type { ClassMethod, ClassProperty, ClassType, FunctionType, LuauType, TableType } from '@typings/types';
 import type { Connection, Hover, HoverParams } from 'vscode-languageserver';
 
 const formatFunctionSignature = (name: string, func: FunctionType): string => {
@@ -157,25 +160,44 @@ const formatSymbolWithDocComment = (name: string, type: LuauType, docComment: Do
  * Formats a class method as a markdown hover documentation string.
  * @param name - The method name.
  * @param method - The class method definition.
+ * @param receiverClass - The class of the receiver expression the method was accessed on.
+ * @param selfClass - The class to use for the self parameter type.
  * @returns A markdown-formatted documentation string.
  */
-export const formatMethodDoc = (name: string, method: ClassMethod): string =>
-  formatFunctionDoc(name, method.func, {
-    'deprecated': method.deprecated === true,
-    'message': method.deprecationMessage,
-  });
+export const formatMethodDoc = (name: string, method: ClassMethod, receiverClass: string, selfClass: string): string =>
+  formatFunctionDoc(
+    `${receiverClass}.${name}`,
+    {
+      ...method.func,
+      'params': [{ 'name': 'self', 'type': createClassType(selfClass), 'optional': false }, ...method.func.params],
+    },
+    {
+      'deprecated': method.deprecated === true,
+      'message': method.deprecationMessage,
+    },
+  );
 
 /**
  * Formats a class property as a markdown hover documentation string.
  * @param name - The property name.
  * @param prop - The class property definition.
+ * @param receiverClass - The class of the receiver expression the property was accessed on.
  * @returns A markdown-formatted documentation string.
  */
-export const formatPropertyDoc = (name: string, prop: ClassProperty): string =>
-  formatTypeDoc(name, prop.type, {
-    'deprecated': prop.deprecated === true,
-    'message': prop.deprecationMessage,
-  });
+export const formatPropertyDoc = (name: string, prop: ClassProperty, receiverClass: string): string => {
+  let result = `property ${receiverClass}.${name}: ${typeToString(prop.type)}`;
+
+  if (prop.deprecated === true) {
+    result += '\n```\n\n**@deprecated**';
+    if (prop.deprecationMessage !== undefined) result += ` ${prop.deprecationMessage}`;
+    result += '\n\n```lua';
+  }
+
+  return result;
+};
+
+const appendDocs = (markdown: string, rendered: string | undefined): string =>
+  rendered === undefined || rendered === '' ? markdown : markdown + '\n' + rendered;
 
 /**
  * Extracts the identifier word at a given position in the document text.
@@ -271,9 +293,9 @@ const lookupClassMember = (
   let current: ClassType | undefined = cls;
   while (current !== undefined) {
     const prop = current.properties.get(memberName);
-    if (prop !== undefined) return { 'kind': 'property', prop };
+    if (prop !== undefined) return { 'kind': 'property', prop, 'declaringClass': current.name };
     const method = current.methods.get(memberName);
-    if (method !== undefined) return { 'kind': 'method', method };
+    if (method !== undefined) return { 'kind': 'method', method, 'declaringClass': current.name };
     current = current.superclass;
   }
 
@@ -399,10 +421,18 @@ export const resolveSymbolTypeInDocument = (document: ParsedDocument, name: stri
  * locals that carry a Class type. Returns the markdown body (without
  * Roblox "Live Value" suffixes) or undefined if the member isn't found.
  */
+/**
+ * Formats a member access hover for an already-resolved object type.
+ * Supports user tables (module exports via require resolver) and typed
+ * locals that carry a Class type. Returns the markdown body (without
+ * Roblox "Live Value" suffixes) or undefined if the member isn't found.
+ */
 export const formatMemberHoverForType = (
   objectType: LuauType,
   memberName: string,
   resolveClass: (className: string) => ClassType | undefined,
+  robloxDocs?: DocsSource,
+  getSuperclassName?: (className: string) => string | undefined,
 ): string | undefined => {
   if (objectType.kind === 'Table') {
     const memberProp = objectType.properties.get(memberName);
@@ -411,15 +441,30 @@ export const formatMemberHoverForType = (
   }
 
   if (objectType.kind === 'Class') {
-    const getSuperclassName = (className: string): string | undefined => {
-      const cls = resolveClass(className);
-      if (cls !== undefined && cls.kind === 'Class' && cls.superclass !== undefined) return cls.superclass.name;
-      return undefined;
-    };
-    const member = lookupClassMember(objectType, memberName, getSuperclassName);
+    const walkSuperclass =
+      getSuperclassName ??
+      ((className: string): string | undefined => {
+        const cls = resolveClass(className);
+        if (cls !== undefined && cls.kind === 'Class' && cls.superclass !== undefined) return cls.superclass.name;
+        return undefined;
+      });
+    const member = lookupClassMember(objectType, memberName, walkSuperclass);
     if (member === undefined) return undefined;
-    if (member.kind === 'method') return '```lua\n' + formatMethodDoc(memberName, member.method) + '\n```';
-    if (member.kind === 'property') return '```lua\n' + formatPropertyDoc(memberName, member.prop) + '\n```';
+    if (member.kind === 'method') {
+      const docHit = lookupMemberDoc(robloxDocs, member.declaringClass, memberName, walkSuperclass);
+      const selfClass = docHit !== undefined ? docHit.docsClassName : member.declaringClass;
+      return appendDocs(
+        '```lua\n' + formatMethodDoc(memberName, member.method, objectType.name, selfClass) + '\n```',
+        docHit !== undefined ? renderDocsEntry(docHit.entry) : undefined,
+      );
+    }
+    if (member.kind === 'property') {
+      const docHit = lookupMemberDoc(robloxDocs, member.declaringClass, memberName, walkSuperclass);
+      return appendDocs(
+        '```lua\n' + formatPropertyDoc(memberName, member.prop, objectType.name) + '\n```',
+        docHit !== undefined ? renderDocsEntry(docHit.entry) : undefined,
+      );
+    }
     return undefined;
   }
 
@@ -431,8 +476,8 @@ export const setupHoverHandler = (
   connection: Connection,
   documentManager: DocumentManager,
   executorBridge: ExecutorBridge,
-): void => {
-  connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
+): void =>
+  void connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined) return null;
 
@@ -453,7 +498,7 @@ export const setupHoverHandler = (
         const gamePath = extractGamePath(document.content, params.position.line, params.position.character);
         if (gamePath !== undefined && gamePath.length > 0) {
           const instancePath = gamePath.slice(0, -1);
-          if (instancePath.length > 0) {
+          if (instancePath.length > 0)
             try {
               const result = await executorBridge.requestProperties(instancePath, [memberAccess.memberName]);
               if (result.success && result.properties !== undefined && result.properties.length > 0) {
@@ -463,30 +508,55 @@ export const setupHoverHandler = (
             } catch {
               /* noop */
             }
-          }
         }
       }
 
+      const resolveClass = (className: string): ClassType | undefined => {
+        const cls = documentManager.globalEnv.robloxClasses.get(className);
+        return cls !== undefined && cls.kind === 'Class' ? cls : undefined;
+      };
+      const getSuperclassName = (className: string): string | undefined => {
+        const cls = documentManager.globalEnv.robloxClasses.get(className);
+        if (cls !== undefined && cls.kind === 'Class' && cls.superclass !== undefined) return cls.superclass.name;
+        return undefined;
+      };
+
       const objectClass = documentManager.globalEnv.robloxClasses.get(memberAccess.objectName);
       if (objectClass !== undefined && objectClass.kind === 'Class') {
-        const getSuperclassName = (className: string): string | undefined => {
-          const cls = documentManager.globalEnv.robloxClasses.get(className);
-          if (cls !== undefined && cls.kind === 'Class' && cls.superclass !== undefined) return cls.superclass.name;
-          return undefined;
-        };
-
         const member = lookupClassMember(objectClass, memberAccess.memberName, getSuperclassName);
         if (member !== undefined) {
-          if (member.kind === 'method')
+          if (member.kind === 'method') {
+            const docHit = lookupMemberDoc(
+              documentManager.globalEnv.robloxDocs,
+              member.declaringClass,
+              memberAccess.memberName,
+              getSuperclassName,
+            );
+            const selfClass = docHit !== undefined ? docHit.docsClassName : member.declaringClass;
+            const markdown = appendDocs(
+              '```lua\n' +
+                formatMethodDoc(memberAccess.memberName, member.method, objectClass.name, selfClass) +
+                '\n```',
+              docHit !== undefined ? renderDocsEntry(docHit.entry) : undefined,
+            );
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
-                'value':
-                  '```lua\n' + formatMethodDoc(memberAccess.memberName, member.method) + '\n```' + liveValueMarkdown,
+                'value': markdown + liveValueMarkdown,
               },
             };
+          }
           if (member.kind === 'property') {
-            const markdown = '```lua\n' + formatPropertyDoc(memberAccess.memberName, member.prop) + '\n```';
+            const docHit = lookupMemberDoc(
+              documentManager.globalEnv.robloxDocs,
+              member.declaringClass,
+              memberAccess.memberName,
+              getSuperclassName,
+            );
+            const markdown = appendDocs(
+              '```lua\n' + formatPropertyDoc(memberAccess.memberName, member.prop, objectClass.name) + '\n```',
+              docHit !== undefined ? renderDocsEntry(docHit.entry) : undefined,
+            );
             return {
               'contents': {
                 'kind': MarkupKind.Markdown,
@@ -513,34 +583,75 @@ export const setupHoverHandler = (
       const dataType = documentManager.globalEnv.robloxDataTypes.get(memberAccess.objectName);
       if (dataType !== undefined && dataType.kind === 'Table') {
         const memberProp = dataType.properties.get(memberAccess.memberName);
-        if (memberProp !== undefined)
+        if (memberProp !== undefined) {
+          const docEntry = lookupLibraryDoc(
+            documentManager.globalEnv.robloxDocs,
+            documentManager.globalEnv.luauDocs,
+            memberAccess.objectName,
+            memberAccess.memberName,
+          );
+          const markdown = appendDocs(
+            formatTypeDocFull(memberAccess.memberName, memberProp.type),
+            docEntry !== undefined ? renderDocsEntry(docEntry) : undefined,
+          );
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
-              'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
+              'value': markdown + liveValueMarkdown,
             },
           };
+        }
       }
 
       const globalSymbol = documentManager.globalEnv.env.globalScope.symbols.get(memberAccess.objectName);
       if (globalSymbol !== undefined && globalSymbol.type.kind === 'Table') {
         const memberProp = globalSymbol.type.properties.get(memberAccess.memberName);
-        if (memberProp !== undefined)
+        if (memberProp !== undefined) {
+          const docEntry = lookupLibraryDoc(
+            documentManager.globalEnv.robloxDocs,
+            documentManager.globalEnv.luauDocs,
+            memberAccess.objectName,
+            memberAccess.memberName,
+          );
+          const markdown = appendDocs(
+            formatTypeDocFull(memberAccess.memberName, memberProp.type),
+            docEntry !== undefined ? renderDocsEntry(docEntry) : undefined,
+          );
           return {
             'contents': {
               'kind': MarkupKind.Markdown,
-              'value': formatTypeDocFull(memberAccess.memberName, memberProp.type) + liveValueMarkdown,
+              'value': markdown + liveValueMarkdown,
+            },
+          };
+        }
+      }
+
+      if (globalSymbol !== undefined && globalSymbol.type.kind === 'Class') {
+        const markdown = formatMemberHoverForType(
+          globalSymbol.type,
+          memberAccess.memberName,
+          resolveClass,
+          documentManager.globalEnv.robloxDocs,
+          getSuperclassName,
+        );
+        if (markdown !== undefined)
+          return {
+            'contents': {
+              'kind': MarkupKind.Markdown,
+              'value': markdown + liveValueMarkdown,
             },
           };
       }
 
       const localObjectType = resolveSymbolTypeInDocument(document, memberAccess.objectName);
       if (localObjectType !== undefined) {
-        const resolveClass = (className: string): ClassType | undefined => {
-          const cls = documentManager.globalEnv.robloxClasses.get(className);
-          return cls !== undefined && cls.kind === 'Class' ? cls : undefined;
-        };
-        const markdown = formatMemberHoverForType(localObjectType, memberAccess.memberName, resolveClass);
+        const markdown = formatMemberHoverForType(
+          localObjectType,
+          memberAccess.memberName,
+          resolveClass,
+          documentManager.globalEnv.robloxDocs,
+          getSuperclassName,
+        );
         if (markdown !== undefined)
           return {
             'contents': {
@@ -570,16 +681,26 @@ export const setupHoverHandler = (
       };
 
     const symbol = documentManager.globalEnv.env.globalScope.symbols.get(word);
-    if (symbol !== undefined)
+    if (symbol !== undefined) {
+      const docEntry = lookupGlobalDoc(documentManager.globalEnv.robloxDocs, documentManager.globalEnv.luauDocs, word);
+      if (docEntry === undefined)
+        return {
+          'contents': {
+            'kind': MarkupKind.Markdown,
+            'value':
+              symbol.docComment === undefined
+                ? formatTypeDocFull(word, symbol.type)
+                : formatSymbolWithDocComment(word, symbol.type, symbol.docComment),
+          },
+        };
+      const markdown = appendDocs('```lua\n' + formatTypeDoc(word, symbol.type) + '\n```', renderDocsEntry(docEntry));
       return {
         'contents': {
           'kind': MarkupKind.Markdown,
-          'value':
-            symbol.docComment === undefined
-              ? formatTypeDocFull(word, symbol.type)
-              : formatSymbolWithDocComment(word, symbol.type, symbol.docComment),
+          'value': markdown,
         },
       };
+    }
 
     const classType = documentManager.globalEnv.robloxClasses.get(word);
     if (classType !== undefined && classType.kind === 'Class')
@@ -636,4 +757,3 @@ export const setupHoverHandler = (
 
     return null;
   });
-};

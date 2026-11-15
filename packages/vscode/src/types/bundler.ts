@@ -9,11 +9,6 @@ export type BundlerCommand = {
   label: string;
 };
 
-/** Spawn failure enriched with the child process error code or exit code. */
-export type BundlerRunError = Error & {
-  code?: string | number;
-};
-
 /** Inputs needed to resolve launcher candidates without touching the VS Code API. */
 export type BundlerResolveOptions = {
   customPath: string;

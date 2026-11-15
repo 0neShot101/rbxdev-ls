@@ -1,7 +1,13 @@
-import { TokenKind, type Token, type TokenPosition } from '@typings/parser';
+import { TokenKind } from '@typings/parser';
+import type { Token, TokenKindValue, TokenPosition } from '@typings/parser';
+
+/** Maps numeric TokenKind values back to human-readable names for error messages. */
+export const TokenKindName: ReadonlyMap<TokenKindValue, string> = new Map(
+  Object.entries(TokenKind).map(([name, value]) => [value, name] as const),
+);
 
 /** Maps Luau keyword strings to their corresponding TokenKind values. */
-export const Keywords: ReadonlyMap<string, TokenKind> = new Map([
+export const Keywords: ReadonlyMap<string, TokenKindValue> = new Map([
   ['and', TokenKind.And],
   ['break', TokenKind.Break],
   ['continue', TokenKind.Continue],
@@ -30,7 +36,7 @@ export const Keywords: ReadonlyMap<string, TokenKind> = new Map([
 ]);
 
 /** Creates a new Token object with the specified properties. */
-export const createToken = (kind: TokenKind, value: string, start: TokenPosition, end: TokenPosition): Token => ({
+export const createToken = (kind: TokenKindValue, value: string, start: TokenPosition, end: TokenPosition): Token => ({
   kind,
   value,
   start,
@@ -44,7 +50,7 @@ export const createPosition = (offset: number, line: number, column: number): To
   column,
 });
 
-const KEYWORD_KINDS: ReadonlySet<TokenKind> = new Set([
+const KEYWORD_KINDS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.And,
   TokenKind.Break,
   TokenKind.Continue,
@@ -69,7 +75,7 @@ const KEYWORD_KINDS: ReadonlySet<TokenKind> = new Set([
   TokenKind.While,
 ]);
 
-const LITERAL_KINDS: ReadonlySet<TokenKind> = new Set([
+const LITERAL_KINDS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.Number,
   TokenKind.String,
   TokenKind.InterpolatedString,
@@ -78,7 +84,7 @@ const LITERAL_KINDS: ReadonlySet<TokenKind> = new Set([
   TokenKind.Nil,
 ]);
 
-const OPERATOR_KINDS: ReadonlySet<TokenKind> = new Set([
+const OPERATOR_KINDS: ReadonlySet<TokenKindValue> = new Set([
   TokenKind.Plus,
   TokenKind.Minus,
   TokenKind.Star,
@@ -108,16 +114,16 @@ const OPERATOR_KINDS: ReadonlySet<TokenKind> = new Set([
   TokenKind.Not,
 ]);
 
-const TRIVIA_KINDS: ReadonlySet<TokenKind> = new Set([TokenKind.Comment, TokenKind.Whitespace, TokenKind.Newline]);
+const TRIVIA_KINDS: ReadonlySet<TokenKindValue> = new Set([TokenKind.Comment, TokenKind.Whitespace, TokenKind.Newline]);
 
 /** Determines whether a token kind represents a Luau keyword. */
-export const isKeyword = (kind: TokenKind): boolean => KEYWORD_KINDS.has(kind);
+export const isKeyword = (kind: TokenKindValue): boolean => KEYWORD_KINDS.has(kind);
 
 /** Determines whether a token kind represents a literal value. */
-export const isLiteral = (kind: TokenKind): boolean => LITERAL_KINDS.has(kind);
+export const isLiteral = (kind: TokenKindValue): boolean => LITERAL_KINDS.has(kind);
 
 /** Determines whether a token kind represents an operator. */
-export const isOperator = (kind: TokenKind): boolean => OPERATOR_KINDS.has(kind);
+export const isOperator = (kind: TokenKindValue): boolean => OPERATOR_KINDS.has(kind);
 
 /** Determines whether a token kind represents trivia (whitespace, newlines, or comments). */
-export const isTrivia = (kind: TokenKind): boolean => TRIVIA_KINDS.has(kind);
+export const isTrivia = (kind: TokenKindValue): boolean => TRIVIA_KINDS.has(kind);

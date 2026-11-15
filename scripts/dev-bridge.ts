@@ -20,7 +20,11 @@
 import { watch } from 'fs';
 import { join } from 'path';
 
-import { bundle } from '../packages/luau-bundler/src/index';
+import { bundle } from '@bundler/index';
+import { parseClientMessage, parseProxyMessage } from '@executor/protocol';
+import { isString } from '@utils/guards';
+
+import type { ProxyMessage } from '@server/types/protocol';
 
 const BRIDGE_PORT = Number(process.env['RBXDEV_BRIDGE_PORT'] ?? 21324);
 const SOURCE_DIR = join(import.meta.dir, '..', 'roblox', 'executor-bridge', 'src');
@@ -47,24 +51,6 @@ const INITIAL_INJECT_DELAY_MS = 1500;
  */
 const wrapDevBundle = (bundleSource: string): string =>
   `if getgenv then getgenv()._RBXDEV_DEV = true end\ntask.defer(function(...)\n${bundleSource}\nend)\n`;
-
-interface ProxyWelcome {
-  readonly type: 'proxyWelcome';
-  readonly isConnected: boolean;
-  readonly executorName?: string;
-}
-
-interface ProxyStatusChange {
-  readonly type: 'proxyStatusChange';
-  readonly status: 'connected' | 'disconnected';
-  readonly executorName?: string;
-}
-
-interface ConnectedMessage {
-  readonly type: 'connected';
-  readonly executorName: string;
-  readonly version: string;
-}
 
 let socket: WebSocket | undefined;
 let executorConnected = false;
@@ -106,43 +92,34 @@ const onExecutorAvailable = (): void => {
   }, INITIAL_INJECT_DELAY_MS);
 };
 
-const handleMessage = (raw: string): void => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (typeof parsed !== 'object' || parsed === null) return;
-
-  const message = parsed as { type?: string };
-
+const handleProxyMessage = (message: ProxyMessage): void => {
   if (message.type === 'proxyWelcome') {
-    const welcome = message as ProxyWelcome;
-    if (welcome.isConnected) {
-      log(`bridge already has a client: ${welcome.executorName ?? 'unknown'}`);
+    if (message.isConnected) {
+      log(`bridge already has a client: ${message.executorName ?? 'unknown'}`);
       onExecutorAvailable();
     } else log('connected to bridge, waiting for an executor');
     return;
   }
 
-  if (message.type === 'proxyStatusChange') {
-    const change = message as ProxyStatusChange;
-    if (change.status === 'connected') {
-      log(`executor connected: ${change.executorName ?? 'unknown'}`);
-      onExecutorAvailable();
-    } else {
-      executorConnected = false;
-      log('executor disconnected');
-    }
+  if (message.status === 'connected') {
+    log(`executor connected: ${message.executorName ?? 'unknown'}`);
+    onExecutorAvailable();
     return;
   }
 
-  if (message.type === 'connected') {
-    const connected = message as ConnectedMessage;
-    const isDev = connected.executorName.endsWith('(dev)');
-    log(`${isDev ? 'dev build live' : 'prod bridge live'}: ${connected.executorName} v${connected.version}`);
-  }
+  executorConnected = false;
+  log('executor disconnected');
+};
+
+const handleMessage = (raw: string): void => {
+  const proxyMessage = parseProxyMessage(raw);
+  if (proxyMessage !== undefined) return handleProxyMessage(proxyMessage);
+
+  const clientMessage = parseClientMessage(raw);
+  if (clientMessage?.type !== 'connected') return;
+
+  const isDev = clientMessage.executorName.endsWith('(dev)');
+  log(`${isDev ? 'dev build live' : 'prod bridge live'}: ${clientMessage.executorName} v${clientMessage.version}`);
 };
 
 const connect = (): void => {
@@ -156,7 +133,7 @@ const connect = (): void => {
   });
 
   ws.addEventListener('message', event => {
-    if (typeof event.data === 'string') handleMessage(event.data);
+    if (isString(event.data)) handleMessage(event.data);
   });
 
   ws.addEventListener('close', () => {

@@ -7,6 +7,8 @@ import { randomBytes } from 'crypto';
 
 import { ViewColumn, window } from 'vscode';
 
+import { isBoolean, isListEntry, isNumber, isObject, isRemoteSpySource, isString } from '#extension/utils/guards';
+
 import type { Disposable, ExtensionContext, WebviewPanel } from 'vscode';
 import type {
   FromWebviewMessage,
@@ -14,7 +16,6 @@ import type {
   RemoteSpyMessageHandler,
   RemoteSpyState,
 } from '@typings/remoteSpy';
-import { isBoolean, isListEntry, isNumber, isObject, isRemoteSpySource, isString } from '#extension/utils/guards';
 
 /** Message kinds the remote spy webview posts to the extension host. */
 const MESSAGE_TYPES: ReadonlyArray<FromWebviewMessage['type']> = [

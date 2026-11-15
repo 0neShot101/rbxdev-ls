@@ -1,7 +1,6 @@
-import { collectDocComments, formatDocCommentForDisplay, parseDocComment } from '@parser/docComment';
-import { isLineIgnored, parseIgnoreDirectives } from '@typings/ignoreDirectives';
 import { describe, expect, test } from 'bun:test';
-
+import { collectDocComments, formatDocCommentForDisplay, parseDocComment } from '@parser/docComment';
+import { isLineIgnored, parseIgnoreDirectives } from '@analyzer/ignoreDirectives';
 import type { Comment } from '@typings/ast';
 
 const makeComment = (value: string, line: number): Comment => ({
@@ -318,17 +317,13 @@ describe('parseIgnoreDirectives', () => {
   test('unterminated @rbxls-disable ignores to end of file', () => {
     const comments = [makeComment('-- @rbxls-disable', 3)];
     const state = parseIgnoreDirectives(comments, 10);
-    for (let line = 3; line <= 10; line++) {
-      expect(isLineIgnored(state, line)).toBe(true);
-    }
+    for (let line = 3; line <= 10; line++) expect(isLineIgnored(state, line)).toBe(true);
     expect(isLineIgnored(state, 2)).toBe(false);
   });
 
   test('no directives results in no ignored lines', () => {
     const state = parseIgnoreDirectives([], 10);
-    for (let line = 1; line <= 10; line++) {
-      expect(isLineIgnored(state, line)).toBe(false);
-    }
+    for (let line = 1; line <= 10; line++) expect(isLineIgnored(state, line)).toBe(false);
   });
 
   test('multiple @rbxls-ignore directives ignore multiple lines', () => {
@@ -343,9 +338,7 @@ describe('parseIgnoreDirectives', () => {
   test('regular comment without directive does not ignore any lines', () => {
     const comments = [makeComment('-- just a regular comment', 3)];
     const state = parseIgnoreDirectives(comments, 10);
-    for (let line = 1; line <= 10; line++) {
-      expect(isLineIgnored(state, line)).toBe(false);
-    }
+    for (let line = 1; line <= 10; line++) expect(isLineIgnored(state, line)).toBe(false);
   });
 
   test('isLineIgnored returns false for non-ignored line', () => {

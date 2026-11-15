@@ -1,0 +1,24 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun", "node"],
+    "typeRoots": ["../node_modules/@types"],
+    "noEmit": true,
+    "paths": {
+      "@scripts/*": ["./*"],
+      "@bundler/*": ["../packages/luau-bundler/src/*"],
+      "@server/*": ["../packages/server/src/*"],
+      "@core/*": ["../packages/server/src/core/*"],
+      "@parser/*": ["../packages/server/src/parser/*"],
+      "@typings/*": ["../packages/server/src/types/*"],
+      "@analyzer/*": ["../packages/server/src/analyzer/*"],
+      "@definitions/*": ["../packages/server/src/definitions/*"],
+      "@lsp/*": ["../packages/server/src/lsp/*"],
+      "@utils/*": ["../packages/server/src/utils/*"],
+      "@workspace/*": ["../packages/server/src/workspace/*"],
+      "@executor": ["../packages/server/src/executor/index.ts"],
+      "@executor/*": ["../packages/server/src/executor/*"]
+    }
+  },
+  "include": ["./**/*.ts"]
+}

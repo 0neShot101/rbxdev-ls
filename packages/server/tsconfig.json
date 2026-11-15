@@ -21,7 +21,7 @@
     "paths": {
       "@core/*": ["./src/core/*"],
       "@parser/*": ["./src/parser/*"],
-      "@typings/*": ["./src/typings/*"],
+      "@typings/*": ["./src/types/*"],
       "@analyzer/*": ["./src/analyzer/*"],
       "@definitions/*": ["./src/definitions/*"],
       "@lsp/*": ["./src/lsp/*"],

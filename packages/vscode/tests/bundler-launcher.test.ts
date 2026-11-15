@@ -12,9 +12,9 @@ import {
   quoteForShell,
   resolveBundlerCommands,
   runBundler,
-} from '../src/bundlerLauncher';
+} from '@extension/bundlerLauncher';
 
-import type { BundlerCommand, CandidateRunner } from '../src/types/bundler';
+import type { BundlerCommand, CandidateRunner } from '@typings/bundler';
 
 const tempRoots: string[] = [];
 
@@ -33,14 +33,19 @@ const codedError = (message: string, code?: string | number): Error =>
 
 const candidate = (command: string, label = command): BundlerCommand => ({ command, 'prefix': [], label });
 
-describe('Bundler Launcher - commandShims', () => {
-  test('prefers the .cmd shim on win32', () => {
-    expect(commandShims('x', 'win32')).toEqual(['x.cmd', 'x']);
-  });
+/**
+ * Settles a promise into the error it rejected with, or `undefined` when it resolved.
+ */
+const rejectionOf = (promise: Promise<void>): Promise<Error | undefined> =>
+  promise.then(
+    () => undefined,
+    (cause: unknown) => (cause instanceof Error ? cause : new Error(String(cause))),
+  );
 
-  test('uses the bare command on linux', () => {
-    expect(commandShims('x', 'linux')).toEqual(['x']);
-  });
+describe('Bundler Launcher - commandShims', () => {
+  test('prefers the .cmd shim on win32', () => expect(commandShims('x', 'win32')).toEqual(['x.cmd', 'x']));
+
+  test('uses the bare command on linux', () => expect(commandShims('x', 'linux')).toEqual(['x']));
 });
 
 describe('Bundler Launcher - isMissingExecutableError', () => {
@@ -66,17 +71,11 @@ describe('Bundler Launcher - isMissingExecutableError', () => {
 });
 
 describe('Bundler Launcher - quoteForShell', () => {
-  test('passes plain values through unchanged', () => {
-    expect(quoteForShell('plain')).toBe('plain');
-  });
+  test('passes plain values through unchanged', () => expect(quoteForShell('plain')).toBe('plain'));
 
-  test('wraps values containing spaces', () => {
-    expect(quoteForShell('has space')).toBe('"has space"');
-  });
+  test('wraps values containing spaces', () => expect(quoteForShell('has space')).toBe('"has space"'));
 
-  test('doubles embedded quotes', () => {
-    expect(quoteForShell('say "hi"')).toBe('"say ""hi"""');
-  });
+  test('doubles embedded quotes', () => expect(quoteForShell('say "hi"')).toBe('"say ""hi"""'));
 
   test('wraps values containing cmd metacharacters', () => {
     expect(quoteForShell('a|b')).toBe('"a|b"');
@@ -147,9 +146,8 @@ describe('Bundler Launcher - runBundler', () => {
     const candidates = [candidate('npx'), candidate('npm', 'npm exec')];
     const missingRunner: CandidateRunner = () => Promise.reject(codedError('spawn fail', 'ENOENT'));
 
-    await expect(runBundler(candidates, [], '.', missingRunner)).rejects.toThrow(
-      'Could not find a bundler launcher (npx, npm exec)',
-    );
+    const error = await rejectionOf(runBundler(candidates, [], '.', missingRunner));
+    expect(error?.message).toContain('Could not find a bundler launcher (npx, npm exec)');
   });
 
   test('stops at the first successful candidate', async () => {
@@ -170,9 +168,8 @@ describe('Bundler Launcher - runBundler', () => {
       return Promise.reject(new Error('syntax error in bundle'));
     };
 
-    await expect(runBundler([candidate('bun'), candidate('npx')], [], '.', runner)).rejects.toThrow(
-      'syntax error in bundle',
-    );
+    const error = await rejectionOf(runBundler([candidate('bun'), candidate('npx')], [], '.', runner));
+    expect(error?.message).toContain('syntax error in bundle');
     expect(attempted).toEqual(['bun']);
   });
 });

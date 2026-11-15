@@ -2,7 +2,7 @@
   "name": "rbxdev-ls",
   "displayName": "Roblox Luau Language Server",
   "description": "Full Roblox/Luau language support with type checking, completions, and Sunc API support",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "rbxdev",
   "license": "MIT",
   "imports": {
@@ -494,6 +494,12 @@
     "configuration": {
       "title": "Roblox Luau Language Server",
       "properties": {
+        "rbxdev-ls.api.autoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "scope": "application",
+          "description": "Check daily for Roblox API and documentation updates. Downloaded data is used after the language server next starts."
+        },
         "rbxdev-ls.typeCheckMode": {
           "type": "string",
           "default": "strict",

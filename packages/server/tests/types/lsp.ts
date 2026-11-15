@@ -1,10 +1,13 @@
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import type {
+  CodeAction,
+  CodeActionParams,
   CompletionItem,
   CompletionList,
   Connection,
   Hover,
   Position,
+  Range,
   SignatureHelp,
   TextDocuments,
 } from 'vscode-languageserver/node';
@@ -23,10 +26,14 @@ export interface LspHarness {
   readonly complete: (uri: string, position: Position) => Promise<CompletionList>;
   /** Requests deferred documentation for a completion item. */
   readonly resolve: (item: CompletionItem) => Promise<CompletionItem>;
+  /** Requests code actions, keeping only full code actions (not bare commands). */
+  readonly codeActions: (params: CodeActionParams) => Promise<ReadonlyArray<CodeAction>>;
   /** Requests hover information. */
   readonly hover: (uri: string, position: Position) => Promise<Hover | null>;
   /** Requests signature help at a call site. */
   readonly signature: (uri: string, position: Position) => Promise<SignatureHelp | null>;
+  /** Requests encoded semantic tokens for a line range, treating a null response as no tokens. */
+  readonly semanticTokensRange: (uri: string, range: Range) => Promise<ReadonlyArray<number>>;
   /** Closes both connections and their streams. */
   readonly dispose: () => void;
 }

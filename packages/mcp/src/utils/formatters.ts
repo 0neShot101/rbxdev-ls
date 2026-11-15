@@ -1,5 +1,7 @@
 import type { GameTreeNode, LogEntry } from 'rbxdev-server';
 
+import type { SerializedGameTreeNode } from '@mcp/types/tools';
+
 /**
  * Formats a game tree node as an indented human-readable text tree.
  * @param node - The game tree node to format.
@@ -25,14 +27,12 @@ export const formatGameTreeNode = (node: GameTreeNode, indent: number = 0): stri
  * @param node - The game tree node to serialize.
  * @returns A plain object with name, className, and optional children.
  */
-export const serializeGameTreeNode = (
-  node: GameTreeNode,
-): { name: string; className: string; hasChildren?: boolean; children?: unknown[] } => ({
-  'name': node.name,
-  'className': node.className,
-  ...(node.hasChildren === true ? { 'hasChildren': true } : {}),
-  ...(node.children !== undefined ? { 'children': node.children.map(serializeGameTreeNode) } : {}),
-});
+export const serializeGameTreeNode = (node: GameTreeNode): SerializedGameTreeNode => {
+  const serialized: SerializedGameTreeNode = { 'name': node.name, 'className': node.className };
+  if (node.hasChildren === true) serialized.hasChildren = true;
+  if (node.children !== undefined) serialized.children = node.children.map(serializeGameTreeNode);
+  return serialized;
+};
 
 /**
  * Formats a log entry as a timestamped string with level and message.

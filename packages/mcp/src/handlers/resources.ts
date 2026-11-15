@@ -1,7 +1,10 @@
+import { formatLogEntry, formatServicesTree } from '@mcp/utils/formatters';
+import { orFallback } from '@mcp/utils/results';
+
+import type { ReadResourceRequest, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import type { ExecutorBridge, LogEntry } from 'rbxdev-server';
 
-import { formatLogEntry, formatServicesTree } from '@mcp/utils/formatters';
-
+/** Resources exposed by the MCP server. */
 export const resources = [
   {
     'uri': 'rbxdev://bridge/status',
@@ -23,15 +26,21 @@ export const resources = [
   },
 ] as const;
 
-const textResource = (uri: string, mimeType: string, text: string) => ({
+const textResource = (uri: string, mimeType: string, text: string): ReadResourceResult => ({
   'contents': [{ 'uri': uri, 'mimeType': mimeType, 'text': text }],
 });
 
+/**
+ * Reads one of the server's resources.
+ * @param request - The SDK resource read request.
+ * @param bridge - Bridge providing status and game tree data.
+ * @param logBuffer - Recent console output.
+ */
 export const readResource = async (
-  request: { params: { uri: string } },
+  request: ReadResourceRequest,
   bridge: ExecutorBridge,
   logBuffer: ReadonlyArray<LogEntry>,
-): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> => {
+): Promise<ReadResourceResult> => {
   const { uri } = request.params;
 
   if (uri === 'rbxdev://bridge/status')
@@ -54,14 +63,16 @@ export const readResource = async (
     return textResource(
       uri,
       'text/plain',
-      formatServicesTree(bridge.liveGameModel.services) || 'No game tree data available',
+      orFallback(formatServicesTree(bridge.liveGameModel.services), 'No game tree data available'),
     );
   }
 
-  if (uri === 'rbxdev://console/logs') {
-    const formatted = logBuffer.slice(-100).map(formatLogEntry).join('\n');
-    return textResource(uri, 'text/plain', formatted || 'No console output');
-  }
+  if (uri === 'rbxdev://console/logs')
+    return textResource(
+      uri,
+      'text/plain',
+      orFallback(logBuffer.slice(-100).map(formatLogEntry).join('\n'), 'No console output'),
+    );
 
   throw new Error(`Unknown resource: ${uri}`);
 };

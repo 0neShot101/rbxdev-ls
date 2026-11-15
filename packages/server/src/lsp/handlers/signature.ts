@@ -1,11 +1,12 @@
-import { getVisibleLocals } from '@lsp/handlers/lexical';
-import { typeToString } from '@typings/types';
 import { MarkupKind } from 'vscode-languageserver';
 
+import { typeToString } from '@analyzer/values';
+import { getVisibleLocals } from '@lsp/handlers/lexical';
+
 import type { Symbol } from '@typings/environment';
-import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { DocComment } from '@typings/parser';
 import type { FunctionType } from '@typings/types';
+import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type {
   Connection,
   ParameterInformation,
@@ -141,9 +142,10 @@ export const findFunctionCall = (
 
   const beforeParen = beforeCursor.slice(0, argStart - 1);
   const nameMatch = beforeParen.match(/(\w+)\s*$/);
-  if (nameMatch === null) return undefined;
+  const name = nameMatch?.[1];
+  if (name === undefined) return undefined;
 
-  return { 'name': nameMatch[1]!, argStart };
+  return { name, argStart };
 };
 
 const findSymbol = (
@@ -160,8 +162,8 @@ const findSymbol = (
 };
 
 /** Registers the signature help handler with the LSP connection. */
-export const setupSignatureHelpHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onSignatureHelp((params: SignatureHelpParams): SignatureHelp | null => {
+export const setupSignatureHelpHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onSignatureHelp((params: SignatureHelpParams): SignatureHelp | null => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined) return null;
 
@@ -186,4 +188,3 @@ export const setupSignatureHelpHandler = (connection: Connection, documentManage
       activeParameter,
     };
   });
-};

@@ -1,5 +1,6 @@
-import { walk } from '@parser/visitor';
 import { DocumentHighlightKind } from 'vscode-languageserver';
+
+import { walk } from '@parser/visitor';
 
 import type { Chunk, Identifier } from '@typings/ast';
 import type { HighlightLocation } from '@typings/handlers';
@@ -76,8 +77,8 @@ const getWordAtPosition = (content: string, position: Position): string | undefi
 };
 
 /** Highlights all occurrences of the symbol under cursor with read/write distinction. */
-export const setupDocumentHighlightHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onDocumentHighlight((params: DocumentHighlightParams): DocumentHighlight[] => {
+export const setupDocumentHighlightHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onDocumentHighlight((params: DocumentHighlightParams): DocumentHighlight[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
@@ -96,4 +97,3 @@ export const setupDocumentHighlightHandler = (connection: Connection, documentMa
       'kind': loc.kind,
     }));
   });
-};

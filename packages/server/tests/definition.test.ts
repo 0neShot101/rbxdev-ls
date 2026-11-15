@@ -1,100 +1,8 @@
+import { describe, expect, test } from 'bun:test';
+import { collectDeclarations } from '@lsp/handlers/definition';
+import { collectTypeDeclarations } from '@lsp/handlers/typeDefinition';
 import { parse } from '@parser/parser';
 import { walk } from '@parser/visitor';
-import { describe, expect, test } from 'bun:test';
-
-import type { Chunk, Statement } from '@typings/ast';
-
-interface DeclarationLocation {
-  readonly name: string;
-  readonly line: number;
-  readonly character: number;
-}
-
-const collectDeclarations = (chunk: Chunk): Map<string, DeclarationLocation[]> => {
-  const declarations = new Map<string, DeclarationLocation[]>();
-
-  const addDeclaration = (name: string, node: { range: { start: { line: number; column: number } } }) => {
-    const locations = declarations.get(name) ?? [];
-    locations.push({
-      name,
-      'line': node.range.start.line - 1,
-      'character': node.range.start.column - 1,
-    });
-    declarations.set(name, locations);
-  };
-
-  const processStatements = (statements: ReadonlyArray<Statement>) => {
-    for (const stmt of statements) {
-      switch (stmt.kind) {
-        case 'LocalDeclaration':
-          for (const name of stmt.names) addDeclaration(name.name, name);
-          break;
-        case 'LocalFunction':
-          addDeclaration(stmt.name.name, stmt.name);
-          processStatements(stmt.func.body);
-          break;
-        case 'FunctionDeclaration':
-          if (stmt.name.path.length === 0 && stmt.name.method === undefined)
-            addDeclaration(stmt.name.base.name, stmt.name.base);
-          processStatements(stmt.func.body);
-          break;
-        case 'TypeAlias':
-          addDeclaration(stmt.name.name, stmt.name);
-          break;
-        case 'ForNumeric':
-          addDeclaration(stmt.variable.name, stmt.variable);
-          processStatements(stmt.body);
-          break;
-        case 'ForGeneric':
-          for (const v of stmt.variables) addDeclaration(v.name, v);
-          processStatements(stmt.body);
-          break;
-        case 'IfStatement':
-          processStatements(stmt.thenBody);
-          for (const clause of stmt.elseifClauses) processStatements(clause.body);
-          if (stmt.elseBody !== undefined) processStatements(stmt.elseBody);
-          break;
-        case 'WhileStatement':
-        case 'RepeatStatement':
-        case 'DoStatement':
-          processStatements(stmt.body);
-          break;
-        case 'ExportStatement':
-          if (stmt.declaration.kind === 'TypeAlias') addDeclaration(stmt.declaration.name.name, stmt.declaration.name);
-          break;
-      }
-    }
-  };
-
-  processStatements(chunk.body);
-  return declarations;
-};
-
-const collectTypeDeclarations = (chunk: Chunk): Map<string, DeclarationLocation> => {
-  const declarations = new Map<string, DeclarationLocation>();
-
-  const processStatements = (statements: ReadonlyArray<Statement>) => {
-    for (const stmt of statements) {
-      if (stmt.kind === 'TypeAlias') {
-        declarations.set(stmt.name.name, {
-          'name': stmt.name.name,
-          'line': stmt.name.range.start.line - 1,
-          'character': stmt.name.range.start.column - 1,
-        });
-      }
-      if (stmt.kind === 'ExportStatement' && stmt.declaration.kind === 'TypeAlias') {
-        declarations.set(stmt.declaration.name.name, {
-          'name': stmt.declaration.name.name,
-          'line': stmt.declaration.name.range.start.line - 1,
-          'character': stmt.declaration.name.range.start.column - 1,
-        });
-      }
-    }
-  };
-
-  processStatements(chunk.body);
-  return declarations;
-};
 
 describe('Go to Definition', () => {
   describe('Local Variable Declarations', () => {
@@ -103,8 +11,8 @@ describe('Go to Definition', () => {
       const declarations = collectDeclarations(result.ast);
 
       expect(declarations.has('myVar')).toBe(true);
-      expect(declarations.get('myVar')!.length).toBeGreaterThan(0);
-      expect(declarations.get('myVar')![0]!.line).toBe(0);
+      expect(declarations.get('myVar')?.length).toBeGreaterThan(0);
+      expect(declarations.get('myVar')?.[0]?.line).toBe(0);
     });
 
     test('finds multiple declarations', () => {
@@ -145,6 +53,8 @@ describe('Go to Definition', () => {
       const declarations = collectDeclarations(result.ast);
 
       expect(declarations.has('foo')).toBe(true);
+      expect(declarations.has('param1')).toBe(true);
+      expect(declarations.has('param2')).toBe(true);
     });
   });
 
@@ -189,7 +99,7 @@ describe('Go to Type Definition', () => {
       const typeDecls = collectTypeDeclarations(result.ast);
 
       expect(typeDecls.has('Point')).toBe(true);
-      expect(typeDecls.get('Point')!.line).toBe(0);
+      expect(typeDecls.get('Point')?.line).toBe(0);
     });
 
     test('collects exported type declarations', () => {
@@ -220,9 +130,7 @@ local x: MyType = 42`;
       const typeRefs: string[] = [];
 
       walk(result.ast, {
-        'visitTypeReference': node => {
-          typeRefs.push(node.name);
-        },
+        'visitTypeReference': node => void typeRefs.push(node.name),
       });
 
       expect(typeRefs).toContain('MyType');
@@ -235,9 +143,7 @@ local function init(cfg: Config) end`;
       const typeRefs: string[] = [];
 
       walk(result.ast, {
-        'visitTypeReference': node => {
-          typeRefs.push(node.name);
-        },
+        'visitTypeReference': node => void typeRefs.push(node.name),
       });
 
       expect(typeRefs).toContain('Config');
@@ -252,9 +158,7 @@ end`;
       const typeRefs: string[] = [];
 
       walk(result.ast, {
-        'visitTypeReference': node => {
-          typeRefs.push(node.name);
-        },
+        'visitTypeReference': node => void typeRefs.push(node.name),
       });
 
       expect(typeRefs).toContain('Result');

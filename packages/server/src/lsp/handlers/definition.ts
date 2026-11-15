@@ -27,7 +27,7 @@ export const collectDeclarations = (chunk: Chunk): Map<string, SymbolLocation[]>
   };
 
   const processStatements = (statements: ReadonlyArray<Statement>) => {
-    for (const stmt of statements) {
+    for (const stmt of statements)
       switch (stmt.kind) {
         case 'LocalDeclaration':
           for (const name of stmt.names) addDeclaration(name.name, name);
@@ -84,7 +84,6 @@ export const collectDeclarations = (chunk: Chunk): Map<string, SymbolLocation[]>
           if (stmt.declaration.kind === 'TypeAlias') addDeclaration(stmt.declaration.name.name, stmt.declaration.name);
           break;
       }
-    }
   };
 
   processStatements(chunk.body);
@@ -128,8 +127,8 @@ export const findBestDeclaration = (
 };
 
 /** Registers the go-to-definition handler with the LSP connection. */
-export const setupDefinitionHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onDefinition((params: DefinitionParams): Location | null => {
+export const setupDefinitionHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onDefinition((params: DefinitionParams): Location | null => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return null;
 
@@ -149,4 +148,3 @@ export const setupDefinitionHandler = (connection: Connection, documentManager: 
       },
     };
   });
-};

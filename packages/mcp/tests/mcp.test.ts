@@ -10,29 +10,29 @@ import {
   serializeGameTreeNode,
   textResult,
   tools,
-} from '../src/server';
+} from '@mcp/server';
 
 describe('MCP Server - textResult / errorResult', () => {
   test('textResult wraps text in content array', () => {
     const result = textResult('hello');
     expect(result.content.length).toBe(1);
-    expect(result.content[0]!.text).toBe('hello');
+    expect(result.content[0]?.text).toBe('hello');
   });
 
   test('textResult content has type "text"', () => {
     const result = textResult('test');
-    expect(result.content[0]!.type).toBe('text');
+    expect(result.content[0]?.type).toBe('text');
   });
 
   test('errorResult wraps text with isError flag', () => {
     const result = errorResult('something failed');
-    expect(result.content[0]!.text).toBe('something failed');
+    expect(result.content[0]?.text).toBe('something failed');
     expect(result.isError).toBe(true);
   });
 
   test('errorResult content has type "text"', () => {
     const result = errorResult('err');
-    expect(result.content[0]!.type).toBe('text');
+    expect(result.content[0]?.type).toBe('text');
   });
 
   test('textResult does not set isError', () => {
@@ -45,13 +45,13 @@ describe('MCP Server - requirePath', () => {
   test('returns error for non-array', () => {
     const result = requirePath('not-an-array');
     expect(result).toBeDefined();
-    expect(result!.isError).toBe(true);
+    expect(result?.isError).toBe(true);
   });
 
   test('returns error for empty array', () => {
     const result = requirePath([]);
     expect(result).toBeDefined();
-    expect(result!.isError).toBe(true);
+    expect(result?.isError).toBe(true);
   });
 
   test('returns undefined for valid path array', () => {
@@ -62,13 +62,13 @@ describe('MCP Server - requirePath', () => {
   test('returns error for undefined', () => {
     const result = requirePath(undefined);
     expect(result).toBeDefined();
-    expect(result!.isError).toBe(true);
+    expect(result?.isError).toBe(true);
   });
 
   test('returns error for null', () => {
     const result = requirePath(null);
     expect(result).toBeDefined();
-    expect(result!.isError).toBe(true);
+    expect(result?.isError).toBe(true);
   });
 
   test('returns undefined for single-element path', () => {
@@ -159,7 +159,7 @@ describe('MCP Server - serializeGameTreeNode', () => {
     };
     const result = serializeGameTreeNode(node);
     expect(result.children).toBeDefined();
-    expect(result.children!.length).toBe(1);
+    expect(result.children?.length).toBe(1);
   });
 
   test('recursively serializes nested children', () => {
@@ -175,10 +175,10 @@ describe('MCP Server - serializeGameTreeNode', () => {
       ],
     };
     const result = serializeGameTreeNode(node);
-    const mid = result.children![0] as { name: string; children?: unknown[] };
-    expect(mid.name).toBe('Mid');
-    expect(mid.children).toBeDefined();
-    expect(mid.children!.length).toBe(1);
+    const mid = result.children?.[0];
+    expect(mid?.name).toBe('Mid');
+    expect(mid?.children).toBeDefined();
+    expect(mid?.children?.length).toBe(1);
   });
 });
 
@@ -255,16 +255,13 @@ describe('MCP Server - formatServicesTree', () => {
 });
 
 describe('MCP Server - tools array', () => {
-  test('has 19 tools', () => {
-    expect(tools.length).toBe(19);
-  });
+  test('has 19 tools', () => expect(tools.length).toBe(19));
 
   test('all tools have name, description, and inputSchema', () => {
     for (const tool of tools) {
-      expect(typeof tool.name).toBe('string');
       expect(tool.name.length).toBeGreaterThan(0);
-      expect(typeof tool.description).toBe('string');
-      expect(tool.inputSchema).toBeDefined();
+      expect(tool.description?.length).toBeGreaterThan(0);
+      expect(tool.inputSchema.type).toBe('object');
     }
   });
 
@@ -292,21 +289,16 @@ describe('MCP Server - tools array', () => {
 
   test('set_remote_spy_block_list requires blocks parameter', () => {
     const tool = tools.find(t => t.name === 'set_remote_spy_block_list');
-    expect(tool).toBeDefined();
-    const schema = tool!.inputSchema as { required?: string[] };
-    expect(schema.required).toContain('blocks');
+    expect(tool?.inputSchema.required).toContain('blocks');
   });
 
   test('save_instance has optional path and fileName parameters', () => {
-    const tool = tools.find(t => t.name === 'save_instance');
-    expect(tool).toBeDefined();
-    const schema = tool!.inputSchema as { properties?: Record<string, unknown>; required?: string[] };
-    expect(schema.properties).toBeDefined();
-    expect(schema.properties!['path']).toBeDefined();
-    expect(schema.properties!['fileName']).toBeDefined();
-    expect(schema.properties!['decompile']).toBeDefined();
-    expect(schema.required ?? []).not.toContain('path');
-    expect(schema.required ?? []).not.toContain('fileName');
+    const schema = tools.find(t => t.name === 'save_instance')?.inputSchema;
+    expect(schema?.properties?.['path']).toBeDefined();
+    expect(schema?.properties?.['fileName']).toBeDefined();
+    expect(schema?.properties?.['decompile']).toBeDefined();
+    expect(schema?.required ?? []).not.toContain('path');
+    expect(schema?.required ?? []).not.toContain('fileName');
   });
 
   test('all tool names are unique', () => {
@@ -317,16 +309,12 @@ describe('MCP Server - tools array', () => {
 
   test('execute_code requires code parameter', () => {
     const tool = tools.find(t => t.name === 'execute_code');
-    expect(tool).toBeDefined();
-    const schema = tool!.inputSchema as { required?: string[] };
-    expect(schema.required).toContain('code');
+    expect(tool?.inputSchema.required).toContain('code');
   });
 
   test('get_properties requires path parameter', () => {
     const tool = tools.find(t => t.name === 'get_properties');
-    expect(tool).toBeDefined();
-    const schema = tool!.inputSchema as { required?: string[] };
-    expect(schema.required).toContain('path');
+    expect(tool?.inputSchema.required).toContain('path');
   });
 });
 
@@ -339,12 +327,9 @@ describe('MCP Server - createMcpServer', () => {
 
   test('bridge has expected interface properties', () => {
     const { bridge } = createMcpServer();
-    expect(typeof bridge.isRunning).toBe('boolean');
-    expect(typeof bridge.isConnected).toBe('boolean');
-    expect(bridge.liveGameModel).toBeDefined();
-    expect(typeof bridge.start).toBe('function');
-    expect(typeof bridge.stop).toBe('function');
-    expect(typeof bridge.execute).toBe('function');
+    expect(bridge.isRunning).toBe(false);
+    expect(bridge.isConnected).toBe(false);
+    expect(bridge.liveGameModel.services.size).toBe(0);
   });
 
   test('bridge starts disconnected', () => {
@@ -414,9 +399,8 @@ describe('LiveGameModel', () => {
       },
     ]);
     const node = model.getNode(['Workspace', 'Part1']);
-    expect(node).toBeDefined();
-    expect(node!.name).toBe('Part1');
-    expect(node!.className).toBe('Part');
+    expect(node?.name).toBe('Part1');
+    expect(node?.className).toBe('Part');
   });
 
   test('getNode returns undefined for missing path', () => {
@@ -430,16 +414,14 @@ describe('LiveGameModel', () => {
     const { model, update } = createLiveGameModel();
     update([{ 'name': 'Workspace', 'className': 'Workspace' }]);
     const node = model.getNode(['game', 'Workspace']);
-    expect(node).toBeDefined();
-    expect(node!.name).toBe('Workspace');
+    expect(node?.name).toBe('Workspace');
   });
 
   test('getNode returns service root when path has one element', () => {
     const { model, update } = createLiveGameModel();
     update([{ 'name': 'Players', 'className': 'Players' }]);
     const node = model.getNode(['Players']);
-    expect(node).toBeDefined();
-    expect(node!.name).toBe('Players');
+    expect(node?.name).toBe('Players');
   });
 
   test('getChildren returns service children map', () => {
@@ -455,10 +437,9 @@ describe('LiveGameModel', () => {
       },
     ]);
     const children = model.getChildren(['Workspace']);
-    expect(children).toBeDefined();
-    expect(children!.size).toBe(2);
-    expect(children!.has('Part1')).toBe(true);
-    expect(children!.has('Part2')).toBe(true);
+    expect(children?.size).toBe(2);
+    expect(children?.has('Part1')).toBe(true);
+    expect(children?.has('Part2')).toBe(true);
   });
 
   test('getChildren returns root services for empty path', () => {
@@ -468,8 +449,7 @@ describe('LiveGameModel', () => {
       { 'name': 'Players', 'className': 'Players' },
     ]);
     const children = model.getChildren([]);
-    expect(children).toBeDefined();
-    expect(children!.size).toBe(2);
+    expect(children?.size).toBe(2);
   });
 
   test('mergeChildren updates children on target node', () => {
@@ -479,10 +459,8 @@ describe('LiveGameModel', () => {
     mergeChildren(['Workspace'], [{ 'name': 'NewChild', 'className': 'Part' }]);
 
     const node = model.getNode(['Workspace']);
-    expect(node).toBeDefined();
-    expect(node!.children).toBeDefined();
-    expect(node!.children!.length).toBe(1);
-    expect(node!.children![0]!.name).toBe('NewChild');
+    expect(node?.children?.length).toBe(1);
+    expect(node?.children?.[0]?.name).toBe('NewChild');
   });
 
   test('getNode returns undefined for empty path', () => {

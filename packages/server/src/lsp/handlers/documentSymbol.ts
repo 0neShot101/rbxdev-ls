@@ -70,7 +70,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
           'selectionRange': ensureContained(convertRange(name.range), declFull),
         };
 
-        if (isFunction && value !== undefined) symbol.children = collectFunctionSymbols(value as FunctionExpression);
+        if (isFunction && value !== undefined) symbol.children = collectFunctionSymbols(value);
 
         pushSymbol(symbols, symbol);
       }
@@ -175,7 +175,7 @@ const collectStatementSymbols = (stmt: Statement): DocumentSymbol[] => {
 export const collectDocumentSymbols = (chunk: Chunk): DocumentSymbol[] => {
   const symbols: DocumentSymbol[] = [];
 
-  for (const stmt of chunk.body) {
+  for (const stmt of chunk.body)
     switch (stmt.kind) {
       case 'LocalDeclaration':
       case 'LocalFunction':
@@ -185,17 +185,15 @@ export const collectDocumentSymbols = (chunk: Chunk): DocumentSymbol[] => {
         symbols.push(...collectStatementSymbols(stmt));
         break;
     }
-  }
 
   return symbols;
 };
 
 /** Provides the outline view showing functions, variables, types, and other declarations. */
-export const setupDocumentSymbolHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
+export const setupDocumentSymbolHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
     return collectDocumentSymbols(document.ast);
   });
-};

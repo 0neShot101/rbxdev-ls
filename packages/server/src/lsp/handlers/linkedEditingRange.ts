@@ -18,17 +18,14 @@ const toRef = (ident: Identifier): ReferenceLocation => ({
  */
 export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
   const entries: ScopeEntry[] = [];
-  const scopeStack: Map<string, ScopeEntry>[] = [new Map()];
+  const rootScope = new Map<string, ScopeEntry>();
+  const scopeStack: Map<string, ScopeEntry>[] = [rootScope];
 
-  const currentScope = (): Map<string, ScopeEntry> => scopeStack[scopeStack.length - 1]!;
+  const currentScope = (): Map<string, ScopeEntry> => scopeStack.at(-1) ?? rootScope;
 
-  const pushScope = (): void => {
-    scopeStack.push(new Map());
-  };
+  const pushScope = (): void => void scopeStack.push(new Map());
 
-  const popScope = (): void => {
-    scopeStack.pop();
-  };
+  const popScope = (): void => void scopeStack.pop();
 
   const declare = (ident: Identifier): void => {
     const entry: ScopeEntry = {
@@ -42,7 +39,7 @@ export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
 
   const resolve = (name: string): ScopeEntry | undefined => {
     for (let i = scopeStack.length - 1; i >= 0; i--) {
-      const entry = scopeStack[i]!.get(name);
+      const entry = scopeStack[i]?.get(name);
       if (entry !== undefined) return entry;
     }
     return undefined;
@@ -59,7 +56,7 @@ export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
     });
 
   const walkBody = (stmts: ReadonlyArray<Statement>): void => {
-    for (const stmt of stmts) {
+    for (const stmt of stmts)
       switch (stmt.kind) {
         case 'LocalDeclaration':
           stmt.values.forEach(visitExpr);
@@ -128,13 +125,10 @@ export const collectScopedReferences = (chunk: Chunk): ScopeEntry[] => {
 
         default:
           walkStatement(stmt, {
-            'visitIdentifier': (node: Identifier) => {
-              resolveIdent(node);
-            },
+            'visitIdentifier': (node: Identifier) => resolveIdent(node),
           });
           break;
       }
-    }
   };
 
   walkBody(chunk.body);
@@ -157,8 +151,8 @@ const getWordAtPosition = (content: string, position: Position): string | undefi
 };
 
 /** Provides linked editing ranges for simultaneous identifier renaming within the same scope. */
-export const setupLinkedEditingRangeHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.languages.onLinkedEditingRange((params: LinkedEditingRangeParams): LinkedEditingRanges | null => {
+export const setupLinkedEditingRangeHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.languages.onLinkedEditingRange((params: LinkedEditingRangeParams): LinkedEditingRanges | null => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return null;
 
@@ -184,4 +178,3 @@ export const setupLinkedEditingRangeHandler = (connection: Connection, documentM
 
     return null;
   });
-};

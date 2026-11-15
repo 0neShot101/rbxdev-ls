@@ -1,3 +1,5 @@
+import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
 import { collectCallHierarchyFunctions, collectCallSites } from '@lsp/handlers/callHierarchy';
 import { DEPRECATION_REPLACEMENTS } from '@lsp/handlers/codeAction';
 import { collectCodeLensFunctions, collectCodeLensReferences } from '@lsp/handlers/codeLens';
@@ -28,10 +30,8 @@ import { collectTypeDeclarations, getTypeName } from '@lsp/handlers/typeDefiniti
 import { collectTypeAliases, extractSupertypeNames } from '@lsp/handlers/typeHierarchy';
 import { collectWorkspaceSymbols } from '@lsp/handlers/workspaceSymbol';
 import { parse } from '@parser/parser';
-import { checkProgram } from '@typings/checker';
+import { checkProgram } from '@analyzer/checker';
 import { buildGlobalEnvironment } from '@definitions/globals';
-import { describe, expect, test } from 'bun:test';
-
 import type { Chunk } from '@typings/ast';
 import type { ParsedDocument } from '@typings/lsp';
 
@@ -100,80 +100,76 @@ describe('Hover Handler', () => {
     if (funcType !== undefined && funcType.kind === 'Class') {
       const method = funcType.methods.get('FindFirstChild');
       if (method !== undefined) {
-        const doc = formatMethodDoc('FindFirstChild', method);
-        expect(doc.length).toBeGreaterThan(0);
-        expect(doc).toContain('FindFirstChild');
+        const document = formatMethodDoc('FindFirstChild', method, 'Instance', 'Instance');
+        expect(document.length).toBeGreaterThan(0);
+        expect(document).toContain('FindFirstChild');
       }
     }
   });
 
   test('formatClassDoc includes class name', () => {
-    const cls = globalEnv.robloxClasses.get('Part');
-    expect(cls).toBeDefined();
-    if (cls !== undefined && cls.kind === 'Class') {
-      const doc = formatClassDoc(cls);
-      expect(doc).toContain('Part');
+    const classType = globalEnv.robloxClasses.get('Part');
+    expect(classType).toBeDefined();
+    if (classType !== undefined && classType.kind === 'Class') {
+      const document = formatClassDoc(classType);
+      expect(document).toContain('Part');
     }
   });
 
   test('formatPropertyDoc includes property name', () => {
-    const cls = globalEnv.robloxClasses.get('Humanoid');
-    expect(cls).toBeDefined();
-    if (cls !== undefined && cls.kind === 'Class') {
-      const prop = cls.properties.get('Health');
-      if (prop !== undefined) {
-        const doc = formatPropertyDoc('Health', prop);
-        expect(doc).toContain('Health');
+    const classType = globalEnv.robloxClasses.get('Humanoid');
+    expect(classType).toBeDefined();
+    if (classType !== undefined && classType.kind === 'Class') {
+      const property = classType.properties.get('Health');
+      if (property !== undefined) {
+        const document = formatPropertyDoc('Health', property, 'Humanoid');
+        expect(document).toContain('Health');
       }
     }
   });
 
   test('formatTypeDoc handles primitive types', () => {
-    const doc = formatTypeDoc('myVar', { 'kind': 'Primitive', 'name': 'number' });
-    expect(doc).toContain('myVar');
-    expect(doc).toContain('number');
+    const document = formatTypeDoc('myVar', { 'kind': 'Primitive', 'name': 'number' });
+    expect(document).toContain('myVar');
+    expect(document).toContain('number');
   });
 });
 
 describe('References Handler', () => {
   test('collectReferences finds all variable references', () => {
     const chunk = parseCode('local x = 1\nprint(x)\nlocal y = x + 1');
-    const refs = collectReferences(chunk);
-    const xRefs = refs.get('x');
-    expect(xRefs).toBeDefined();
-    expect(xRefs!.length).toBeGreaterThanOrEqual(2);
+    const references = collectReferences(chunk);
+    const xRefs = expectDefined(references.get('x'));
+    expect(xRefs.length).toBeGreaterThanOrEqual(2);
   });
 
   test('collectReferences finds function references', () => {
     const chunk = parseCode('local function foo() end\nfoo()\nfoo()');
-    const refs = collectReferences(chunk);
-    const fooRefs = refs.get('foo');
-    expect(fooRefs).toBeDefined();
-    expect(fooRefs!.length).toBeGreaterThanOrEqual(2);
+    const references = collectReferences(chunk);
+    const fooRefs = expectDefined(references.get('foo'));
+    expect(fooRefs.length).toBeGreaterThanOrEqual(2);
   });
 
   test('collectReferences finds member access references', () => {
     const chunk = parseCode('local t = {}\nt.field = 1\nprint(t.field)');
-    const refs = collectReferences(chunk);
-    const fieldRefs = refs.get('field');
-    expect(fieldRefs).toBeDefined();
-    expect(fieldRefs!.length).toBeGreaterThanOrEqual(2);
+    const references = collectReferences(chunk);
+    const fieldRefs = expectDefined(references.get('field'));
+    expect(fieldRefs.length).toBeGreaterThanOrEqual(2);
   });
 
   test('collectReferences handles empty code', () => {
     const chunk = parseCode('');
-    const refs = collectReferences(chunk);
-    expect(refs.size).toBe(0);
+    const references = collectReferences(chunk);
+    expect(references.size).toBe(0);
   });
 });
 
 describe('Rename Handler', () => {
   test('collectRenameReferences finds all references for rename', () => {
     const chunk = parseCode('local myVar = 1\nprint(myVar)');
-    const refs = collectRenameReferences(chunk);
-    const myVarRefs = refs.get('myVar');
-    expect(myVarRefs).toBeDefined();
-    expect(myVarRefs!.length).toBeGreaterThanOrEqual(2);
+    const references = collectRenameReferences(chunk);
+    const myVarRefs = expectDefined(references.get('myVar'));
+    expect(myVarRefs.length).toBeGreaterThanOrEqual(2);
   });
 
   test('isValidIdentifier accepts valid names', () => {
@@ -201,29 +197,19 @@ describe('Rename Handler', () => {
 });
 
 describe('Signature Help Handler', () => {
-  test('countCommas counts zero for no commas', () => {
-    expect(countCommas('x')).toBe(0);
-  });
+  test('countCommas counts zero for no commas', () => expect(countCommas('x')).toBe(0));
 
-  test('countCommas counts commas correctly', () => {
-    expect(countCommas('a, b, c')).toBe(2);
-  });
+  test('countCommas counts commas correctly', () => expect(countCommas('a, b, c')).toBe(2));
 
-  test('countCommas ignores commas in strings', () => {
-    expect(countCommas('"a, b", c')).toBe(1);
-  });
+  test('countCommas ignores commas in strings', () => expect(countCommas('"a, b", c')).toBe(1));
 
-  test('countCommas ignores commas in nested parens', () => {
-    expect(countCommas('bar(a, b), c')).toBe(1);
-  });
+  test('countCommas ignores commas in nested parens', () => expect(countCommas('bar(a, b), c')).toBe(1));
 
   test('findFunctionCall finds function name at cursor', () => {
     const content = 'print("hello")';
     const result = findFunctionCall(content, 0, 7);
     expect(result).toBeDefined();
-    if (result !== undefined) {
-      expect(result.name).toBe('print');
-    }
+    if (result !== undefined) expect(result.name).toBe('print');
   });
 
   test('findFunctionCall returns undefined outside call', () => {
@@ -237,7 +223,7 @@ describe('Color Handler', () => {
   test('findColors detects Color3.fromRGB', () => {
     const colors = findColors('local c = Color3.fromRGB(255, 128, 0)');
     expect(colors.length).toBeGreaterThanOrEqual(1);
-    const color = colors[0]!;
+    const color = expectDefined(colors[0]);
     expect(color.red).toBeCloseTo(1.0, 1);
     expect(color.green).toBeCloseTo(0.5, 1);
     expect(color.blue).toBeCloseTo(0, 1);
@@ -246,7 +232,7 @@ describe('Color Handler', () => {
   test('findColors detects Color3.new', () => {
     const colors = findColors('local c = Color3.new(1, 0, 0)');
     expect(colors.length).toBeGreaterThanOrEqual(1);
-    const color = colors[0]!;
+    const color = expectDefined(colors[0]);
     expect(color.red).toBeCloseTo(1.0, 1);
     expect(color.green).toBeCloseTo(0, 1);
     expect(color.blue).toBeCloseTo(0, 1);
@@ -255,7 +241,7 @@ describe('Color Handler', () => {
   test('findColors detects Color3.fromHex', () => {
     const colors = findColors('local c = Color3.fromHex("#FF0000")');
     expect(colors.length).toBeGreaterThanOrEqual(1);
-    const color = colors[0]!;
+    const color = expectDefined(colors[0]);
     expect(color.red).toBeCloseTo(1.0, 1);
     expect(color.green).toBeCloseTo(0, 1);
     expect(color.blue).toBeCloseTo(0, 1);
@@ -275,21 +261,21 @@ describe('Color Handler', () => {
 
 describe('Inlay Hints Handler', () => {
   test('collectInlayHints returns hints for typed code', () => {
-    const doc = makeParsedDocument('local function foo(x: number): string\n  return tostring(x)\nend');
-    const hints = collectInlayHints(doc);
+    const document = makeParsedDocument('local function foo(x: number): string\n  return tostring(x)\nend');
+    const hints = collectInlayHints(document);
     expect(hints).toBeDefined();
   });
 
   test('collectInlayHints handles empty code', () => {
-    const doc = makeParsedDocument('');
-    const hints = collectInlayHints(doc);
+    const document = makeParsedDocument('');
+    const hints = collectInlayHints(document);
     expect(hints).toBeDefined();
     expect(hints.length).toBe(0);
   });
 
   test('collectInlayHints handles code with variables', () => {
-    const doc = makeParsedDocument('local x = 42\nlocal y = "hello"');
-    const hints = collectInlayHints(doc);
+    const document = makeParsedDocument('local x = 42\nlocal y = "hello"');
+    const hints = collectInlayHints(document);
     expect(hints).toBeDefined();
   });
 });
@@ -348,18 +334,16 @@ describe('Document Highlight Handler', () => {
   test('collectHighlights finds all occurrences of a variable', () => {
     const chunk = parseCode('local x = 1\nprint(x)\nlocal y = x');
     const highlights = collectHighlights(chunk);
-    const xHighlights = highlights.get('x');
-    expect(xHighlights).toBeDefined();
-    expect(xHighlights!.length).toBeGreaterThanOrEqual(2);
+    const xHighlights = expectDefined(highlights.get('x'));
+    expect(xHighlights.length).toBeGreaterThanOrEqual(2);
   });
 
   test('collectHighlights distinguishes write positions', () => {
     const chunk = parseCode('local x = 1\nx = 2\nprint(x)');
     const highlights = collectHighlights(chunk);
-    const xHighlights = highlights.get('x');
-    expect(xHighlights).toBeDefined();
-    const hasWrite = xHighlights!.some(h => h.kind === 3);
-    const hasRead = xHighlights!.some(h => h.kind === 2 || h.kind === 1);
+    const xHighlights = expectDefined(highlights.get('x'));
+    const hasWrite = xHighlights.some(h => h.kind === 3);
+    const hasRead = xHighlights.some(h => h.kind === 2 || h.kind === 1);
     expect(hasWrite || hasRead).toBe(true);
   });
 
@@ -384,16 +368,14 @@ describe('Document Link Handler', () => {
   });
 });
 
-describe('Linked Editing Range Handler', () => {
+describe('Linked Editing Range Handler', () =>
   test('collectScopedReferences finds matching references by scope', () => {
     const chunk = parseCode('local x = 1\nprint(x)');
     const entries = collectScopedReferences(chunk);
     expect(entries.length).toBeGreaterThan(0);
-    const xEntry = entries.find(e => e.declarationLine === 0);
-    expect(xEntry).toBeDefined();
-    expect(xEntry!.references.length).toBeGreaterThanOrEqual(1);
-  });
-});
+    const xEntry = expectDefined(entries.find(e => e.declarationLine === 0));
+    expect(xEntry.references.length).toBeGreaterThanOrEqual(1);
+  }));
 
 describe('Selection Range Handler', () => {
   test('collectContainingRanges returns ranges for position inside function', () => {
@@ -420,15 +402,15 @@ describe('Call Hierarchy Handler', () => {
     const chunk = parseCode('local function foo() end\nlocal function bar() end');
     const functions = collectCallHierarchyFunctions(chunk.body);
     expect(functions.length).toBe(2);
-    expect(functions[0]!.name).toBe('foo');
-    expect(functions[1]!.name).toBe('bar');
+    expect(expectDefined(functions[0]).name).toBe('foo');
+    expect(expectDefined(functions[1]).name).toBe('bar');
   });
 
   test('collectCallHierarchyFunctions finds method declarations', () => {
     const chunk = parseCode('function MyClass:method() end');
     const functions = collectCallHierarchyFunctions(chunk.body);
     expect(functions.length).toBe(1);
-    expect(functions[0]!.name).toBe('MyClass:method');
+    expect(expectDefined(functions[0]).name).toBe('MyClass:method');
   });
 
   test('collectCallSites finds function call sites', () => {
@@ -443,9 +425,8 @@ describe('Call Hierarchy Handler', () => {
   test('collectCallSites includes containing function', () => {
     const chunk = parseCode('local function outer()\n  inner()\nend');
     const callSites = collectCallSites(chunk);
-    const innerCall = callSites.find(s => s.name === 'inner');
-    expect(innerCall).toBeDefined();
-    expect(innerCall!.containingFunction).toBe('outer');
+    const innerCall = expectDefined(callSites.find(s => s.name === 'inner'));
+    expect(innerCall.containingFunction).toBe('outer');
   });
 });
 
@@ -458,17 +439,16 @@ describe('Code Lens Handler', () => {
 
   test('collectCodeLensReferences counts references per name', () => {
     const chunk = parseCode('local function foo() end\nfoo()\nfoo()');
-    const refs = collectCodeLensReferences(chunk);
-    const fooRefs = refs.get('foo');
-    expect(fooRefs).toBeDefined();
-    expect(fooRefs!.length).toBeGreaterThanOrEqual(2);
+    const references = collectCodeLensReferences(chunk);
+    const fooRefs = expectDefined(references.get('foo'));
+    expect(fooRefs.length).toBeGreaterThanOrEqual(2);
   });
 
   test('collectCodeLensFunctions finds functions inside if blocks', () => {
     const chunk = parseCode('if true then\n  local function inner() end\nend');
     const functions = collectCodeLensFunctions(chunk.body);
     expect(functions.length).toBe(1);
-    expect(functions[0]!.name).toBe('inner');
+    expect(expectDefined(functions[0]).name).toBe('inner');
   });
 });
 
@@ -498,14 +478,14 @@ describe('Type Hierarchy Handler', () => {
     const chunk = parseCode('type Point = { x: number, y: number }');
     const aliases = collectTypeAliases(chunk);
     expect(aliases.length).toBe(1);
-    expect(aliases[0]!.name).toBe('Point');
+    expect(expectDefined(aliases[0]).name).toBe('Point');
   });
 
   test('collectTypeAliases finds exported types', () => {
     const chunk = parseCode('export type MyType = string');
     const aliases = collectTypeAliases(chunk);
     expect(aliases.length).toBe(1);
-    expect(aliases[0]!.name).toBe('MyType');
+    expect(expectDefined(aliases[0]).name).toBe('MyType');
   });
 
   test('collectTypeAliases finds multiple types', () => {
@@ -516,9 +496,9 @@ describe('Type Hierarchy Handler', () => {
 
   test('extractSupertypeNames extracts type references', () => {
     const chunk = parseCode('type MyType = number');
-    const stmt = chunk.body[0];
-    if (stmt !== undefined && stmt.kind === 'TypeAlias' && stmt.type !== undefined) {
-      const names = extractSupertypeNames(stmt.type);
+    const statement = chunk.body[0];
+    if (statement !== undefined && statement.kind === 'TypeAlias' && statement.type !== undefined) {
+      const names = extractSupertypeNames(statement.type);
       expect(names).toBeDefined();
     }
   });
@@ -527,22 +507,22 @@ describe('Type Hierarchy Handler', () => {
 describe('Type Definition Handler', () => {
   test('collectTypeDeclarations maps type names to locations', () => {
     const chunk = parseCode('type Point = { x: number, y: number }');
-    const decls = collectTypeDeclarations(chunk);
-    expect(decls.has('Point')).toBe(true);
-    expect(decls.get('Point')!.line).toBe(0);
+    const declarations = collectTypeDeclarations(chunk);
+    expect(declarations.has('Point')).toBe(true);
+    expect(expectDefined(declarations.get('Point')).line).toBe(0);
   });
 
   test('collectTypeDeclarations finds exported types', () => {
     const chunk = parseCode('export type Exported = string');
-    const decls = collectTypeDeclarations(chunk);
-    expect(decls.has('Exported')).toBe(true);
+    const declarations = collectTypeDeclarations(chunk);
+    expect(declarations.has('Exported')).toBe(true);
   });
 
   test('collectTypeDeclarations handles multiple types', () => {
     const chunk = parseCode('type A = number\ntype B = string');
-    const decls = collectTypeDeclarations(chunk);
-    expect(decls.has('A')).toBe(true);
-    expect(decls.has('B')).toBe(true);
+    const declarations = collectTypeDeclarations(chunk);
+    expect(declarations.has('A')).toBe(true);
+    expect(declarations.has('B')).toBe(true);
   });
 
   test('getTypeName extracts name from simple type reference', () => {
@@ -610,35 +590,34 @@ describe('Document Symbol Handler', () => {
 describe('Definition Handler', () => {
   test('collectDeclarations finds local variable declarations', () => {
     const chunk = parseCode('local myVar = 42');
-    const decls = collectDeclarations(chunk);
-    expect(decls.has('myVar')).toBe(true);
+    const declarations = collectDeclarations(chunk);
+    expect(declarations.has('myVar')).toBe(true);
   });
 
   test('collectDeclarations finds function declarations', () => {
     const chunk = parseCode('local function myFunc() end');
-    const decls = collectDeclarations(chunk);
-    expect(decls.has('myFunc')).toBe(true);
+    const declarations = collectDeclarations(chunk);
+    expect(declarations.has('myFunc')).toBe(true);
   });
 
   test('collectDeclarations finds for loop variables', () => {
     const chunk = parseCode('for i = 1, 10 do end');
-    const decls = collectDeclarations(chunk);
-    expect(decls.has('i')).toBe(true);
+    const declarations = collectDeclarations(chunk);
+    expect(declarations.has('i')).toBe(true);
   });
 
   test('collectDeclarations finds nested declarations', () => {
     const chunk = parseCode('local function outer()\n  local inner = 1\nend');
-    const decls = collectDeclarations(chunk);
-    expect(decls.has('outer')).toBe(true);
-    expect(decls.has('inner')).toBe(true);
+    const declarations = collectDeclarations(chunk);
+    expect(declarations.has('outer')).toBe(true);
+    expect(declarations.has('inner')).toBe(true);
   });
 
   test('findBestDeclaration returns closest scope match', () => {
     const chunk = parseCode('local x = 1\nlocal x = 2');
-    const decls = collectDeclarations(chunk);
-    const best = findBestDeclaration(decls, 'x', 2);
-    expect(best).toBeDefined();
-    expect(best!.line).toBe(1);
+    const declarations = collectDeclarations(chunk);
+    const best = expectDefined(findBestDeclaration(declarations, 'x', 2));
+    expect(best.line).toBe(1);
   });
 });
 
@@ -649,57 +628,57 @@ describe('Diagnostics Handler', () => {
   });
 
   test('convertDiagnostic converts error severity', () => {
-    const diag = convertDiagnostic({
+    const diagnostic = convertDiagnostic({
       'message': 'Test error',
       'severity': 'error',
       'code': 'E001',
       'range': makeRange(1, 1, 1, 10),
     });
-    expect(diag.severity).toBe(1);
-    expect(diag.message).toBe('Test error');
+    expect(diagnostic.severity).toBe(1);
+    expect(diagnostic.message).toBe('Test error');
   });
 
   test('convertDiagnostic converts warning severity', () => {
-    const diag = convertDiagnostic({
+    const diagnostic = convertDiagnostic({
       'message': 'Test warning',
       'severity': 'warning',
       'code': 'W001',
       'range': makeRange(1, 1, 1, 10),
     });
-    expect(diag.severity).toBe(2);
+    expect(diagnostic.severity).toBe(2);
   });
 
   test('convertDiagnostic converts info severity', () => {
-    const diag = convertDiagnostic({
+    const diagnostic = convertDiagnostic({
       'message': 'Test info',
       'severity': 'info',
       'code': 'I001',
       'range': makeRange(1, 1, 1, 10),
     });
-    expect(diag.severity).toBe(3);
+    expect(diagnostic.severity).toBe(3);
   });
 
   test('convertDiagnostic converts hint severity', () => {
-    const diag = convertDiagnostic({
+    const diagnostic = convertDiagnostic({
       'message': 'Test hint',
       'severity': 'hint',
       'code': 'H001',
       'range': makeRange(1, 1, 1, 10),
     });
-    expect(diag.severity).toBe(4);
+    expect(diagnostic.severity).toBe(4);
   });
 
   test('convertDiagnostic sets correct range (0-indexed)', () => {
-    const diag = convertDiagnostic({
+    const diagnostic = convertDiagnostic({
       'message': 'Test',
       'severity': 'error',
       'code': 'E002',
       'range': makeRange(5, 3, 5, 10),
     });
-    expect(diag.range.start.line).toBe(4);
-    expect(diag.range.start.character).toBe(2);
-    expect(diag.range.end.line).toBe(4);
-    expect(diag.range.end.character).toBe(9);
+    expect(diagnostic.range.start.line).toBe(4);
+    expect(diagnostic.range.start.character).toBe(2);
+    expect(diagnostic.range.end.line).toBe(4);
+    expect(diagnostic.range.end.character).toBe(9);
   });
 });
 

@@ -6,13 +6,9 @@ import {
   NilType,
   NumberType,
   StringType,
-  type FunctionParam,
-  type FunctionType,
-  type LuauType,
-  type TableType,
-} from '@typings/types';
-
-import type { SuncApiDefinition, SuncFunction, SuncParameter } from '@typings/definitions';
+} from '@analyzer/values';
+import type { ConvertedSuncTypes, SuncApiDefinition, SuncFunction, SuncParameter } from '@typings/definitions';
+import type { FunctionParam, FunctionType, LuauType, Mutable, TableType } from '@typings/types';
 
 /** HTTP request options table type passed to executor request functions. */
 export const RequestOptionsType: TableType = createTableType(
@@ -102,7 +98,7 @@ const convertSuncParams = (params: ReadonlyArray<SuncParameter>): FunctionParam[
   }));
 
 const convertSuncFunction = (func: SuncFunction): FunctionType => {
-  const options: { description?: string; example?: string } = {};
+  const options: Mutable<Pick<FunctionType, 'description' | 'example'>> = {};
   if (func.description !== undefined) options.description = func.description;
   if (func.example !== undefined) options.example = func.example;
   return createFunctionType(convertSuncParams(func.params), suncTypeToLuau(func.returnType), options);
@@ -813,12 +809,7 @@ export const getDefaultSuncApi = (): SuncApiDefinition => ({
 });
 
 /** Converts a Sunc API definition to Luau type definitions for globals and namespaces. */
-export const convertSuncApiToTypes = (
-  api: SuncApiDefinition,
-): {
-  globals: Map<string, LuauType>;
-  namespaces: Map<string, LuauType>;
-} => {
+export const convertSuncApiToTypes = (api: SuncApiDefinition): ConvertedSuncTypes => {
   const globals = new Map<string, LuauType>();
   const namespaces = new Map<string, LuauType>();
 
@@ -987,6 +978,13 @@ export const convertSuncApiToTypes = (
     { 'name': 'SENTINEL_LOADED', 'type': BooleanType },
     { 'name': 'SIRHURT_LOADED', 'type': BooleanType },
 
+    {
+      'name': 'request',
+      'type': createFunctionType(
+        [{ 'name': 'options', 'type': RequestOptionsType, 'optional': false }],
+        RequestResponseType,
+      ),
+    },
     {
       'name': 'http_request',
       'type': createFunctionType(
@@ -1596,4 +1594,16 @@ export const convertSuncApiToTypes = (
   namespaces.set('websocket', webSocketNamespace);
 
   return { globals, namespaces };
+};
+
+/** Installs executor globals, merging executor namespaces into existing tables through new property maps so cached tables stay untouched. */
+export const installSunc = (globals: Map<string, LuauType>, api: SuncApiDefinition): void => {
+  const suncTypes = convertSuncApiToTypes(api);
+  for (const [name, type] of suncTypes.globals) globals.set(name, type);
+  for (const [name, type] of suncTypes.namespaces) {
+    const existing = globals.get(name);
+    if (existing !== undefined && existing.kind === 'Table' && type.kind === 'Table')
+      globals.set(name, { ...existing, 'properties': new Map([...existing.properties, ...type.properties]) });
+    else globals.set(name, type);
+  }
 };

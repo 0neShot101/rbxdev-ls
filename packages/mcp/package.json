@@ -1,6 +1,6 @@
 {
   "name": "@oneshot101/rbxdev-mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "MCP server for connecting AI tools (Claude, Cursor, etc.) to live Roblox game instances",
   "main": "dist/index.js",
   "types": "types/index.d.ts",
@@ -35,11 +35,15 @@
     "test": "bun test",
     "type-check": "tsc --noEmit"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
   "devDependencies": {
-    "rbxdev-server": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/bun": "latest",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "rbxdev-server": "workspace:*",
+    "ws": "^8.19.0"
   },
   "keywords": [
     "roblox",

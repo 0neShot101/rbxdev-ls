@@ -7,17 +7,20 @@ import {
   createArrayType,
   createFunctionType,
   createTableType,
-  type LuauType,
-  type PropertyType,
-} from '@typings/types';
+} from '@analyzer/values';
+import type { LuauType, PropertyType } from '@typings/types';
 
-const prop = (type: LuauType, readonly = true, deprecated?: { deprecated: true; message?: string }): PropertyType => ({
-  type,
-  readonly,
-  'optional': false,
-  'deprecated': deprecated?.deprecated ?? false,
-  ...(deprecated?.message ? { 'deprecationMessage': deprecated.message } : {}),
-});
+const prop = (type: LuauType, readonly = true, deprecated?: { deprecated: true; message?: string }): PropertyType => {
+  const property: PropertyType = {
+    type,
+    readonly,
+    'optional': false,
+    'deprecated': deprecated?.deprecated ?? false,
+  };
+  const message = deprecated?.message;
+  if (message === undefined || message === '') return property;
+  return { ...property, 'deprecationMessage': message };
+};
 
 const methodProp = (
   params: Array<{ name: string; type: LuauType; optional?: boolean }>,
@@ -50,7 +53,8 @@ export const createRBXScriptSignalType = (callbackParams: Array<{ name: string; 
     NilType,
   );
 
-  const waitReturnType = callbackParams.length > 0 ? callbackParams[0]!.type : NilType;
+  const [firstParam] = callbackParams;
+  const waitReturnType = firstParam === undefined ? NilType : firstParam.type;
 
   return createTableType(
     new Map<string, PropertyType>([

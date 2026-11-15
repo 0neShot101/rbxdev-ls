@@ -13,7 +13,8 @@
       "@mcp/*": ["./src/*"],
       "@core/*": ["../server/src/core/*"],
       "@parser/*": ["../server/src/parser/*"],
-      "@typings/*": ["../server/src/typings/*"],
+      "@typings/*": ["../server/src/types/*"],
+      "@analyzer/*": ["../server/src/analyzer/*"],
       "@definitions/*": ["../server/src/definitions/*"],
       "@lsp/*": ["../server/src/lsp/*"],
       "@utils/*": ["../server/src/utils/*"],
@@ -22,6 +23,6 @@
       "@executor/*": ["../server/src/executor/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

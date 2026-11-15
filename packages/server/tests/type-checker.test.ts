@@ -1,7 +1,8 @@
-import { parse } from '@parser/parser';
-import { checkProgram } from '@typings/checker';
-import { typeToString } from '@typings/types';
 import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
+import { parse } from '@parser/parser';
+import { checkProgram } from '@analyzer/checker';
+import { typeToString } from '@analyzer/values';
 
 import type { LuauType } from '@typings/types';
 
@@ -25,19 +26,19 @@ describe('Type Checker', () => {
     test('infers number type from numeric literal', () => {
       const type = getSymbolType('local x = 42', 'x');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Primitive');
+      expect(type?.kind).toBe('Primitive');
     });
 
     test('infers string type from string literal', () => {
       const type = getSymbolType('local x = "hello"', 'x');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Primitive');
+      expect(type?.kind).toBe('Primitive');
     });
 
     test('infers boolean type from boolean literal', () => {
       const type = getSymbolType('local x = true', 'x');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Primitive');
+      expect(type?.kind).toBe('Primitive');
     });
 
     test('infers nil type', () => {
@@ -48,13 +49,13 @@ describe('Type Checker', () => {
     test('infers table type from table constructor', () => {
       const type = getSymbolType('local t = { a = 1, b = "hello" }', 't');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Table');
+      expect(type?.kind).toBe('Table');
     });
 
     test('infers function type from function expression', () => {
       const type = getSymbolType('local fn = function(x) return x end', 'fn');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      expect(type?.kind).toBe('Function');
     });
   });
 
@@ -62,19 +63,19 @@ describe('Type Checker', () => {
     test('respects explicit number annotation', () => {
       const type = getSymbolType('local x: number = 42', 'x');
       expect(type).toBeDefined();
-      expect(typeToString(type!)).toBe('number');
+      expect(typeToString(expectDefined(type))).toBe('number');
     });
 
     test('respects explicit string annotation', () => {
       const type = getSymbolType('local x: string = "hello"', 'x');
       expect(type).toBeDefined();
-      expect(typeToString(type!)).toBe('string');
+      expect(typeToString(expectDefined(type))).toBe('string');
     });
 
     test('respects explicit boolean annotation', () => {
       const type = getSymbolType('local x: boolean = true', 'x');
       expect(type).toBeDefined();
-      expect(typeToString(type!)).toBe('boolean');
+      expect(typeToString(expectDefined(type))).toBe('boolean');
     });
   });
 
@@ -115,11 +116,9 @@ describe('Type Checker', () => {
 end`;
       const type = getSymbolType(code, 'add');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      expect(type?.kind).toBe('Function');
 
-      if (type!.kind === 'Function') {
-        expect(type!.params.length).toBe(2);
-      }
+      if (type?.kind === 'Function') expect(type.params.length).toBe(2);
     });
 
     test('infers function with no type annotations', () => {
@@ -128,7 +127,7 @@ end`;
 end`;
       const type = getSymbolType(code, 'greet');
       expect(type).toBeDefined();
-      expect(type!.kind).toBe('Function');
+      expect(type?.kind).toBe('Function');
     });
   });
 
@@ -181,11 +180,10 @@ end`;
     });
   });
 
-  describe('sUNC Globals', () => {
+  describe('sUNC Globals', () =>
     test('types getgenv as a string-keyed any table', () => {
       const type = getSymbolType('local env = getgenv()', 'env');
       expect(type).toBeDefined();
-      expect(typeToString(type!)).toBe('{[string]: any}');
-    });
-  });
+      expect(typeToString(expectDefined(type))).toBe('{[string]: any}');
+    }));
 });

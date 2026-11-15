@@ -49,11 +49,10 @@ export const collectRequireLinks = (chunk: Chunk, documentUri: string): Document
 };
 
 /** Makes require() string paths clickable as document links. */
-export const setupDocumentLinkHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onDocumentLinks((params: DocumentLinkParams): DocumentLink[] => {
+export const setupDocumentLinkHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onDocumentLinks((params: DocumentLinkParams): DocumentLink[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
     return collectRequireLinks(document.ast, params.textDocument.uri);
   });
-};

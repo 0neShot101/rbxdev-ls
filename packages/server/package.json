@@ -1,6 +1,6 @@
 {
   "name": "rbxdev-server",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "High-performance Roblox/Luau language server with full API support",
   "main": "dist/exports.js",
   "types": "src/exports.ts",
@@ -21,8 +21,10 @@
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit",
     "test": "bun test",
-    "lint": "eslint src --ext .ts --fix",
-    "lint:check": "eslint src --ext .ts"
+    "bench": "bun scripts/benchmark.ts",
+    "fetch-definitions": "bun scripts/fetch-definitions.ts",
+    "lint": "bun --bun oxlint --type-aware --fix -c ../../oxlint.config.ts src tests scripts",
+    "lint:check": "bun --bun oxlint --type-aware -c ../../oxlint.config.ts src tests scripts"
   },
   "dependencies": {
     "vscode-jsonrpc": "^8.2.0",

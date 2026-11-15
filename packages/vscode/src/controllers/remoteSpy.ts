@@ -1,15 +1,5 @@
 import { commands, env, StatusBarAlignment, window } from 'vscode';
 
-import type { ExtensionContext } from 'vscode';
-import type { RemoteSpyCollaborators, RemoteSpyController } from '@typings/controllers';
-import type {
-  FromWebviewMessage,
-  RemoteSpyClient,
-  RemoteSpySource,
-  RemoteSpyStatus,
-  SpyEnableOutcome,
-} from '@typings/remoteSpy';
-import { RemoteSpyPanel } from '#extension/remoteSpyWebview';
 import {
   addBlock,
   addCall,
@@ -22,6 +12,17 @@ import {
   removeBlock,
   removeIgnore,
 } from '#extension/remoteSpyState';
+import { RemoteSpyPanel } from '#extension/remoteSpyWebview';
+
+import type { ExtensionContext } from 'vscode';
+import type { RemoteSpyCollaborators, RemoteSpyController } from '@typings/controllers';
+import type {
+  FromWebviewMessage,
+  RemoteSpyClient,
+  RemoteSpySource,
+  RemoteSpyStatus,
+  SpyEnableOutcome,
+} from '@typings/remoteSpy';
 
 /**
  * Creates the remote spy controller: spy state, panel, log channel, status bar, commands and notifications.

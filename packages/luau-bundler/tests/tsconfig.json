@@ -7,7 +7,7 @@
     "paths": {
       "@bundler/*": ["../src/*"],
       "@parser/*": ["../../server/src/parser/*"],
-      "@typings/*": ["../../server/src/typings/*"]
+      "@typings/*": ["../../server/src/types/*"]
     }
   },
   "include": ["./**/*.ts", "../src/**/*.ts"],

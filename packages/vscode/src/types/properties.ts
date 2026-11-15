@@ -26,7 +26,7 @@ export interface PropertyItem {
  * Message posted from the properties webview when a value is edited.
  */
 export interface PropertyChangeMessage {
-  readonly type: string;
+  readonly type: 'propertyChange';
   readonly property: string;
   readonly value: string;
   readonly valueType: string;

@@ -1,4 +1,5 @@
-import { commonType, excludeType, isAssignable, isSubtype, narrowType } from '@typings/subtyping';
+import { describe, expect, test } from 'bun:test';
+import { commonType, excludeType, isAssignable, isSubtype, narrowType } from '@analyzer/subtyping';
 import {
   BooleanType,
   NilType,
@@ -11,9 +12,7 @@ import {
   createNumberLiteral,
   createStringLiteral,
   createTableType,
-} from '@typings/types';
-import { describe, expect, test } from 'bun:test';
-
+} from '@analyzer/values';
 import type { SubtypeContext } from '@typings/subtyping';
 import type { ClassType, LuauType } from '@typings/types';
 
@@ -27,37 +26,21 @@ const nonstrictCtx: SubtypeContext = { 'mode': 'nonstrict', 'variance': 'covaria
 
 describe('isSubtype', () => {
   describe('Primitive Types', () => {
-    test('number is subtype of number', () => {
-      expect(isSubtype(NumberType, NumberType)).toBe(true);
-    });
+    test('number is subtype of number', () => expect(isSubtype(NumberType, NumberType)).toBe(true));
 
-    test('string is subtype of string', () => {
-      expect(isSubtype(StringType, StringType)).toBe(true);
-    });
+    test('string is subtype of string', () => expect(isSubtype(StringType, StringType)).toBe(true));
 
-    test('boolean is subtype of boolean', () => {
-      expect(isSubtype(BooleanType, BooleanType)).toBe(true);
-    });
+    test('boolean is subtype of boolean', () => expect(isSubtype(BooleanType, BooleanType)).toBe(true));
 
-    test('number is not subtype of string', () => {
-      expect(isSubtype(NumberType, StringType)).toBe(false);
-    });
+    test('number is not subtype of string', () => expect(isSubtype(NumberType, StringType)).toBe(false));
 
-    test('string is not subtype of number', () => {
-      expect(isSubtype(StringType, NumberType)).toBe(false);
-    });
+    test('string is not subtype of number', () => expect(isSubtype(StringType, NumberType)).toBe(false));
 
-    test('nil is not subtype of number', () => {
-      expect(isSubtype(NilType, NumberType)).toBe(false);
-    });
+    test('nil is not subtype of number', () => expect(isSubtype(NilType, NumberType)).toBe(false));
 
-    test('Any is subtype of number', () => {
-      expect(isSubtype(AnyType, NumberType)).toBe(true);
-    });
+    test('Any is subtype of number', () => expect(isSubtype(AnyType, NumberType)).toBe(true));
 
-    test('number is subtype of Unknown', () => {
-      expect(isSubtype(NumberType, UnknownType)).toBe(true);
-    });
+    test('number is subtype of Unknown', () => expect(isSubtype(NumberType, UnknownType)).toBe(true));
   });
 
   describe('Special Types', () => {
@@ -78,39 +61,30 @@ describe('isSubtype', () => {
       expect(isSubtype(BooleanType, AnyType)).toBe(true);
     });
 
-    test('Any is subtype of string in nonstrict mode', () => {
-      expect(isSubtype(AnyType, StringType, nonstrictCtx)).toBe(true);
-    });
+    test('Any is subtype of string in nonstrict mode', () =>
+      expect(isSubtype(AnyType, StringType, nonstrictCtx)).toBe(true));
 
-    test('Any is subtype of string in strict mode', () => {
-      expect(isSubtype(AnyType, StringType, strictCtx)).toBe(true);
-    });
+    test('Any is subtype of string in strict mode', () => expect(isSubtype(AnyType, StringType, strictCtx)).toBe(true));
   });
 
   describe('Literal Types', () => {
-    test('string literal is subtype of string', () => {
-      expect(isSubtype(createStringLiteral('hello'), StringType)).toBe(true);
-    });
+    test('string literal is subtype of string', () =>
+      expect(isSubtype(createStringLiteral('hello'), StringType)).toBe(true));
 
-    test('number literal is subtype of number', () => {
-      expect(isSubtype(createNumberLiteral(42), NumberType)).toBe(true);
-    });
+    test('number literal is subtype of number', () =>
+      expect(isSubtype(createNumberLiteral(42), NumberType)).toBe(true));
 
-    test('boolean literal is subtype of boolean', () => {
-      expect(isSubtype(createBooleanLiteral(true), BooleanType)).toBe(true);
-    });
+    test('boolean literal is subtype of boolean', () =>
+      expect(isSubtype(createBooleanLiteral(true), BooleanType)).toBe(true));
 
-    test('string literal is not subtype of number', () => {
-      expect(isSubtype(createStringLiteral('hello'), NumberType)).toBe(false);
-    });
+    test('string literal is not subtype of number', () =>
+      expect(isSubtype(createStringLiteral('hello'), NumberType)).toBe(false));
 
-    test('same string literals are subtypes of each other', () => {
-      expect(isSubtype(createStringLiteral('a'), createStringLiteral('a'))).toBe(true);
-    });
+    test('same string literals are subtypes of each other', () =>
+      expect(isSubtype(createStringLiteral('a'), createStringLiteral('a'))).toBe(true));
 
-    test('different string literals are not subtypes of each other', () => {
-      expect(isSubtype(createStringLiteral('a'), createStringLiteral('b'))).toBe(false);
-    });
+    test('different string literals are not subtypes of each other', () =>
+      expect(isSubtype(createStringLiteral('a'), createStringLiteral('b'))).toBe(false));
   });
 
   describe('Optional and Nil Types', () => {
@@ -130,9 +104,7 @@ describe('isSubtype', () => {
       expect(isSubtype(optA, optB)).toBe(true);
     });
 
-    test('nil is not subtype of string', () => {
-      expect(isSubtype(NilType, StringType)).toBe(false);
-    });
+    test('nil is not subtype of string', () => expect(isSubtype(NilType, StringType)).toBe(false));
   });
 
   describe('Union Types', () => {
@@ -281,21 +253,14 @@ describe('isSubtype', () => {
     const basePartClass: ClassType = createClassType('BasePart', { 'superclass': instanceClass });
     const partClass: ClassType = createClassType('Part', { 'superclass': basePartClass });
 
-    test('Part is subtype of Instance through superclass chain', () => {
-      expect(isSubtype(partClass, instanceClass)).toBe(true);
-    });
+    test('Part is subtype of Instance through superclass chain', () =>
+      expect(isSubtype(partClass, instanceClass)).toBe(true));
 
-    test('BasePart is subtype of Instance', () => {
-      expect(isSubtype(basePartClass, instanceClass)).toBe(true);
-    });
+    test('BasePart is subtype of Instance', () => expect(isSubtype(basePartClass, instanceClass)).toBe(true));
 
-    test('Instance is not subtype of Part', () => {
-      expect(isSubtype(instanceClass, partClass)).toBe(false);
-    });
+    test('Instance is not subtype of Part', () => expect(isSubtype(instanceClass, partClass)).toBe(false));
 
-    test('Part is subtype of Part (same name)', () => {
-      expect(isSubtype(partClass, partClass)).toBe(true);
-    });
+    test('Part is subtype of Part (same name)', () => expect(isSubtype(partClass, partClass)).toBe(true));
   });
 
   describe('TypeReference Types', () => {
@@ -364,26 +329,21 @@ describe('isSubtype', () => {
 });
 
 describe('isAssignable', () => {
-  test('same types are assignable', () => {
-    expect(isAssignable(NumberType, NumberType)).toBe(true);
-  });
+  test('same types are assignable', () => expect(isAssignable(NumberType, NumberType)).toBe(true));
 
-  test('number is assignable to string in nonstrict mode', () => {
-    expect(isAssignable(NumberType, StringType, nonstrictCtx)).toBe(true);
-  });
+  test('number is assignable to string in nonstrict mode', () =>
+    expect(isAssignable(NumberType, StringType, nonstrictCtx)).toBe(true));
 
-  test('number is not assignable to string in strict mode', () => {
-    expect(isAssignable(NumberType, StringType, strictCtx)).toBe(false);
-  });
+  test('number is not assignable to string in strict mode', () =>
+    expect(isAssignable(NumberType, StringType, strictCtx)).toBe(false));
 
   test('number is assignable to Enum type in nonstrict mode', () => {
     const enumType = createEnumType('KeyCode', new Map([['A', { 'name': 'A', 'value': 0 }]]));
     expect(isAssignable(NumberType, enumType, nonstrictCtx)).toBe(true);
   });
 
-  test('subtype relationship implies assignability', () => {
-    expect(isAssignable(createStringLiteral('hello'), StringType)).toBe(true);
-  });
+  test('subtype relationship implies assignability', () =>
+    expect(isAssignable(createStringLiteral('hello'), StringType)).toBe(true));
 });
 
 describe('commonType', () => {
@@ -396,9 +356,7 @@ describe('commonType', () => {
   test('commonType of unrelated types returns union', () => {
     const result = commonType(NumberType, StringType);
     expect(result.kind).toBe('Union');
-    if (result.kind === 'Union') {
-      expect(result.types.length).toBe(2);
-    }
+    if (result.kind === 'Union') expect(result.types.length).toBe(2);
   });
 
   test('commonType of subtype and supertype returns supertype', () => {
@@ -460,9 +418,7 @@ describe('excludeType', () => {
     const union: LuauType = { 'kind': 'Union', 'types': [StringType, NumberType, BooleanType] };
     const result = excludeType(union, NumberType);
     expect(result.kind).toBe('Union');
-    if (result.kind === 'Union') {
-      expect(result.types.length).toBe(2);
-    }
+    if (result.kind === 'Union') expect(result.types.length).toBe(2);
   });
 
   test('excludes string from string returns Never', () => {
@@ -480,8 +436,6 @@ describe('excludeType', () => {
     const union: LuauType = { 'kind': 'Union', 'types': [StringType, NumberType] };
     const result = excludeType(union, NilType);
     expect(result.kind).toBe('Union');
-    if (result.kind === 'Union') {
-      expect(result.types.length).toBe(2);
-    }
+    if (result.kind === 'Union') expect(result.types.length).toBe(2);
   });
 });

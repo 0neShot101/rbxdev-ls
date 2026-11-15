@@ -1,5 +1,24 @@
-import { TokenKind, type Lexer, type LexerState, type Token, type TokenPosition } from '@typings/parser';
 import { Keywords, createPosition, createToken } from '@parser/tokens';
+import { TokenKind } from '@typings/parser';
+
+import type { LexedSource, Lexer, LexerState, Token, TokenKindValue, TokenPosition } from '@typings/parser';
+
+const NUL = 0;
+const TAB = 9;
+const LF = 10;
+const CR = 13;
+const SPACE = 32;
+const DOUBLE_QUOTE = 34;
+const SINGLE_QUOTE = 39;
+const DASH = 45;
+const ZERO = 48;
+const NINE = 57;
+const LEFT_BRACKET = 91;
+const BACKSLASH = 92;
+const BACKTICK = 96;
+
+/** A NUL character or a read past the end of the source; both terminate string scanning. */
+const isEnd = (code: number): boolean => code === NUL || Number.isNaN(code);
 
 const isDigit = (char: string): boolean => char >= '0' && char <= '9';
 
@@ -8,13 +27,13 @@ const isHexDigit = (char: string): boolean =>
 
 const isBinaryDigit = (char: string): boolean => char === '0' || char === '1';
 
-const isAlpha = (char: string): boolean => (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || char === '_';
-
-const isAlphaNumeric = (char: string): boolean => isAlpha(char) || isDigit(char);
-
 const isWhitespace = (char: string): boolean => char === ' ' || char === '\t' || char === '\r';
 
-const isNewline = (char: string): boolean => char === '\n';
+/** ASCII letter or underscore, by UTF-16 code unit; `NaN` past the end of the source is never a match. */
+const isIdentifierStart = (code: number): boolean =>
+  (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || code === 95;
+
+const isIdentifierPart = (code: number): boolean => isIdentifierStart(code) || (code >= 48 && code <= 57);
 
 const peek = (state: LexerState, offset = 0): string => {
   const index = state.offset + offset;
@@ -22,17 +41,26 @@ const peek = (state: LexerState, offset = 0): string => {
   return state.source[index] ?? '\0';
 };
 
-const advance = (state: LexerState): string => {
-  const char = peek(state);
-  state.offset++;
-  if (isNewline(char)) {
+const advance = (state: LexerState): void => {
+  if (state.source.charCodeAt(state.offset) === LF) {
     state.line++;
     state.column = 1;
   } else state.column++;
-  return char;
+  state.offset++;
 };
 
-const currentPosition = (state: LexerState): TokenPosition => createPosition(state.offset, state.line, state.column);
+const currentPosition = (state: LexerState): TokenPosition => {
+  if (state.position.offset !== state.offset) state.position = createPosition(state.offset, state.line, state.column);
+  return state.position;
+};
+
+/** Emits a fixed-text token that cannot contain a newline. */
+const emit = (state: LexerState, kind: TokenKindValue, value: string): Token => {
+  const start = currentPosition(state);
+  state.offset += value.length;
+  state.column += value.length;
+  return createToken(kind, value, start, currentPosition(state));
+};
 
 const scanWhitespace = (state: LexerState): Token => {
   const start = currentPosition(state);
@@ -52,15 +80,14 @@ const scanNewline = (state: LexerState): Token => {
 
 const scanSingleLineComment = (state: LexerState): Token => {
   const start = currentPosition(state);
+  const { source } = state;
   const startOffset = state.offset;
+  let end = startOffset + 2;
+  while (end < source.length && source.charCodeAt(end) !== LF && source.charCodeAt(end) !== NUL) end++;
 
-  advance(state);
-  advance(state);
-
-  while (peek(state) !== '\0' && isNewline(peek(state)) === false) advance(state);
-
-  const value = state.source.slice(startOffset, state.offset);
-  return createToken(TokenKind.Comment, value, start, currentPosition(state));
+  state.column += end - startOffset;
+  state.offset = end;
+  return createToken(TokenKind.Comment, source.slice(startOffset, end), start, currentPosition(state));
 };
 
 const countLongBracketLevel = (state: LexerState): number => {
@@ -200,22 +227,29 @@ const scanNumber = (state: LexerState): Token => {
   return createToken(TokenKind.Number, value, start, currentPosition(state));
 };
 
-const scanString = (state: LexerState, quote: string): Token => {
+const scanString = (state: LexerState, quote: number): Token => {
   const start = currentPosition(state);
+  const { source } = state;
   const startOffset = state.offset;
 
   advance(state);
 
-  while (peek(state) !== '\0' && peek(state) !== quote && isNewline(peek(state)) === false)
-    if (peek(state) === '\\') {
+  for (
+    let code = source.charCodeAt(state.offset);
+    code !== quote && code !== LF && isEnd(code) === false;
+    code = source.charCodeAt(state.offset)
+  )
+    if (code === BACKSLASH) {
       advance(state);
-      if (peek(state) !== '\0') advance(state);
-    } else advance(state);
+      if (isEnd(source.charCodeAt(state.offset)) === false) advance(state);
+    } else {
+      state.offset++;
+      state.column++;
+    }
 
-  if (peek(state) === quote) advance(state);
+  if (source.charCodeAt(state.offset) === quote) advance(state);
 
-  const value = state.source.slice(startOffset, state.offset);
-  return createToken(TokenKind.String, value, start, currentPosition(state));
+  return createToken(TokenKind.String, source.slice(startOffset, state.offset), start, currentPosition(state));
 };
 
 const scanLongString = (state: LexerState, level: number): Token => {
@@ -253,198 +287,158 @@ const scanInterpolatedString = (state: LexerState): Token => {
 
 const scanIdentifierOrKeyword = (state: LexerState): Token => {
   const start = currentPosition(state);
+  const { source } = state;
   const startOffset = state.offset;
+  let end = startOffset + 1;
+  while (isIdentifierPart(source.charCodeAt(end))) end++;
 
-  while (isAlphaNumeric(peek(state))) advance(state);
-
-  const value = state.source.slice(startOffset, state.offset);
-  const keyword = Keywords.get(value);
-
-  if (keyword !== undefined) return createToken(keyword, value, start, currentPosition(state));
-
-  return createToken(TokenKind.Identifier, value, start, currentPosition(state));
+  state.column += end - startOffset;
+  state.offset = end;
+  const value = source.slice(startOffset, end);
+  /** Every keyword is two to eight characters long, so longer identifiers skip the lookup. */
+  const keyword = value.length > 8 ? undefined : Keywords.get(value);
+  return createToken(keyword ?? TokenKind.Identifier, value, start, currentPosition(state));
 };
 
 const scanPunctuation = (state: LexerState): Token => {
-  const start = currentPosition(state);
   const char = peek(state);
-
-  if (char === '.' && isDigit(peek(state, 1))) return scanNumber(state);
-
-  const twoChar = char + peek(state, 1);
-
-  switch (twoChar) {
-    case '==':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.Equal, '==', start, currentPosition(state));
-    case '~=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.NotEqual, '~=', start, currentPosition(state));
-    case '<=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.LessEqual, '<=', start, currentPosition(state));
-    case '>=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.GreaterEqual, '>=', start, currentPosition(state));
-    case '::':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.DoubleColon, '::', start, currentPosition(state));
-    case '->':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.Arrow, '->', start, currentPosition(state));
-    case '//':
-      if (peek(state, 2) === '=') {
-        advance(state);
-        advance(state);
-        advance(state);
-        return createToken(TokenKind.DoubleSlashAssign, '//=', start, currentPosition(state));
-      }
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.DoubleSlash, '//', start, currentPosition(state));
-    case '..':
-      if (peek(state, 2) === '.') {
-        advance(state);
-        advance(state);
-        advance(state);
-        return createToken(TokenKind.Vararg, '...', start, currentPosition(state));
-      }
-      if (peek(state, 2) === '=') {
-        advance(state);
-        advance(state);
-        advance(state);
-        return createToken(TokenKind.ConcatAssign, '..=', start, currentPosition(state));
-      }
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.Concat, '..', start, currentPosition(state));
-    case '+=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.PlusAssign, '+=', start, currentPosition(state));
-    case '-=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.MinusAssign, '-=', start, currentPosition(state));
-    case '*=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.StarAssign, '*=', start, currentPosition(state));
-    case '/=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.SlashAssign, '/=', start, currentPosition(state));
-    case '%=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.PercentAssign, '%=', start, currentPosition(state));
-    case '^=':
-      advance(state);
-      advance(state);
-      return createToken(TokenKind.CaretAssign, '^=', start, currentPosition(state));
-  }
-
-  advance(state);
+  const next = peek(state, 1);
 
   switch (char) {
-    case '+':
-      return createToken(TokenKind.Plus, '+', start, currentPosition(state));
-    case '-':
-      return createToken(TokenKind.Minus, '-', start, currentPosition(state));
-    case '*':
-      return createToken(TokenKind.Star, '*', start, currentPosition(state));
-    case '/':
-      return createToken(TokenKind.Slash, '/', start, currentPosition(state));
-    case '%':
-      return createToken(TokenKind.Percent, '%', start, currentPosition(state));
-    case '^':
-      return createToken(TokenKind.Caret, '^', start, currentPosition(state));
-    case '#':
-      return createToken(TokenKind.Hash, '#', start, currentPosition(state));
-    case '<':
-      return createToken(TokenKind.Less, '<', start, currentPosition(state));
-    case '>':
-      return createToken(TokenKind.Greater, '>', start, currentPosition(state));
-    case '=':
-      return createToken(TokenKind.Assign, '=', start, currentPosition(state));
-    case ':':
-      return createToken(TokenKind.Colon, ':', start, currentPosition(state));
     case '.':
-      return createToken(TokenKind.Dot, '.', start, currentPosition(state));
+      if (isDigit(next)) return scanNumber(state);
+      if (next !== '.') return emit(state, TokenKind.Dot, '.');
+      if (peek(state, 2) === '.') return emit(state, TokenKind.Vararg, '...');
+      if (peek(state, 2) === '=') return emit(state, TokenKind.ConcatAssign, '..=');
+      return emit(state, TokenKind.Concat, '..');
+    case '=':
+      return next === '=' ? emit(state, TokenKind.Equal, '==') : emit(state, TokenKind.Assign, '=');
+    case '~':
+      return next === '=' ? emit(state, TokenKind.NotEqual, '~=') : emit(state, TokenKind.Error, char);
+    case '<':
+      return next === '=' ? emit(state, TokenKind.LessEqual, '<=') : emit(state, TokenKind.Less, '<');
+    case '>':
+      return next === '=' ? emit(state, TokenKind.GreaterEqual, '>=') : emit(state, TokenKind.Greater, '>');
+    case ':':
+      return next === ':' ? emit(state, TokenKind.DoubleColon, '::') : emit(state, TokenKind.Colon, ':');
+    case '-':
+      if (next === '>') return emit(state, TokenKind.Arrow, '->');
+      return next === '=' ? emit(state, TokenKind.MinusAssign, '-=') : emit(state, TokenKind.Minus, '-');
+    case '/':
+      if (next === '=') return emit(state, TokenKind.SlashAssign, '/=');
+      if (next !== '/') return emit(state, TokenKind.Slash, '/');
+      return peek(state, 2) === '='
+        ? emit(state, TokenKind.DoubleSlashAssign, '//=')
+        : emit(state, TokenKind.DoubleSlash, '//');
+    case '+':
+      return next === '=' ? emit(state, TokenKind.PlusAssign, '+=') : emit(state, TokenKind.Plus, '+');
+    case '*':
+      return next === '=' ? emit(state, TokenKind.StarAssign, '*=') : emit(state, TokenKind.Star, '*');
+    case '%':
+      return next === '=' ? emit(state, TokenKind.PercentAssign, '%=') : emit(state, TokenKind.Percent, '%');
+    case '^':
+      return next === '=' ? emit(state, TokenKind.CaretAssign, '^=') : emit(state, TokenKind.Caret, '^');
+    case '#':
+      return emit(state, TokenKind.Hash, '#');
     case '?':
-      return createToken(TokenKind.Question, '?', start, currentPosition(state));
+      return emit(state, TokenKind.Question, '?');
     case '&':
-      return createToken(TokenKind.Ampersand, '&', start, currentPosition(state));
+      return emit(state, TokenKind.Ampersand, '&');
     case '|':
-      return createToken(TokenKind.Pipe, '|', start, currentPosition(state));
+      return emit(state, TokenKind.Pipe, '|');
     case '(':
-      return createToken(TokenKind.LeftParen, '(', start, currentPosition(state));
+      return emit(state, TokenKind.LeftParen, '(');
     case ')':
-      return createToken(TokenKind.RightParen, ')', start, currentPosition(state));
+      return emit(state, TokenKind.RightParen, ')');
     case '[':
-      return createToken(TokenKind.LeftBracket, '[', start, currentPosition(state));
+      return emit(state, TokenKind.LeftBracket, '[');
     case ']':
-      return createToken(TokenKind.RightBracket, ']', start, currentPosition(state));
+      return emit(state, TokenKind.RightBracket, ']');
     case '{':
-      return createToken(TokenKind.LeftBrace, '{', start, currentPosition(state));
+      return emit(state, TokenKind.LeftBrace, '{');
     case '}':
-      return createToken(TokenKind.RightBrace, '}', start, currentPosition(state));
+      return emit(state, TokenKind.RightBrace, '}');
     case ',':
-      return createToken(TokenKind.Comma, ',', start, currentPosition(state));
+      return emit(state, TokenKind.Comma, ',');
     case ';':
-      return createToken(TokenKind.Semicolon, ';', start, currentPosition(state));
+      return emit(state, TokenKind.Semicolon, ';');
     default:
-      return createToken(TokenKind.Error, char, start, currentPosition(state));
+      return emit(state, TokenKind.Error, char);
   }
 };
 
 const scanToken = (state: LexerState): Token => {
-  const char = peek(state);
+  const code = state.source.charCodeAt(state.offset);
+  if (isIdentifierStart(code)) return scanIdentifierOrKeyword(state);
+  if (code === SPACE || code === TAB || code === CR) return scanWhitespace(state);
+  if (code === LF) return scanNewline(state);
+  if (code === DASH && state.source.charCodeAt(state.offset + 1) === DASH) return scanComment(state);
+  if (code >= ZERO && code <= NINE) return scanNumber(state);
+  if (code === DOUBLE_QUOTE || code === SINGLE_QUOTE) return scanString(state, code);
 
-  if (isWhitespace(char)) return scanWhitespace(state);
-  if (isNewline(char)) return scanNewline(state);
-  if (char === '-' && peek(state, 1) === '-') return scanComment(state);
-  if (isDigit(char)) return scanNumber(state);
-  if (char === '"' || char === "'") return scanString(state, char);
-
-  if (char === '[') {
+  if (code === LEFT_BRACKET) {
     const level = countLongBracketLevel(state);
     if (level >= 0) return scanLongString(state, level);
   }
 
-  if (char === '`') return scanInterpolatedString(state);
-  if (isAlpha(char)) return scanIdentifierOrKeyword(state);
-
+  if (code === BACKTICK) return scanInterpolatedString(state);
   return scanPunctuation(state);
+};
+
+const createState = (source: string): LexerState => ({
+  source,
+  'offset': 0,
+  'line': 1,
+  'column': 1,
+  'position': createPosition(0, 1, 1),
+});
+
+const endOfFile = (state: LexerState): Token =>
+  createToken(TokenKind.EOF, '', currentPosition(state), currentPosition(state));
+
+/**
+ * Lexes source code for the parser: whitespace and newlines advance the cursor without becoming tokens, and comments
+ * are collected separately from the significant token stream, which ends with an EOF token.
+ */
+export const lex = (source: string): LexedSource => {
+  const state = createState(source);
+  const tokens: Token[] = [];
+  const comments: Token[] = [];
+
+  while (state.offset < source.length) {
+    const code = source.charCodeAt(state.offset);
+    if (code === SPACE || code === TAB || code === CR) {
+      state.offset++;
+      state.column++;
+    } else if (code === LF) {
+      state.offset++;
+      state.line++;
+      state.column = 1;
+    } else {
+      const token = scanToken(state);
+      if (token.kind === TokenKind.Comment) comments.push(token);
+      else tokens.push(token);
+    }
+  }
+
+  tokens.push(endOfFile(state));
+  return { tokens, comments };
 };
 
 /** Creates a new Lexer instance for tokenizing Luau source code. */
 export const createLexer = (source: string): Lexer => {
-  const state: LexerState = {
-    source,
-    'offset': 0,
-    'line': 1,
-    'column': 1,
+  const state = createState(source);
+
+  const tokens = (): Token[] => {
+    const collected: Token[] = [];
+    while (state.offset < source.length) collected.push(scanToken(state));
+    collected.push(endOfFile(state));
+    return collected;
   };
-
-  const tokenize = function* (): Generator<Token> {
-    while (state.offset < source.length) yield scanToken(state);
-
-    yield createToken(TokenKind.EOF, '', currentPosition(state), currentPosition(state));
-  };
-
-  const tokens = (): Token[] => [...tokenize()];
 
   return {
     source,
     tokens,
-    tokenize,
   };
 };
 
@@ -452,10 +446,4 @@ export const createLexer = (source: string): Lexer => {
 export const tokenize = (source: string): Token[] => createLexer(source).tokens();
 
 /** Tokenizes source code and filters out trivia tokens (whitespace, newlines, comments). */
-export const tokenizeWithoutTrivia = (source: string): Token[] => {
-  const allTokens = tokenize(source);
-  return allTokens.filter(
-    token =>
-      token.kind !== TokenKind.Whitespace && token.kind !== TokenKind.Newline && token.kind !== TokenKind.Comment,
-  );
-};
+export const tokenizeWithoutTrivia = (source: string): Token[] => lex(source).tokens;

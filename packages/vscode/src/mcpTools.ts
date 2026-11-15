@@ -5,8 +5,25 @@
 
 import * as vscode from 'vscode';
 
+import { escapeLuaString, toLuaLookup } from '#extension/utils/gamePath';
+import { catchTool, guardTool } from '#extension/utils/toolGuard';
+import {
+  isBlockListInput,
+  isCreateInstanceInput,
+  isEmptyInput,
+  isExecuteCodeInput,
+  isPathInput,
+  isPropertiesInput,
+  isRemoteCallsInput,
+  isReparentInput,
+  isSaveInstanceInput,
+  isSetPropertyInput,
+  isTreeInput,
+} from '#extension/utils/toolInputs';
+
 import type { LanguageClient } from 'vscode-languageclient/node';
 import type { GameTreeNode } from '@typings/gameTree';
+import type { ToolHandler, ToolInputGuard, TreeFormat } from '@typings/mcpTools';
 import type { PropertyEntry } from '@typings/properties';
 
 /**
@@ -16,39 +33,10 @@ const textResult = (text: string): vscode.LanguageModelToolResult =>
   new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
 
 /**
- * Builds a tool result describing a caught error.
+ * Checks that an optional tool path is present and non-empty.
  */
-const errorResult = (error: unknown): vscode.LanguageModelToolResult =>
-  textResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
-
-/**
- * Checks that a tool input value is a non-empty path array.
- */
-const isPath = (value: unknown): value is string[] => Array.isArray(value) && value.length > 0;
-
-/**
- * Escapes a value for safe embedding inside a Lua string literal.
- */
-const escapeLua = (value: string): string =>
-  value
-    .replace(/\\/g, '\\\\')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t')
-    .replace(/"/g, '\\"')
-    .replace(/\0/g, '\\000');
-
-/**
- * Builds a Lua expression that resolves an instance from path segments.
- */
-const luaLookup = (segments: ReadonlyArray<string>): string => {
-  const serviceName = segments[0];
-  if (serviceName === undefined) return 'nil';
-
-  let lookup = `game:GetService("${escapeLua(serviceName)}")`;
-  for (const segment of segments.slice(1)) lookup += `:FindFirstChild("${escapeLua(segment)}")`;
-  return lookup;
-};
+const isPath = (path: ReadonlyArray<string> | undefined): path is ReadonlyArray<string> =>
+  path !== undefined && path.length > 0;
 
 /**
  * Renders a game tree node and its children as an indented text tree.
@@ -67,7 +55,7 @@ const formatNode = (node: GameTreeNode, indent: number = 0): string => {
 /**
  * Renders a list of game tree nodes as JSON or an indented text tree.
  */
-const renderNodes = (nodes: ReadonlyArray<GameTreeNode>, format: 'tree' | 'json'): string =>
+const renderNodes = (nodes: ReadonlyArray<GameTreeNode>, format: TreeFormat): string =>
   format === 'json' ? JSON.stringify(nodes, null, 2) : nodes.map(node => formatNode(node)).join('\n');
 
 /**
@@ -89,468 +77,347 @@ export const registerMcpTools = (
   client: LanguageClient,
   isConnected: () => boolean,
 ): void => {
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_bridge_status', {
-      'invoke': async () => {
-        try {
-          const response = await client.sendRequest<{
-            isRunning: boolean;
-            isConnected: boolean;
-            executorName?: string;
-          }>('custom/executorStatus');
+  const register = <Input>(name: string, isInput: ToolInputGuard<Input>, handler: ToolHandler<Input>): void =>
+    void context.subscriptions.push(
+      vscode.lm.registerTool(name, {
+        'invoke': async options =>
+          textResult(isInput(options.input) ? await handler(options.input) : `Error: invalid input for ${name}`),
+      }),
+    );
 
-          return textResult(
-            JSON.stringify(
-              {
-                'isRunning': response.isRunning,
-                'isConnected': response.isConnected,
-                'executorName': response.executorName ?? null,
-              },
-              null,
-              2,
-            ),
-          );
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+  register(
+    'rbxdev_get_bridge_status',
+    isEmptyInput,
+    catchTool(async () => {
+      const response = await client.sendRequest<{
+        isRunning: boolean;
+        isConnected: boolean;
+        executorName?: string;
+      }>('custom/executorStatus');
+
+      return JSON.stringify(
+        {
+          'isRunning': response.isRunning,
+          'isConnected': response.isConnected,
+          'executorName': response.executorName ?? null,
+        },
+        null,
+        2,
+      );
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_execute_code', {
-      'invoke': async options => {
-        const code = (options.input as { code?: string })?.code;
-        if (typeof code !== 'string' || code.trim() === '') return textResult('Error: code parameter is required');
+  register(
+    'rbxdev_execute_code',
+    isExecuteCodeInput,
+    catchTool(async ({ code }) => {
+      if (code === undefined || code.trim() === '') return 'Error: code parameter is required';
 
-        if (isConnected() === false) return textResult('Error: No executor connected. Connect an executor first.');
+      if (isConnected() === false) return 'Error: No executor connected. Connect an executor first.';
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            result?: string;
-            error?: { message: string; stack?: string };
-          }>('custom/execute', { code });
+      const result = await client.sendRequest<{
+        success: boolean;
+        result?: string;
+        error?: { message: string; stack?: string };
+      }>('custom/execute', { code });
 
-          if (result.success === true) return textResult(result.result ?? '(no output)');
+      if (result.success === true) return result.result ?? '(no output)';
 
-          const stack = result.error?.stack;
-          return textResult(
-            `Execution error: ${result.error?.message ?? 'Unknown error'}${stack !== undefined && stack !== '' ? `\n\nStack trace:\n${stack}` : ''}`,
-          );
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      const stack = result.error?.stack;
+      return `Execution error: ${result.error?.message ?? 'Unknown error'}${stack !== undefined && stack !== '' ? `\n\nStack trace:\n${stack}` : ''}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_game_tree', {
-      'invoke': async options => {
-        const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
-        const path = input?.path;
-        const format = input?.format ?? 'tree';
+  register(
+    'rbxdev_get_game_tree',
+    isTreeInput,
+    catchTool(async input => {
+      const path = input.path;
+      const format = input.format ?? 'tree';
 
-        try {
-          const response = await client.sendRequest<{
-            success: boolean;
-            nodes?: GameTreeNode[];
-            node?: GameTreeNode;
-            error?: string;
-          }>('custom/getGameTree', { path });
+      const response = await client.sendRequest<{
+        success: boolean;
+        nodes?: GameTreeNode[];
+        node?: GameTreeNode;
+        error?: string;
+      }>('custom/getGameTree', { path });
 
-          if (response.success === false) return textResult(`Error: ${response.error ?? 'Failed to get game tree'}`);
+      if (response.success === false) return `Error: ${response.error ?? 'Failed to get game tree'}`;
 
-          if (path !== undefined && path.length > 0 && response.node !== undefined)
-            return textResult(format === 'json' ? JSON.stringify(response.node, null, 2) : formatNode(response.node));
+      if (path !== undefined && path.length > 0 && response.node !== undefined)
+        return format === 'json' ? JSON.stringify(response.node, null, 2) : formatNode(response.node);
 
-          if (response.nodes !== undefined) {
-            const text = renderNodes(response.nodes, format);
-            return textResult(text === '' ? 'No game tree data available' : text);
-          }
+      if (response.nodes !== undefined) {
+        const text = renderNodes(response.nodes, format);
+        return text === '' ? 'No game tree data available' : text;
+      }
 
-          return textResult('No game tree data available');
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      return 'No game tree data available';
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_properties', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_get_properties',
+    isPropertiesInput,
+    guardTool(isConnected, async input => {
+      const path = input.path;
 
-        const input = options.input as { path?: string[]; properties?: string[] } | undefined;
-        const path = input?.path;
+      if (isPath(path) === false) return 'Error: path parameter is required (array of strings)';
 
-        if (isPath(path) === false) return textResult('Error: path parameter is required (array of strings)');
+      const result = await client.sendRequest<{
+        success: boolean;
+        properties?: PropertyEntry[];
+        error?: string;
+      }>('custom/requestProperties', { path, 'properties': input.properties });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            properties?: PropertyEntry[];
-            error?: string;
-          }>('custom/requestProperties', { path, 'properties': input?.properties });
-
-          if (result.success === true && result.properties !== undefined) {
-            const formatted = result.properties.map(formatProperty).join('\n');
-            return textResult(formatted === '' ? 'No properties returned' : formatted);
-          }
-          return textResult(`Error: ${result.error ?? 'Failed to get properties'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true && result.properties !== undefined) {
+        const formatted = result.properties.map(formatProperty).join('\n');
+        return formatted === '' ? 'No properties returned' : formatted;
+      }
+      return `Error: ${result.error ?? 'Failed to get properties'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_set_property', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_set_property',
+    isSetPropertyInput,
+    guardTool(isConnected, async input => {
+      const path = input.path;
 
-        const input = options.input as
-          | {
-              path?: string[];
-              property?: string;
-              value?: string;
-              valueType?: string;
-            }
-          | undefined;
-        const path = input?.path;
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      if (input.property === undefined || input.value === undefined || input.valueType === undefined)
+        return 'Error: property, value, and valueType parameters are required';
 
-        if (
-          typeof input?.property !== 'string' ||
-          typeof input?.value !== 'string' ||
-          typeof input?.valueType !== 'string'
-        )
-          return textResult('Error: property, value, and valueType parameters are required');
+      const result = await client.sendRequest<{
+        success: boolean;
+        error?: string;
+      }>('custom/setProperty', {
+        path,
+        'property': input.property,
+        'value': input.value,
+        'valueType': input.valueType,
+      });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            error?: string;
-          }>('custom/setProperty', {
-            path,
-            'property': input.property,
-            'value': input.value,
-            'valueType': input.valueType,
-          });
-
-          if (result.success === true) return textResult(`Successfully set ${input.property} to ${input.value}`);
-          return textResult(`Error: ${result.error ?? 'Failed to set property'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Successfully set ${input.property} to ${input.value}`;
+      return `Error: ${result.error ?? 'Failed to set property'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_teleport_player', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_teleport_player',
+    isPathInput,
+    guardTool(isConnected, async ({ path }) => {
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        const path = (options.input as { path?: string[] } | undefined)?.path;
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      const result = await client.sendRequest<{
+        success: boolean;
+        error?: string;
+      }>('custom/teleportTo', { path });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            error?: string;
-          }>('custom/teleportTo', { path });
-
-          if (result.success === true) return textResult(`Successfully teleported to ${path.join('.')}`);
-          return textResult(`Error: ${result.error ?? 'Failed to teleport'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Successfully teleported to ${path.join('.')}`;
+      return `Error: ${result.error ?? 'Failed to teleport'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_delete_instance', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_delete_instance',
+    isPathInput,
+    guardTool(isConnected, async ({ path }) => {
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        const path = (options.input as { path?: string[] } | undefined)?.path;
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      const confirmed = await vscode.window.showWarningMessage(
+        `Delete ${path.join('.')}? This cannot be undone.`,
+        { 'modal': true },
+        'Delete',
+      );
+      if (confirmed !== 'Delete') return 'Delete cancelled by user';
 
-        try {
-          const confirmed = await vscode.window.showWarningMessage(
-            `Delete ${path.join('.')}? This cannot be undone.`,
-            { 'modal': true },
-            'Delete',
-          );
-          if (confirmed !== 'Delete') return textResult('Delete cancelled by user');
+      const result = await client.sendRequest<{
+        success: boolean;
+        error?: string;
+      }>('custom/deleteInstance', { path });
 
-          const result = await client.sendRequest<{
-            success: boolean;
-            error?: string;
-          }>('custom/deleteInstance', { path });
-
-          if (result.success === true) return textResult(`Successfully deleted ${path.join('.')}`);
-          return textResult(`Error: ${result.error ?? 'Failed to delete instance'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Successfully deleted ${path.join('.')}`;
+      return `Error: ${result.error ?? 'Failed to delete instance'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_reparent_instance', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_reparent_instance',
+    isReparentInput,
+    guardTool(isConnected, async ({ sourcePath, targetPath }) => {
+      if (isPath(sourcePath) === false) return 'Error: sourcePath parameter is required';
+      if (isPath(targetPath) === false) return 'Error: targetPath parameter is required';
 
-        const input = options.input as { sourcePath?: string[]; targetPath?: string[] } | undefined;
-        const sourcePath = input?.sourcePath;
-        const targetPath = input?.targetPath;
+      const result = await client.sendRequest<{
+        success: boolean;
+        error?: string;
+      }>('custom/reparentInstance', { sourcePath, targetPath });
 
-        if (isPath(sourcePath) === false) return textResult('Error: sourcePath parameter is required');
-        if (isPath(targetPath) === false) return textResult('Error: targetPath parameter is required');
-
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            error?: string;
-          }>('custom/reparentInstance', { sourcePath, targetPath });
-
-          if (result.success === true)
-            return textResult(`Successfully moved ${sourcePath.join('.')} to ${targetPath.join('.')}`);
-          return textResult(`Error: ${result.error ?? 'Failed to reparent instance'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Successfully moved ${sourcePath.join('.')} to ${targetPath.join('.')}`;
+      return `Error: ${result.error ?? 'Failed to reparent instance'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_children', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_get_children',
+    isTreeInput,
+    guardTool(isConnected, async input => {
+      const path = input.path;
 
-        const input = options.input as { path?: string[]; format?: 'tree' | 'json' } | undefined;
-        const path = input?.path;
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      const format = input.format ?? 'tree';
 
-        const format = input?.format ?? 'tree';
+      const result = await client.sendRequest<{
+        success: boolean;
+        children?: GameTreeNode[];
+        error?: string;
+      }>('custom/requestChildren', { path });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            children?: GameTreeNode[];
-            error?: string;
-          }>('custom/requestChildren', { path });
-
-          if (result.success === true && result.children !== undefined) {
-            const text = renderNodes(result.children, format);
-            return textResult(text === '' ? 'No children' : text);
-          }
-          return textResult(`Error: ${result.error ?? 'Failed to get children'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true && result.children !== undefined) {
+        const text = renderNodes(result.children, format);
+        return text === '' ? 'No children' : text;
+      }
+      return `Error: ${result.error ?? 'Failed to get children'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_script_source', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_get_script_source',
+    isPathInput,
+    guardTool(isConnected, async ({ path }) => {
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        const path = (options.input as { path?: string[] } | undefined)?.path;
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      const result = await client.sendRequest<{
+        success: boolean;
+        source?: string;
+        scriptType?: string;
+        error?: string;
+      }>('custom/getScriptSource', { path });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            source?: string;
-            scriptType?: string;
-            error?: string;
-          }>('custom/getScriptSource', { path });
-
-          if (result.success === true && result.source !== undefined) {
-            const header = result.scriptType !== undefined ? `-- ${result.scriptType}: ${path.join('.')}\n\n` : '';
-            return textResult(header + result.source);
-          }
-          return textResult(`Error: ${result.error ?? 'Failed to get script source'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true && result.source !== undefined) {
+        const header = result.scriptType !== undefined ? `-- ${result.scriptType}: ${path.join('.')}\n\n` : '';
+        return header + result.source;
+      }
+      return `Error: ${result.error ?? 'Failed to get script source'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_create_instance', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_create_instance',
+    isCreateInstanceInput,
+    guardTool(isConnected, async input => {
+      if (input.className === undefined || input.className.trim() === '')
+        return 'Error: className parameter is required';
 
-        const input = options.input as
-          | {
-              className?: string;
-              parentPath?: string[];
-              name?: string;
-            }
-          | undefined;
+      const parentPath = input.parentPath;
+      if (isPath(parentPath) === false) return 'Error: parentPath parameter is required';
 
-        if (typeof input?.className !== 'string' || input.className.trim() === '')
-          return textResult('Error: className parameter is required');
+      const result = await client.sendRequest<{
+        success: boolean;
+        instanceName?: string;
+        error?: string;
+      }>('custom/createInstance', {
+        'className': input.className,
+        parentPath,
+        'name': input.name,
+      });
 
-        const parentPath = input.parentPath;
-        if (isPath(parentPath) === false) return textResult('Error: parentPath parameter is required');
-
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            instanceName?: string;
-            error?: string;
-          }>('custom/createInstance', {
-            'className': input.className,
-            parentPath,
-            'name': input.name,
-          });
-
-          if (result.success === true)
-            return textResult(
-              `Successfully created ${result.instanceName} (${input.className}) in ${parentPath.join('.')}`,
-            );
-          return textResult(`Error: ${result.error ?? 'Failed to create instance'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true)
+        return `Successfully created ${result.instanceName} (${input.className}) in ${parentPath.join('.')}`;
+      return `Error: ${result.error ?? 'Failed to create instance'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_clone_instance', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_clone_instance',
+    isPathInput,
+    guardTool(isConnected, async ({ path }) => {
+      if (isPath(path) === false) return 'Error: path parameter is required';
 
-        const path = (options.input as { path?: string[] } | undefined)?.path;
-        if (isPath(path) === false) return textResult('Error: path parameter is required');
+      const result = await client.sendRequest<{
+        success: boolean;
+        cloneName?: string;
+        error?: string;
+      }>('custom/cloneInstance', { path });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            cloneName?: string;
-            error?: string;
-          }>('custom/cloneInstance', { path });
-
-          if (result.success === true)
-            return textResult(`Successfully cloned ${path.join('.')} as ${result.cloneName}`);
-          return textResult(`Error: ${result.error ?? 'Failed to clone instance'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Successfully cloned ${path.join('.')} as ${result.cloneName}`;
+      return `Error: ${result.error ?? 'Failed to clone instance'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_get_remote_calls', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_get_remote_calls',
+    isRemoteCallsInput,
+    guardTool(isConnected, async input => {
+      const limit = input.limit ?? 50;
 
-        const input = options.input as { limit?: number } | undefined;
-        const limit = input?.limit ?? 50;
+      const result = await client.sendRequest<{
+        success: boolean;
+        calls?: Array<{
+          remoteName: string;
+          remotePath: string[];
+          remoteType: string;
+          method: string;
+          arguments: string;
+          code: string;
+          timestamp: number;
+        }>;
+      }>('custom/getRemoteSpyCalls', { limit });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            calls?: Array<{
-              remoteName: string;
-              remotePath: string[];
-              remoteType: string;
-              method: string;
-              arguments: string;
-              code: string;
-              timestamp: number;
-            }>;
-          }>('custom/getRemoteSpyCalls', { limit });
+      if (result.success === true && result.calls !== undefined) {
+        if (result.calls.length === 0) return 'No remote calls captured. Make sure Remote Spy is enabled.';
 
-          if (result.success === true && result.calls !== undefined) {
-            if (result.calls.length === 0)
-              return textResult('No remote calls captured. Make sure Remote Spy is enabled.');
+        const formatted = result.calls
+          .map(call => {
+            const time = new Date(call.timestamp * 1000).toLocaleTimeString();
+            return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Code:\n${call.code}`;
+          })
+          .join('\n\n');
 
-            const formatted = result.calls
-              .map(call => {
-                const time = new Date(call.timestamp * 1000).toLocaleTimeString();
-                return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Code:\n${call.code}`;
-              })
-              .join('\n\n');
-
-            return textResult(`Recent remote calls (${result.calls.length}):\n\n${formatted}`);
-          }
-          return textResult('Failed to get remote calls');
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+        return `Recent remote calls (${result.calls.length}):\n\n${formatted}`;
+      }
+      return 'Failed to get remote calls';
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_set_remote_spy_block_list', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_set_remote_spy_block_list',
+    isBlockListInput,
+    guardTool(isConnected, async ({ blocks }) => {
+      if (blocks === undefined) return 'Error: blocks parameter is required (array)';
 
-        const input = options.input as { blocks: Array<{ type: 'path' | 'name'; value: string }> };
-        if (Array.isArray(input?.blocks) === false) return textResult('Error: blocks parameter is required (array)');
+      const result = await client.sendRequest<{ success: boolean; error?: string }>('custom/setRemoteSpyBlockList', {
+        blocks,
+      });
 
-        try {
-          const result = await client.sendRequest<{ success: boolean; error?: string }>(
-            'custom/setRemoteSpyBlockList',
-            { 'blocks': input.blocks },
-          );
-
-          if (result.success === true) return textResult(`Block list updated (${input.blocks.length} entries)`);
-          return textResult(`Failed: ${result.error ?? 'Unknown error'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return `Block list updated (${blocks.length} entries)`;
+      return `Failed: ${result.error ?? 'Unknown error'}`;
     }),
   );
 
-  context.subscriptions.push(
-    vscode.lm.registerTool('rbxdev_save_instance', {
-      'invoke': async options => {
-        if (isConnected() === false) return textResult('Error: No executor connected');
+  register(
+    'rbxdev_save_instance',
+    isSaveInstanceInput,
+    guardTool(isConnected, async input => {
+      const fileName = input.fileName ?? 'game.rbxl';
+      const decompile = input.decompile !== false;
 
-        const input = options.input as { path?: string[]; fileName?: string; decompile?: boolean };
-        const fileName = input?.fileName ?? 'game.rbxl';
-        const decompile = input?.decompile !== false;
+      const parts = [`FilePath = "${escapeLuaString(fileName)}"`, `Decompile = ${decompile}`];
+      if (isPath(input.path)) parts.push(`Object = ${toLuaLookup(input.path)}`);
 
-        const parts = [`FilePath = "${escapeLua(fileName)}"`, `Decompile = ${decompile}`];
-        if (input?.path !== undefined && input.path.length > 0) parts.push(`Object = ${luaLookup(input.path)}`);
+      const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${parts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
 
-        const code = `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${parts.join(', ')}})\nif ok then return "Saved to ${escapeLua(fileName)}" else return "Error: " .. tostring(err) end`;
+      const result = await client.sendRequest<{
+        success: boolean;
+        result?: string;
+        error?: { message: string };
+      }>('custom/execute', { code });
 
-        try {
-          const result = await client.sendRequest<{
-            success: boolean;
-            result?: string;
-            error?: { message: string };
-          }>('custom/execute', { code });
-
-          if (result.success === true) return textResult(result.result ?? `Save initiated to ${fileName}`);
-          return textResult(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
-        } catch (error) {
-          return errorResult(error);
-        }
-      },
+      if (result.success === true) return result.result ?? `Save initiated to ${fileName}`;
+      return `Save failed: ${result.error?.message ?? 'Unknown error'}`;
     }),
   );
 

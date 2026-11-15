@@ -1,5 +1,6 @@
-import { walk } from '@parser/visitor';
 import { SemanticTokenModifiers, SemanticTokensBuilder, SemanticTokenTypes } from 'vscode-languageserver';
+
+import { walk } from '@parser/visitor';
 
 import type { Chunk, Identifier } from '@typings/ast';
 import type { TokenInfo } from '@typings/handlers';
@@ -223,15 +224,14 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
     length: number,
     tokenType: number,
     modifiers = 0,
-  ) => {
-    tokens.push({
+  ) =>
+    void tokens.push({
       'line': node.range.start.line - 1,
       'character': node.range.start.column - 1,
       length,
       tokenType,
       modifiers,
     });
-  };
 
   const classifyIdentifier = (ident: Identifier, isDeclaration: boolean, isMethodCall: boolean): void => {
     const name = ident.name;

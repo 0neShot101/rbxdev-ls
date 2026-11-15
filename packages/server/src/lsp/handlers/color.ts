@@ -1,5 +1,5 @@
 import type { ColorMatch } from '@typings/handlers';
-import type { Connection, TextDocuments } from 'vscode-languageserver';
+import type { Connection, Position, TextDocuments } from 'vscode-languageserver';
 import type {
   ColorInformation,
   ColorPresentation,
@@ -7,6 +7,15 @@ import type {
   DocumentColorParams,
 } from 'vscode-languageserver-protocol';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
+
+/** Parses a regex capture that the pattern guarantees is a decimal number. */
+const parseComponent = (capture: string | undefined): number => (capture === undefined ? 0 : parseFloat(capture));
+
+/** Formats a 0-1 component with at most three decimals, trimming trailing zeros. */
+const formatComponent = (value: number): string => {
+  const trimmed = value.toFixed(3).replace(/\.?0+$/, '');
+  return trimmed === '' ? '0' : trimmed;
+};
 
 /**
  * Finds all Color3 constructor calls in source code and extracts their color values.
@@ -20,9 +29,9 @@ export const findColors = (content: string): ColorMatch[] => {
   let match: RegExpExecArray | null;
 
   while ((match = fromRGBRegex.exec(content)) !== null) {
-    const r = parseFloat(match[1]!) / 255;
-    const g = parseFloat(match[2]!) / 255;
-    const b = parseFloat(match[3]!) / 255;
+    const r = parseComponent(match[1]) / 255;
+    const g = parseComponent(match[2]) / 255;
+    const b = parseComponent(match[3]) / 255;
     colors.push({
       'start': match.index,
       'end': match.index + match[0].length,
@@ -37,9 +46,9 @@ export const findColors = (content: string): ColorMatch[] => {
   const newRegex = /Color3\s*\.\s*new\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)/g;
 
   while ((match = newRegex.exec(content)) !== null) {
-    const r = parseFloat(match[1]!);
-    const g = parseFloat(match[2]!);
-    const b = parseFloat(match[3]!);
+    const r = parseComponent(match[1]);
+    const g = parseComponent(match[2]);
+    const b = parseComponent(match[3]);
     colors.push({
       'start': match.index,
       'end': match.index + match[0].length,
@@ -54,7 +63,8 @@ export const findColors = (content: string): ColorMatch[] => {
   const fromHexRegex = /Color3\s*\.\s*fromHex\s*\(\s*["']#?([0-9A-Fa-f]{6})["']\s*\)/g;
 
   while ((match = fromHexRegex.exec(content)) !== null) {
-    const hex = match[1]!;
+    const hex = match[1];
+    if (hex === undefined) continue;
     const r = parseInt(hex.substring(0, 2), 16) / 255;
     const g = parseInt(hex.substring(2, 4), 16) / 255;
     const b = parseInt(hex.substring(4, 6), 16) / 255;
@@ -72,7 +82,7 @@ export const findColors = (content: string): ColorMatch[] => {
   return colors;
 };
 
-const offsetToPosition = (content: string, offset: number): { line: number; character: number } => {
+const offsetToPosition = (content: string, offset: number): Position => {
   let line = 0;
   let character = 0;
 
@@ -122,9 +132,9 @@ export const setupColorHandler = (connection: Connection, documents: TextDocumen
       'label': `Color3.fromRGB(${r255}, ${g255}, ${b255})`,
     });
 
-    const r1 = color.red.toFixed(3).replace(/\.?0+$/, '') || '0';
-    const g1 = color.green.toFixed(3).replace(/\.?0+$/, '') || '0';
-    const b1 = color.blue.toFixed(3).replace(/\.?0+$/, '') || '0';
+    const r1 = formatComponent(color.red);
+    const g1 = formatComponent(color.green);
+    const b1 = formatComponent(color.blue);
     presentations.push({
       'label': `Color3.new(${r1}, ${g1}, ${b1})`,
     });

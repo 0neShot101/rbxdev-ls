@@ -8,7 +8,7 @@ import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { BundlerCommand, BundlerResolveOptions, BundlerRunError, CandidateRunner } from '@typings/bundler';
+import type { BundlerCommand, BundlerResolveOptions, CandidateRunner } from '@typings/bundler';
 
 /** The published npm package that ships the bundler CLI. */
 export const BUNDLER_PACKAGE = '@oneshot101/luau-bundler';
@@ -32,14 +32,14 @@ export const commandShims = (command: string, platform: NodeJS.Platform = proces
 /**
  * Determines whether a spawn failure means the executable itself is missing,
  * as opposed to the bundler running and failing.
- * @param error - The error thrown while running a candidate.
+ * @param cause - The error thrown while running a candidate.
  * @returns True when the launcher should fall through to the next candidate.
  */
-export const isMissingExecutableError = (error: unknown): boolean => {
-  if (error instanceof Error === false) return false;
-  const code = (error as BundlerRunError).code;
-  if (code === 'ENOENT' || code === 'EINVAL' || code === CMD_NOT_FOUND_EXIT_CODE) return true;
-  return /ENOENT|EINVAL|is not recognized|command not found/i.test(error.message);
+export const isMissingExecutableError = (cause: unknown): boolean => {
+  if (cause instanceof Error === false) return false;
+  if ('code' in cause && (cause.code === 'ENOENT' || cause.code === 'EINVAL' || cause.code === CMD_NOT_FOUND_EXIT_CODE))
+    return true;
+  return /ENOENT|EINVAL|is not recognized|command not found/i.test(cause.message);
 };
 
 /**
@@ -68,15 +68,11 @@ export const runCandidate: CandidateRunner = (candidate: BundlerCommand, args: s
       useShell ? fullArgs.map(quoteForShell) : fullArgs,
       { cwd, 'windowsHide': true, 'shell': useShell },
       (error, _stdout, stderr) => {
-        if (error !== null) {
-          const message = stderr.trim() !== '' ? stderr.trim() : error.message;
-          const runError = new Error(message) as BundlerRunError;
-          if (typeof error.code === 'string' || typeof error.code === 'number') runError.code = error.code;
-          reject(runError);
-          return;
-        }
+        if (error === null) return resolve();
 
-        resolve();
+        const message = stderr.trim() !== '' ? stderr.trim() : error.message;
+        const code = error.code;
+        reject(code === undefined || code === null ? new Error(message) : Object.assign(new Error(message), { code }));
       },
     );
   });
@@ -98,7 +94,7 @@ export const runBundler = async (
 ): Promise<void> => {
   const missingLaunchers: string[] = [];
 
-  for (const candidate of candidates) {
+  for (const candidate of candidates)
     try {
       await runner(candidate, args, cwd);
       return;
@@ -110,7 +106,6 @@ export const runBundler = async (
 
       throw error;
     }
-  }
 
   throw new Error(
     `Could not find a bundler launcher (${missingLaunchers.join(', ')}). Install Node.js/npm or set rbxdev-ls.bundler.path to a luau-bundler executable.`,

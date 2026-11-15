@@ -7,16 +7,24 @@ import {
   NilType,
   NumberType,
   StringType,
-  type ClassMethod,
-  type ClassProperty,
-  type FunctionParam,
-  type LuauType,
-} from '@typings/types';
+} from '@analyzer/values';
+import {
+  createDataTypeInstances,
+  createGenericRBXScriptSignalType,
+  createRBXScriptSignalType,
+} from '@definitions/dataTypes';
+import { once } from '@utils/once';
+
+import type { ClassMethod, ClassProperty, FunctionParam, LuauType } from '@typings/types';
 
 import type {
+  ClassTypeUnderConstruction,
+  ConvertedRobloxTypes,
   MutableClassData,
   RobloxApiDump,
   RobloxCallback,
+  RobloxClass,
+  RobloxClassCatalogues,
   RobloxDeprecation,
   RobloxEvent,
   RobloxFunction,
@@ -28,12 +36,6 @@ import type {
   RobloxValueType,
 } from '@typings/definitions';
 
-import {
-  createDataTypeInstances,
-  createGenericRBXScriptSignalType,
-  createRBXScriptSignalType,
-} from '@definitions/dataTypes';
-
 const isRobloxProperty = (member: RobloxMember): member is RobloxProperty => member.MemberType === 'Property';
 
 const isRobloxFunction = (member: RobloxMember): member is RobloxFunction => member.MemberType === 'Function';
@@ -42,12 +44,8 @@ const isRobloxEvent = (member: RobloxMember): member is RobloxEvent => member.Me
 
 const isRobloxCallback = (member: RobloxMember): member is RobloxCallback => member.MemberType === 'Callback';
 
-const robloxTypeToLuau = (
-  valueType: RobloxValueType,
-  classMap: Map<string, LuauType>,
-  dataTypeMap: Map<string, LuauType>,
-): LuauType => {
-  if (valueType.Category === 'Primitive') {
+const robloxTypeToLuau = (valueType: RobloxValueType, dataTypeMap: Map<string, LuauType>): LuauType => {
+  if (valueType.Category === 'Primitive')
     switch (valueType.Name) {
       case 'bool':
         return BooleanType;
@@ -67,13 +65,8 @@ const robloxTypeToLuau = (
       default:
         return AnyType;
     }
-  }
 
-  if (valueType.Category === 'Class') {
-    const classType = classMap.get(valueType.Name);
-    if (classType !== undefined) return classType;
-    return { 'kind': 'TypeReference', 'name': valueType.Name };
-  }
+  if (valueType.Category === 'Class') return { 'kind': 'TypeReference', 'name': valueType.Name };
 
   if (valueType.Category === 'DataType') {
     const typeName = valueType.Name.replace(/\?$/, '');
@@ -146,13 +139,9 @@ const robloxTypeToLuau = (
   return AnyType;
 };
 
-const convertParameter = (
-  param: RobloxParameter,
-  classMap: Map<string, LuauType>,
-  dataTypeMap: Map<string, LuauType>,
-): FunctionParam => ({
+const convertParameter = (param: RobloxParameter, dataTypeMap: Map<string, LuauType>): FunctionParam => ({
   'name': param.Name,
-  'type': robloxTypeToLuau(param.Type, classMap, dataTypeMap),
+  'type': robloxTypeToLuau(param.Type, dataTypeMap),
   'optional': param.Default !== undefined,
 });
 
@@ -171,126 +160,119 @@ const getDeprecationInfo = (tags: ReadonlyArray<RobloxTag> | undefined): RobloxD
   return { 'deprecated': true, 'deprecationMessage': message };
 };
 
-/** Converts a complete Roblox API dump to Luau type definitions via multi-pass conversion. */
-export const convertRobloxApiToTypes = (
-  api: RobloxApiDump,
-): {
-  classes: Map<string, LuauType>;
-  enums: Map<string, LuauType>;
-  dataTypes: Map<string, LuauType>;
-} => {
-  const classDataMap = new Map<string, MutableClassData>();
+const hasClassTag = (robloxClass: RobloxClass, tag: string): boolean =>
+  robloxClass.Tags?.some(classTag => classTag === tag) === true;
+
+/** Derives service and creatable class names from Roblox API class tags, preserving upstream class order. */
+export const collectClassCatalogues = (api: RobloxApiDump | undefined): RobloxClassCatalogues => {
+  if (api === undefined) return { 'serviceNames': [], 'creatableClasses': [] };
+
+  const serviceNames = api.Classes.filter(robloxClass => hasClassTag(robloxClass, 'Service')).map(
+    robloxClass => robloxClass.Name,
+  );
+  const creatableClasses = api.Classes.filter(
+    robloxClass => hasClassTag(robloxClass, 'Service') === false && hasClassTag(robloxClass, 'NotCreatable') === false,
+  ).map(robloxClass => robloxClass.Name);
+  return { serviceNames, creatableClasses };
+};
+
+const withDeprecation = <T extends ClassProperty | ClassMethod>(member: T, deprecation: RobloxDeprecation): T => {
+  if (deprecation.deprecated === false) return member;
+  if (deprecation.deprecationMessage === undefined) return { ...member, 'deprecated': true };
+  return { ...member, 'deprecated': true, 'deprecationMessage': deprecation.deprecationMessage };
+};
+
+const convertMembers = (
+  cls: RobloxClass,
+  dataTypes: Map<string, LuauType>,
+): Pick<MutableClassData, 'properties' | 'methods'> => {
+  const properties = new Map<string, ClassProperty>();
+  const methods = new Map<string, ClassMethod>();
+
+  for (const member of cls.Members) {
+    const deprecation = getDeprecationInfo(member.Tags);
+
+    if (isRobloxProperty(member)) {
+      const prop: ClassProperty = {
+        'type': robloxTypeToLuau(member.ValueType, dataTypes),
+        'readonly': member.Tags?.some(tag => tag === 'ReadOnly') === true,
+        'security': 'None',
+      };
+      properties.set(member.Name, withDeprecation(prop, deprecation));
+    }
+
+    if (isRobloxFunction(member)) {
+      const params = member.Parameters.map(parameter => convertParameter(parameter, dataTypes));
+      const returnType = robloxTypeToLuau(member.ReturnType, dataTypes);
+      const method: ClassMethod = { 'func': createFunctionType(params, returnType) };
+      methods.set(member.Name, withDeprecation(method, deprecation));
+    }
+
+    if (isRobloxEvent(member)) {
+      const eventParams = member.Parameters.map(parameter => ({
+        'name': parameter.Name,
+        'type': robloxTypeToLuau(parameter.Type, dataTypes),
+      }));
+      const eventProp: ClassProperty = {
+        'type': createRBXScriptSignalType(eventParams),
+        'readonly': true,
+        'security': 'None',
+      };
+      properties.set(member.Name, withDeprecation(eventProp, deprecation));
+    }
+
+    if (isRobloxCallback(member)) {
+      const params = member.Parameters.map(parameter => convertParameter(parameter, dataTypes));
+      const returnType = robloxTypeToLuau(member.ReturnType, dataTypes);
+      const callbackProp: ClassProperty = {
+        'type': createFunctionType(params, returnType),
+        'readonly': false,
+        'security': 'None',
+      };
+      properties.set(member.Name, withDeprecation(callbackProp, deprecation));
+    }
+  }
+
+  return { properties, methods };
+};
+
+/**
+ * Converts a Roblox API dump to Luau type definitions. Every class exists immediately with its name and superclass;
+ * a class's properties and methods are converted the first time either map is read.
+ */
+export const convertRobloxApiToTypes = (api: RobloxApiDump): ConvertedRobloxTypes => {
   const classes = new Map<string, LuauType>();
+  const constructedClasses = new Map<string, ClassTypeUnderConstruction>();
   const enums = new Map<string, LuauType>();
   const dataTypes = createDataTypeInstances();
 
   for (const cls of api.Classes) {
-    const classData: MutableClassData = {
-      'name': cls.Name,
-      'superclassName': cls.Superclass,
-      'properties': new Map(),
-      'methods': new Map(),
-    };
-    classDataMap.set(cls.Name, classData);
-
-    for (const member of cls.Members) {
-      const deprecation = getDeprecationInfo(member.Tags);
-      const hasStringTag = (tag: string): boolean => member.Tags?.some(t => t === tag) === true;
-
-      if (isRobloxProperty(member)) {
-        const propType = robloxTypeToLuau(member.ValueType, classes, dataTypes);
-        const isReadonly = hasStringTag('ReadOnly');
-        const prop: ClassProperty = {
-          'type': propType,
-          'readonly': isReadonly,
-          'security': 'None',
-        };
-        if (deprecation.deprecated) {
-          (prop as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined)
-            (prop as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-        }
-        classData.properties.set(member.Name, prop);
-      }
-
-      if (isRobloxFunction(member)) {
-        const params = member.Parameters.map(p => convertParameter(p, classes, dataTypes));
-        const returnType = robloxTypeToLuau(member.ReturnType, classes, dataTypes);
-        const method: ClassMethod = {
-          'func': createFunctionType(params, returnType),
-        };
-        if (deprecation.deprecated) {
-          (method as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined)
-            (method as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-        }
-        classData.methods.set(member.Name, method);
-      }
-
-      if (isRobloxEvent(member)) {
-        const eventParams = member.Parameters.map(p => ({
-          'name': p.Name,
-          'type': robloxTypeToLuau(p.Type, classes, dataTypes),
-        }));
-        const signalType = createRBXScriptSignalType(eventParams);
-        const eventProp: ClassProperty = {
-          'type': signalType,
-          'readonly': true,
-          'security': 'None',
-        };
-        if (deprecation.deprecated) {
-          (eventProp as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined)
-            (eventProp as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-        }
-        classData.properties.set(member.Name, eventProp);
-      }
-
-      if (isRobloxCallback(member)) {
-        const params = member.Parameters.map(p => convertParameter(p, classes, dataTypes));
-        const returnType = robloxTypeToLuau(member.ReturnType, classes, dataTypes);
-        const callbackProp: ClassProperty = {
-          'type': createFunctionType(params, returnType),
-          'readonly': false,
-          'security': 'None',
-        };
-        if (deprecation.deprecated) {
-          (callbackProp as { deprecated: boolean }).deprecated = true;
-          if (deprecation.deprecationMessage !== undefined)
-            (callbackProp as { deprecationMessage: string }).deprecationMessage = deprecation.deprecationMessage;
-        }
-        classData.properties.set(member.Name, callbackProp);
-      }
-    }
-  }
-
-  for (const [name, data] of classDataMap) {
-    const classType: LuauType = {
+    const members = once(() => convertMembers(cls, dataTypes));
+    const classType: ClassTypeUnderConstruction = {
       'kind': 'Class',
-      'name': name,
+      'name': cls.Name,
       'superclass': undefined,
-      'properties': data.properties,
-      'methods': data.methods,
+      get 'properties'() {
+        return members().properties;
+      },
+      get 'methods'() {
+        return members().methods;
+      },
       'events': new Map(),
       'tags': [],
     };
-    classes.set(name, classType);
+    constructedClasses.set(cls.Name, classType);
+    classes.set(cls.Name, classType);
   }
 
-  for (const [name, data] of classDataMap)
-    if (data.superclassName !== '<<<ROOT>>>') {
-      const classType = classes.get(name);
-      const superType = classes.get(data.superclassName);
-      if (
-        classType !== undefined &&
-        superType !== undefined &&
-        classType.kind === 'Class' &&
-        superType.kind === 'Class'
-      )
-        (classType as { superclass: LuauType | undefined }).superclass = superType;
+  for (const cls of api.Classes)
+    if (cls.Superclass !== '<<<ROOT>>>') {
+      const classType = constructedClasses.get(cls.Name);
+      const superType = constructedClasses.get(cls.Superclass);
+      if (classType !== undefined && superType !== undefined) classType.superclass = superType;
     }
 
-  injectRemoteMethods(classes, dataTypes);
+  injectRemoteMethods(classes, constructedClasses);
 
   for (const enumDef of api.Enums) {
     const enumItems = new Map<string, { type: LuauType; readonly: boolean; optional: boolean }>();
@@ -306,17 +288,19 @@ export const convertRobloxApiToTypes = (
   return { classes, enums, dataTypes };
 };
 
-const injectRemoteMethods = (classes: Map<string, LuauType>, _dataTypes: Map<string, LuauType>): void => {
+const injectRemoteMethods = (
+  classes: Map<string, LuauType>,
+  constructedClasses: Map<string, ClassTypeUnderConstruction>,
+): void => {
   const playerType: LuauType = classes.get('Player') ?? { 'kind': 'TypeReference', 'name': 'Player' };
   const rbxScriptSignalType = createGenericRBXScriptSignalType();
   const variadicCallback = createFunctionType([{ 'name': '...', 'type': AnyType, 'optional': false }], AnyType, {
     'isVariadic': true,
   });
 
-  const remoteEvent = classes.get('RemoteEvent');
-  if (remoteEvent !== undefined && remoteEvent.kind === 'Class') {
-    const methods = remoteEvent.methods as Map<string, ClassMethod>;
-    const properties = remoteEvent.properties as Map<string, ClassProperty>;
+  const remoteEvent = constructedClasses.get('RemoteEvent');
+  if (remoteEvent !== undefined) {
+    const { methods, properties } = remoteEvent;
 
     methods.set('FireServer', {
       'func': createFunctionType([{ 'name': '...', 'type': AnyType, 'optional': false }], NilType, {
@@ -362,10 +346,9 @@ const injectRemoteMethods = (classes: Map<string, LuauType>, _dataTypes: Map<str
     });
   }
 
-  const remoteFunction = classes.get('RemoteFunction');
-  if (remoteFunction !== undefined && remoteFunction.kind === 'Class') {
-    const methods = remoteFunction.methods as Map<string, ClassMethod>;
-    const properties = remoteFunction.properties as Map<string, ClassProperty>;
+  const remoteFunction = constructedClasses.get('RemoteFunction');
+  if (remoteFunction !== undefined) {
+    const { methods, properties } = remoteFunction;
 
     methods.set('InvokeServer', {
       'func': createFunctionType([{ 'name': '...', 'type': AnyType, 'optional': false }], AnyType, {
@@ -403,10 +386,9 @@ const injectRemoteMethods = (classes: Map<string, LuauType>, _dataTypes: Map<str
     });
   }
 
-  const unreliableRemoteEvent = classes.get('UnreliableRemoteEvent');
-  if (unreliableRemoteEvent !== undefined && unreliableRemoteEvent.kind === 'Class') {
-    const methods = unreliableRemoteEvent.methods as Map<string, ClassMethod>;
-    const properties = unreliableRemoteEvent.properties as Map<string, ClassProperty>;
+  const unreliableRemoteEvent = constructedClasses.get('UnreliableRemoteEvent');
+  if (unreliableRemoteEvent !== undefined) {
+    const { methods, properties } = unreliableRemoteEvent;
 
     methods.set('FireServer', {
       'func': createFunctionType([{ 'name': '...', 'type': AnyType, 'optional': false }], NilType, {

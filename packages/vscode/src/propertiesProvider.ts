@@ -3,8 +3,9 @@
  * Shows properties of the selected instance in the Game Tree
  */
 
-import { Event, EventEmitter, ThemeIcon, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from 'vscode';
+import { EventEmitter, ThemeIcon, TreeItem, TreeItemCollapsibleState } from 'vscode';
 
+import type { Event, TreeDataProvider } from 'vscode';
 import type { PropertyEntry, PropertyItem } from '@typings/properties';
 
 /**

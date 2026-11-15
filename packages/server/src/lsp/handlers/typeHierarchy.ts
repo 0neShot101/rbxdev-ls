@@ -1,5 +1,7 @@
 import { SymbolKind } from 'vscode-languageserver';
 
+import { isNamedItemData } from '@lsp/handlers/itemData';
+
 import type { Chunk, Statement, TypeAnnotation } from '@typings/ast';
 import type { TypeAliasInfo } from '@typings/handlers';
 import type { DocumentManager } from '@typings/lsp';
@@ -36,7 +38,7 @@ export const collectTypeAliases = (chunk: Chunk): TypeAliasInfo[] => {
   const aliases: TypeAliasInfo[] = [];
 
   const walkStatements = (stmts: ReadonlyArray<Statement>): void => {
-    for (const stmt of stmts) {
+    for (const stmt of stmts)
       switch (stmt.kind) {
         case 'TypeAlias':
           aliases.push({
@@ -74,7 +76,6 @@ export const collectTypeAliases = (chunk: Chunk): TypeAliasInfo[] => {
           walkStatements(stmt.body);
           break;
       }
-    }
   };
 
   walkStatements(chunk.body);
@@ -137,8 +138,8 @@ export const setupTypeHierarchyHandler = (connection: Connection, documentManage
   });
 
   connection.languages.typeHierarchy.onSupertypes((params: TypeHierarchySupertypesParams): TypeHierarchyItem[] => {
-    const data = params.item.data as { name: string; uri: string } | undefined;
-    if (data === undefined) return [];
+    const data: unknown = params.item.data;
+    if (isNamedItemData(data) === false) return [];
 
     const document = documentManager.getDocument(data.uri);
     if (document === undefined || document.ast === undefined) return [];
@@ -159,8 +160,8 @@ export const setupTypeHierarchyHandler = (connection: Connection, documentManage
   });
 
   connection.languages.typeHierarchy.onSubtypes((params: TypeHierarchySubtypesParams): TypeHierarchyItem[] => {
-    const data = params.item.data as { name: string; uri: string } | undefined;
-    if (data === undefined) return [];
+    const data: unknown = params.item.data;
+    if (isNamedItemData(data) === false) return [];
 
     const document = documentManager.getDocument(data.uri);
     if (document === undefined || document.ast === undefined) return [];

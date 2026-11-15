@@ -1,5 +1,10 @@
+import { resolveCapabilities } from '@executor/capabilities';
+import { createLiveGameModel } from '@executor/gameTree';
+import { parseClientMessage, parseRemoteSpyPolicyMessage } from '@executor/protocol';
+
 import type {
   BridgeCore,
+  BridgeResult,
   BridgeStatus,
   ChildrenResult,
   CloneInstanceResult,
@@ -22,24 +27,30 @@ import type {
 } from '@typings/bridge';
 import type { ClientCapabilities, ClientType } from '@typings/clientType';
 import type {
+  CreateInstanceMessage,
   GameTreeNode,
+  JsonValue,
   ModuleReference,
   RemoteSpyBlockEntry,
   RemoteSpyCall,
   RemoteSpyPolicyMessage,
   RemoteSpySource,
+  RequestPropertiesMessage,
   RuntimeError,
   ServerMessage,
-  SetRemoteSpyEnabledMessage,
   SetRemoteSpyEnabledResultMessage,
 } from '@typings/protocol';
-import { resolveCapabilities } from '@executor/capabilities';
-import { createLiveGameModel } from '@executor/gameTree';
-import { parseClientMessage, parseRemoteSpyPolicyMessage } from '@executor/protocol';
+import type { Mutable } from '@typings/types';
 
 const MAX_REMOTE_SPY_BUFFER = 500;
 
 const REMOTE_SPY_REQUEST_TIMEOUT_MS = 2000;
+
+const TIMED_OUT: BridgeResult = { 'success': false, 'error': 'Request timed out' };
+
+const isText = (value: JsonValue): value is string => typeof value === 'string';
+
+const describeResult = (result: JsonValue): string => (isText(result) ? result : JSON.stringify(result));
 
 /**
  * Creates the shared bridge core that handles protocol messages, pending request tracking,
@@ -62,6 +73,13 @@ export const createBridgeCore = (
   let clientCapabilities: ClientCapabilities | undefined;
   let status: BridgeStatus = 'stopped';
   let remoteSpyEnabled = false;
+  /**
+   * Settings the editor asked for, kept so they survive a bridge reload that reuses the existing socket.
+   * A hot reload swaps the Luau code but keeps the WebSocket (the bridge adopts it), so the transport never
+   * reports a disconnect, the editor's connect-transition replay never fires, and the fresh Luau module would
+   * otherwise start with auto-refresh off while the editor still believes the tree is auto-refreshing.
+   */
+  let requestedAutoRefresh: { enabled: boolean; intervalMs: number } | undefined;
   let handshakes = 0;
   let spySession = 0;
   let requestedSpyEnabled = false;
@@ -76,7 +94,8 @@ export const createBridgeCore = (
   const pendingTeleports = new Map<string, PendingRequest<TeleportResult>>();
   const pendingDeletes = new Map<string, PendingRequest<DeleteResult>>();
   const pendingReparents = new Map<string, PendingRequest<ReparentResult>>();
-  const pendingChildren = new Map<string, PendingRequest<ChildrenResult> & { readonly path: ReadonlyArray<string> }>();
+  const pendingChildren = new Map<string, PendingRequest<ChildrenResult>>();
+  const childPaths = new Map<string, ReadonlyArray<string>>();
   const pendingScriptSources = new Map<string, PendingRequest<ScriptSourceResult>>();
   const pendingCreateInstances = new Map<string, PendingRequest<CreateInstanceResult>>();
   const pendingCloneInstances = new Map<string, PendingRequest<CloneInstanceResult>>();
@@ -125,17 +144,17 @@ export const createBridgeCore = (
     pendingMap: Map<string, PendingRequest<T>>,
     timeoutMs: number,
     buildMessage: (id: string) => ServerMessage,
-    extra?: Record<string, unknown>,
+    timedOut: T,
   ): Promise<T> =>
-    new Promise((resolve, reject) => {
+    new Promise<T>((resolve, reject) => {
       if (isReady() === false) return reject(new Error('No executor connected'));
       if (executorName === undefined) return reject(new Error('Executor connected but handshake not completed'));
       const id = generateId();
       const timeout = setTimeout(() => {
         pendingMap.delete(id);
-        resolve({ 'success': false, 'error': 'Request timed out' } as T);
+        resolve(timedOut);
       }, timeoutMs);
-      pendingMap.set(id, { resolve, reject, timeout, ...extra } as PendingRequest<T>);
+      pendingMap.set(id, { resolve, reject, timeout });
       sendFn(buildMessage(id));
     });
 
@@ -182,20 +201,24 @@ export const createBridgeCore = (
         setConnected(true);
         setStatus('connected');
         handshakes += 1;
+        /** A second handshake on the same transport means reloaded bridge code inherited the socket. */
+        const isReloaded = handshakes > 1;
+        if (isReloaded && requestedAutoRefresh !== undefined)
+          sendFn({ 'type': 'setAutoRefresh', ...requestedAutoRefresh });
         if (reloadSpy && ownsExecutorSession() && clientCapabilities.capabilities.has('remoteSpy'))
           void restoreSpySession(spySession);
         const clientLabel = clientType === 'studio' ? 'Studio' : 'Executor';
-        log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
+        log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version ?? 'unknown'}`);
         break;
       }
 
-      case 'executeResult':
-        resolvePending(pendingExecutions, message.id, {
-          'success': message.success,
-          ...(message.result !== undefined ? { 'result': message.result } : {}),
-          ...(message.error !== undefined ? { 'error': message.error } : {}),
-        });
+      case 'executeResult': {
+        const outcome: Mutable<ExecuteResult> = { 'success': message.success };
+        if (message.result !== undefined) outcome.result = describeResult(message.result);
+        if (message.error !== undefined) outcome.error = message.error;
+        resolvePending(pendingExecutions, message.id, outcome);
         break;
+      }
 
       case 'gameTree':
         updateGameModel(message.data);
@@ -262,17 +285,14 @@ export const createBridgeCore = (
         break;
 
       case 'childrenResult': {
-        const pending = pendingChildren.get(message.id);
-        if (pending !== undefined) {
-          clearTimeout(pending.timeout);
-          pendingChildren.delete(message.id);
-          if (message.success && message.children !== undefined) mergeChildrenIntoModel(pending.path, message.children);
-          pending.resolve({
-            'success': message.success,
-            'children': message.children ?? undefined,
-            'error': message.error ?? undefined,
-          });
-        }
+        const path = childPaths.get(message.id);
+        if (message.success && message.children !== undefined && path !== undefined)
+          mergeChildrenIntoModel(path, message.children);
+        resolvePending(pendingChildren, message.id, {
+          'success': message.success,
+          'children': message.children ?? undefined,
+          'error': message.error ?? undefined,
+        });
         break;
       }
 
@@ -391,26 +411,33 @@ export const createBridgeCore = (
 
   const requestGameTree = (): void => sendFn({ 'type': 'requestGameTree' });
 
-  const setAutoRefresh = (enabled: boolean, intervalMs: number): void =>
+  const setAutoRefresh = (enabled: boolean, intervalMs: number): void => {
+    requestedAutoRefresh = { enabled, intervalMs };
     sendFn({ 'type': 'setAutoRefresh', enabled, intervalMs });
+  };
 
   const requestProperties = (
     path: ReadonlyArray<string>,
     properties?: ReadonlyArray<string>,
   ): Promise<PropertiesResult> =>
-    createRequest(pendingProperties, 5000, id => ({
-      'type': 'requestProperties' as const,
-      id,
-      'path': [...path],
-      ...(properties !== undefined ? { 'properties': properties as ReadonlyArray<string> } : {}),
-    }));
+    createRequest(
+      pendingProperties,
+      5000,
+      id => {
+        const message: Mutable<RequestPropertiesMessage> = { 'type': 'requestProperties', id, 'path': [...path] };
+        if (properties !== undefined) message.properties = properties;
+        return message;
+      },
+      TIMED_OUT,
+    );
 
   const requestModuleInterface = (moduleRef: ModuleReference): Promise<ModuleInterfaceResult> =>
-    createRequest(pendingModuleInterfaces, 2000, id => ({
-      'type': 'requestModuleInterface' as const,
-      id,
-      moduleRef,
-    }));
+    createRequest(
+      pendingModuleInterfaces,
+      2000,
+      id => ({ 'type': 'requestModuleInterface', id, moduleRef }),
+      TIMED_OUT,
+    );
 
   const setProperty = (
     path: ReadonlyArray<string>,
@@ -418,96 +445,99 @@ export const createBridgeCore = (
     value: string,
     valueType: string,
   ): Promise<SetPropertyResult> =>
-    createRequest(pendingSetProperties, 2000, id => ({
-      'type': 'setProperty' as const,
-      id,
-      'path': [...path],
-      property,
-      value,
-      valueType,
-    }));
+    createRequest(
+      pendingSetProperties,
+      2000,
+      id => ({ 'type': 'setProperty', id, 'path': [...path], property, value, valueType }),
+      TIMED_OUT,
+    );
 
   const teleportTo = (path: ReadonlyArray<string>): Promise<TeleportResult> =>
-    createRequest(pendingTeleports, 2000, id => ({
-      'type': 'teleportTo' as const,
-      id,
-      'path': [...path],
-    }));
+    createRequest(pendingTeleports, 2000, id => ({ 'type': 'teleportTo', id, 'path': [...path] }), TIMED_OUT);
 
   const deleteInstance = (path: ReadonlyArray<string>): Promise<DeleteResult> =>
-    createRequest(pendingDeletes, 2000, id => ({
-      'type': 'deleteInstance' as const,
-      id,
-      'path': [...path],
-    }));
+    createRequest(pendingDeletes, 2000, id => ({ 'type': 'deleteInstance', id, 'path': [...path] }), TIMED_OUT);
 
   const reparentInstance = (
     sourcePath: ReadonlyArray<string>,
     targetPath: ReadonlyArray<string>,
   ): Promise<ReparentResult> =>
-    createRequest(pendingReparents, 2000, id => ({
-      'type': 'reparentInstance' as const,
-      id,
-      'sourcePath': [...sourcePath],
-      'targetPath': [...targetPath],
-    }));
-
-  const requestChildren = (path: ReadonlyArray<string>): Promise<ChildrenResult> =>
     createRequest(
-      pendingChildren,
+      pendingReparents,
       2000,
-      id => ({
-        'type': 'requestChildren' as const,
-        id,
-        'path': [...path],
-      }),
-      { path },
+      id => ({ 'type': 'reparentInstance', id, 'sourcePath': [...sourcePath], 'targetPath': [...targetPath] }),
+      TIMED_OUT,
     );
 
+  const requestChildren = async (path: ReadonlyArray<string>): Promise<ChildrenResult> => {
+    const ids: string[] = [];
+    try {
+      return await createRequest(
+        pendingChildren,
+        2000,
+        id => {
+          ids.push(id);
+          childPaths.set(id, path);
+          return { 'type': 'requestChildren', id, 'path': [...path] };
+        },
+        TIMED_OUT,
+      );
+    } finally {
+      for (const id of ids) childPaths.delete(id);
+    }
+  };
+
   const requestScriptSource = (path: ReadonlyArray<string>): Promise<ScriptSourceResult> =>
-    createRequest(pendingScriptSources, 10000, id => ({
-      'type': 'requestScriptSource' as const,
-      id,
-      'path': [...path],
-    }));
+    createRequest(
+      pendingScriptSources,
+      10000,
+      id => ({ 'type': 'requestScriptSource', id, 'path': [...path] }),
+      TIMED_OUT,
+    );
 
   const createInstanceFn = (
     className: string,
     parentPath: ReadonlyArray<string>,
     name?: string,
   ): Promise<CreateInstanceResult> =>
-    createRequest(pendingCreateInstances, 2000, id => ({
-      'type': 'createInstance' as const,
-      id,
-      className,
-      'parentPath': [...parentPath],
-      ...(name !== undefined ? { name } : {}),
-    }));
+    createRequest(
+      pendingCreateInstances,
+      2000,
+      id => {
+        const message: Mutable<CreateInstanceMessage> = {
+          'type': 'createInstance',
+          id,
+          className,
+          'parentPath': [...parentPath],
+        };
+        if (name !== undefined) message.name = name;
+        return message;
+      },
+      TIMED_OUT,
+    );
 
   const cloneInstance = (path: ReadonlyArray<string>): Promise<CloneInstanceResult> =>
-    createRequest(pendingCloneInstances, 2000, id => ({
-      'type': 'cloneInstance' as const,
-      id,
-      'path': [...path],
-    }));
+    createRequest(pendingCloneInstances, 2000, id => ({ 'type': 'cloneInstance', id, 'path': [...path] }), TIMED_OUT);
 
   const setRemoteSpyEnabledFn = (enabled: boolean, source?: RemoteSpySource): Promise<SetRemoteSpyEnabledResult> =>
     createRequest(
       pendingSetRemoteSpyEnabled,
       REMOTE_SPY_REQUEST_TIMEOUT_MS,
-      (id): SetRemoteSpyEnabledMessage =>
+      id =>
         source === undefined
           ? { 'type': 'setRemoteSpyEnabled', id, enabled }
           : { 'type': 'setRemoteSpyEnabled', id, enabled, source },
+      TIMED_OUT,
     );
 
   const setRemoteSpyFilterFn = async (filter: string): Promise<SetRemoteSpyFilterResult> => {
     const session = spySession;
-    const result = await createRequest(pendingSetRemoteSpyFilter, REMOTE_SPY_REQUEST_TIMEOUT_MS, id => ({
-      'type': 'setRemoteSpyFilter' as const,
-      id,
-      filter,
-    }));
+    const result = await createRequest(
+      pendingSetRemoteSpyFilter,
+      REMOTE_SPY_REQUEST_TIMEOUT_MS,
+      id => ({ 'type': 'setRemoteSpyFilter', id, filter }),
+      TIMED_OUT,
+    );
     if (session === spySession && result.success) requestedSpyFilter = filter;
     return result;
   };
@@ -517,11 +547,12 @@ export const createBridgeCore = (
   ): Promise<SetRemoteSpyBlockListResult> => {
     const session = spySession;
     const snapshot = blocks.map(entry => ({ ...entry }));
-    const result = await createRequest(pendingSetRemoteSpyBlockList, REMOTE_SPY_REQUEST_TIMEOUT_MS, id => ({
-      'type': 'setRemoteSpyBlockList' as const,
-      id,
-      'blocks': snapshot,
-    }));
+    const result = await createRequest(
+      pendingSetRemoteSpyBlockList,
+      REMOTE_SPY_REQUEST_TIMEOUT_MS,
+      id => ({ 'type': 'setRemoteSpyBlockList', id, 'blocks': snapshot }),
+      TIMED_OUT,
+    );
     if (session === spySession && result.success) requestedSpyBlocks = snapshot;
     return result;
   };
@@ -553,12 +584,12 @@ export const createBridgeCore = (
   };
 
   const setScriptSourceFn = (path: ReadonlyArray<string>, source: string): Promise<SetScriptSourceResult> =>
-    createRequest(pendingSetScriptSources, 10000, id => ({
-      'type': 'setScriptSource' as const,
-      id,
-      'path': [...path],
-      source,
-    }));
+    createRequest(
+      pendingSetScriptSources,
+      10000,
+      id => ({ 'type': 'setScriptSource', id, 'path': [...path], source }),
+      TIMED_OUT,
+    );
 
   return {
     liveGameModel,

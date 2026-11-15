@@ -1,5 +1,7 @@
 import { PassThrough } from 'stream';
 import {
+  CodeAction,
+  CodeActionRequest,
   CompletionRequest,
   CompletionResolveRequest,
   createConnection,
@@ -8,15 +10,15 @@ import {
   HoverRequest,
   InitializedNotification,
   InitializeRequest,
+  SemanticTokensRangeRequest,
   SignatureHelpRequest,
   StreamMessageReader,
   StreamMessageWriter,
   TextDocuments,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-
-import type { LspHarness } from '@tests/types/lsp';
 import type { DocumentManager } from '@typings/lsp';
+import type { LspHarness } from '@tests/types/lsp';
 
 /**
  * Creates a server connection paired with an in-memory JSON-RPC client.
@@ -65,10 +67,18 @@ export const createLspHarness = (documentManager: DocumentManager): LspHarness =
       if (result === null || Array.isArray(result)) throw new Error('Expected a completion list');
       return result;
     },
+    'codeActions': async params => {
+      const result = await client.sendRequest(CodeActionRequest.type, params);
+      return result === null ? [] : result.filter(CodeAction.is);
+    },
     'resolve': item => client.sendRequest(CompletionResolveRequest.type, item),
     'hover': (uri, position) => client.sendRequest(HoverRequest.type, { 'textDocument': { uri }, position }),
     'signature': (uri, position) =>
       client.sendRequest(SignatureHelpRequest.type, { 'textDocument': { uri }, position }),
+    'semanticTokensRange': async (uri, range) => {
+      const result = await client.sendRequest(SemanticTokensRangeRequest.type, { 'textDocument': { uri }, range });
+      return result === null ? [] : result.data;
+    },
     'dispose': () => {
       client.dispose();
       connection.dispose();

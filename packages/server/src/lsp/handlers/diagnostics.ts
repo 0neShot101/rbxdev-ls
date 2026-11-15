@@ -1,6 +1,7 @@
 import { DiagnosticSeverity, DiagnosticTag } from 'vscode-languageserver';
 
 import type { LiveGameModel } from '@typings/bridge';
+import type { GameTreeNode } from '@typings/protocol';
 import type { TypeDiagnostic } from '@typings/checker';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
 import type { Connection, Diagnostic as LspDiagnostic, TextDocuments } from 'vscode-languageserver';
@@ -23,18 +24,11 @@ const convertTags = (tags: TypeDiagnostic['tags']): DiagnosticTag[] | undefined 
   return lspTags.length > 0 ? lspTags : undefined;
 };
 
-const findChildInTree = (
-  node: { name: string; children?: ReadonlyArray<{ name: string; children?: ReadonlyArray<unknown> }> },
-  name: string,
-): boolean => {
+const findChildInTree = (node: GameTreeNode, name: string): boolean => {
   if (node.children === undefined) return false;
   for (const child of node.children) {
     if (child.name === name) return true;
-    const typedChild = child as {
-      name: string;
-      children?: ReadonlyArray<{ name: string; children?: ReadonlyArray<unknown> }>;
-    };
-    if (findChildInTree(typedChild, name)) return true;
+    if (findChildInTree(child, name)) return true;
   }
   return false;
 };
@@ -60,7 +54,7 @@ const existsInLiveGameTree = (propertyName: string, liveGameModel: LiveGameModel
 export const convertDiagnostic = (diag: TypeDiagnostic): LspDiagnostic => {
   const tags = convertTags(diag.tags);
 
-  return {
+  const diagnostic: LspDiagnostic = {
     'range': {
       'start': {
         'line': diag.range.start.line - 1,
@@ -75,8 +69,9 @@ export const convertDiagnostic = (diag: TypeDiagnostic): LspDiagnostic => {
     'code': diag.code,
     'source': 'rbxdev-ls',
     'message': diag.message,
-    ...(tags !== undefined ? { 'tags': tags } : {}),
   };
+  if (tags !== undefined) diagnostic.tags = tags;
+  return diagnostic;
 };
 
 /** Publishes diagnostics for a parsed document to the LSP client. */
@@ -125,19 +120,18 @@ export const publishDiagnostics = (
 
   const lspDiagnostics = filteredDiagnostics.map(convertDiagnostic);
 
-  connection.sendDiagnostics({
+  void connection.sendDiagnostics({
     'uri': parsed.uri,
     'diagnostics': lspDiagnostics,
   });
 };
 
 /** Clears all diagnostics for a document. */
-export const clearDiagnostics = (connection: Connection, uri: string): void => {
-  connection.sendDiagnostics({
+export const clearDiagnostics = (connection: Connection, uri: string): void =>
+  void connection.sendDiagnostics({
     uri,
     'diagnostics': [],
   });
-};
 
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_DELAY = 150;
@@ -149,12 +143,13 @@ export const setupDiagnosticsHandler = (
   documentManager: DocumentManager,
   liveGameModel?: LiveGameModel,
 ): void => {
-  documents.onDidOpen(event => {
-    setImmediate(() => {
-      const parsed = documentManager.parseDocument(event.document);
-      publishDiagnostics(connection, parsed, liveGameModel);
-    });
-  });
+  documents.onDidOpen(
+    event =>
+      void setImmediate(() => {
+        const parsed = documentManager.parseDocument(event.document);
+        publishDiagnostics(connection, parsed, liveGameModel);
+      }),
+  );
 
   documents.onDidChangeContent(change => {
     const uri = change.document.uri;

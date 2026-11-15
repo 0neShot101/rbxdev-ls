@@ -1,4 +1,4 @@
-import { defineSymbol } from '@typings/environment';
+import { defineSymbol } from '@analyzer/environment';
 import {
   AnyType,
   BooleanType,
@@ -12,7 +12,7 @@ import {
   createNumberLiteral,
   createTableType,
   createUnionType,
-} from '@typings/types';
+} from '@analyzer/values';
 
 import type { TypeEnvironment } from '@typings/environment';
 import type { DocComment } from '@typings/parser';

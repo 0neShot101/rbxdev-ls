@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { parse } from '@parser/parser';
+import { resolveAnnotationToType } from '@workspace/annotationResolver';
 
 import type { Chunk, FunctionExpression } from '@typings/ast';
 import type {
@@ -13,8 +14,6 @@ import type {
   ModuleInfo,
   RojoState,
 } from '@typings/workspace';
-
-import { resolveAnnotationToType } from '@workspace/annotationResolver';
 
 const buildSignature = (func: FunctionExpression): ModuleExportSignature => {
   const params: ModuleExportSignatureParam[] = [];
@@ -32,6 +31,15 @@ const buildSignature = (func: FunctionExpression): ModuleExportSignature => {
     'isVariadic': func.isVariadic,
   };
 };
+
+const createExport = (
+  name: string,
+  kind: ModuleExport['kind'],
+  modulePath: string,
+  filePath: string,
+  signature: ModuleExportSignature | undefined,
+): ModuleExport =>
+  signature === undefined ? { name, kind, modulePath, filePath } : { name, kind, modulePath, filePath, signature };
 
 const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: string[]): ModuleExport[] => {
   const exports: ModuleExport[] = [];
@@ -58,7 +66,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
           signature = buildSignature(field.value);
         } else if (field.value.kind === 'TableExpression') kind = 'table';
 
-        exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
+        exports.push(createExport(name, kind, modulePath, filePath, signature));
       }
     return exports;
   }
@@ -83,23 +91,17 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
                   signature = buildSignature(field.value);
                 } else if (field.value.kind === 'TableExpression') kind = 'table';
 
-                exports.push({
-                  name,
-                  kind,
-                  modulePath,
-                  filePath,
-                  ...(signature !== undefined ? { signature } : {}),
-                });
+                exports.push(createExport(name, kind, modulePath, filePath, signature));
               }
           break;
         }
       }
 
     for (const stmt of chunk.body) {
-      if (stmt.kind === 'Assignment' && stmt.targets.length > 0 && stmt.values.length > 0) {
-        const target = stmt.targets[0]!;
+      if (stmt.kind === 'Assignment' && stmt.values.length > 0) {
+        const target = stmt.targets[0];
         if (
-          target.kind === 'MemberExpression' &&
+          target?.kind === 'MemberExpression' &&
           target.object.kind === 'Identifier' &&
           target.object.name === varName
         ) {
@@ -113,7 +115,7 @@ const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: str
             signature = buildSignature(value);
           } else if (value?.kind === 'TableExpression') kind = 'table';
 
-          exports.push({ name, kind, modulePath, filePath, ...(signature !== undefined ? { signature } : {}) });
+          exports.push(createExport(name, kind, modulePath, filePath, signature));
         }
       }
 
@@ -229,7 +231,7 @@ export const buildModuleIndex = (rojoState: RojoState, workspacePath: string): M
       const stat = fs.statSync(node.filePath);
 
       if (stat.isDirectory()) scanDirectory(node.filePath, dataModelPath, modules);
-      else if (node.filePath.endsWith('.lua') || node.filePath.endsWith('.luau')) {
+      else if (node.filePath.endsWith('.lua') || node.filePath.endsWith('.luau'))
         try {
           const content = fs.readFileSync(node.filePath, 'utf-8');
           const parseResult = parse(content);
@@ -247,7 +249,6 @@ export const buildModuleIndex = (rojoState: RojoState, workspacePath: string): M
         } catch {
           /* ignore */
         }
-      }
     }
 
     for (const [childName, childNode] of node.children) scanNode(childNode, [...dataModelPath, childName]);
@@ -279,7 +280,10 @@ export const generateRequirePath = (fromDataModelPath: string[], toDataModelPath
     parts.push('Parent');
   }
 
-  for (let i = commonLength; i < toDataModelPath.length; i++) parts.push(toDataModelPath[i]!);
+  for (let i = commonLength; i < toDataModelPath.length; i++) {
+    const part = toDataModelPath[i];
+    if (part !== undefined) parts.push(part);
+  }
 
   return parts.join('.');
 };

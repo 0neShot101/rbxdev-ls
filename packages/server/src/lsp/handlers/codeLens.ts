@@ -1,6 +1,7 @@
+import { isNamedItemData } from '@lsp/handlers/itemData';
 import { walk } from '@parser/visitor';
 
-import type { Chunk, FunctionExpression, Identifier, Statement } from '@typings/ast';
+import type { Chunk, Identifier, Statement } from '@typings/ast';
 import type { CodeLensFunctionInfo, ReferenceLocation } from '@typings/handlers';
 import type { DocumentManager } from '@typings/lsp';
 import type { CodeLens, CodeLensParams, Connection, Range } from 'vscode-languageserver';
@@ -21,12 +22,11 @@ const convertRange = (range: {
 export const collectCodeLensFunctions = (statements: ReadonlyArray<Statement>): CodeLensFunctionInfo[] => {
   const functions: CodeLensFunctionInfo[] = [];
 
-  const addFunc = (name: string, nameNode: Identifier): void => {
-    functions.push({ name, 'selectionRange': convertRange(nameNode.range) });
-  };
+  const addFunc = (name: string, nameNode: Identifier): void =>
+    void functions.push({ name, 'selectionRange': convertRange(nameNode.range) });
 
   const walkStatements = (stmts: ReadonlyArray<Statement>): void => {
-    for (const stmt of stmts) {
+    for (const stmt of stmts)
       switch (stmt.kind) {
         case 'LocalFunction':
           addFunc(stmt.name.name, stmt.name);
@@ -48,7 +48,7 @@ export const collectCodeLensFunctions = (statements: ReadonlyArray<Statement>): 
             const value = stmt.values[i];
             if (name === undefined || value === undefined || value.kind !== 'FunctionExpression') continue;
             addFunc(name.name, name);
-            walkStatements((value as FunctionExpression).body);
+            walkStatements(value.body);
           }
           break;
 
@@ -73,7 +73,6 @@ export const collectCodeLensFunctions = (statements: ReadonlyArray<Statement>): 
           walkStatements([stmt.declaration]);
           break;
       }
-    }
   };
 
   walkStatements(statements);
@@ -136,18 +135,15 @@ export const setupCodeLensHandler = (connection: Connection, documentManager: Do
   });
 
   connection.onCodeLensResolve((codeLens: CodeLens): CodeLens => {
-    const data = codeLens.data as { name: string; uri: string } | undefined;
-    if (data === undefined) return codeLens;
+    const data: unknown = codeLens.data;
+    if (isNamedItemData(data) === false) return codeLens;
 
     const document = documentManager.getDocument(data.uri);
     if (document === undefined || document.ast === undefined) return codeLens;
 
     const references = collectCodeLensReferences(document.ast);
-    const baseName = data.name.includes(':')
-      ? data.name.split(':').pop()!
-      : data.name.includes('.')
-        ? data.name.split('.').pop()!
-        : data.name;
+    const separator = data.name.includes(':') ? ':' : '.';
+    const baseName = data.name.split(separator).at(-1) ?? data.name;
 
     const locations = references.get(baseName);
     const count = locations !== undefined ? Math.max(0, locations.length - 1) : 0;

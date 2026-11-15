@@ -1,0 +1,25 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rootDir": "..",
+    "paths": {
+      "@benchmark/*": ["./*"],
+      "@core/*": ["../src/core/*"],
+      "@parser/*": ["../src/parser/*"],
+      "@typings/*": ["../src/types/*"],
+      "@analyzer/*": ["../src/analyzer/*"],
+      "@definitions/*": ["../src/definitions/*"],
+      "@lsp/*": ["../src/lsp/*"],
+      "@utils/*": ["../src/utils/*"],
+      "@workspace/*": ["../src/workspace/*"],
+      "@executor": ["../src/executor/index.ts"],
+      "@executor/*": ["../src/executor/*"]
+    }
+  },
+  "include": ["./**/*", "../src/**/*"],
+  "exclude": []
+}

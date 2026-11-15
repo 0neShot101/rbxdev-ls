@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { isObject, isString, isStringArray } from '@utils/guards';
+
 import type { DataModelNode, RojoState, SourcemapNode } from '@typings/workspace';
 
 /** Searches for a `sourcemap.json` file at the workspace root. */
@@ -10,19 +12,24 @@ export const findSourcemap = (workspacePath: string): string | undefined => {
   return undefined;
 };
 
-const isValidNode = (value: unknown): value is SourcemapNode => {
-  if (typeof value !== 'object' || value === null) return false;
-  const node = value as { name?: unknown; className?: unknown };
-  return typeof node.name === 'string' && typeof node.className === 'string';
-};
+/** Accepts a sourcemap node with string `name`/`className`, optional string `filePaths` and valid optional `children`. */
+const isSourcemapNode = (value: unknown): value is SourcemapNode =>
+  isObject(value) &&
+  'name' in value &&
+  isString(value.name) &&
+  'className' in value &&
+  isString(value.className) &&
+  (!('filePaths' in value) || value.filePaths === undefined || isStringArray(value.filePaths)) &&
+  (!('children' in value) ||
+    value.children === undefined ||
+    (Array.isArray(value.children) && value.children.every(isSourcemapNode)));
 
-/** Parses a sourcemap.json file and validates its top-level structure. */
+/** Parses a sourcemap.json file and decodes its node tree. */
 export const parseSourcemap = (filePath: string): SourcemapNode | undefined => {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(content);
-    if (isValidNode(parsed) === false) return undefined;
-    return parsed;
+    const parsed: unknown = JSON.parse(content);
+    return isSourcemapNode(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -62,17 +69,13 @@ export const buildDataModelTreeFromSourcemap = (root: SourcemapNode, baseDir: st
 
     const sourcemapChildren = sourcemap.children ?? [];
     for (const child of sourcemapChildren) {
-      if (isValidNode(child) === false) continue;
       if (children.has(child.name)) continue;
       children.set(child.name, buildNode(child));
     }
 
-    return {
-      'name': sourcemap.name,
-      'className': sourcemap.className,
-      ...(filePath !== undefined ? { filePath } : {}),
-      children,
-    };
+    const { name, className } = sourcemap;
+    if (filePath === undefined) return { name, className, children };
+    return { name, className, filePath, children };
   };
 
   return buildNode(root);

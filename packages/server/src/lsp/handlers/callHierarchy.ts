@@ -1,6 +1,8 @@
+import { SymbolKind } from 'vscode-languageserver';
+
+import { isNamedItemData } from '@lsp/handlers/itemData';
 import { walk } from '@parser/visitor';
 import { positionInRange } from '@utils/position';
-import { SymbolKind } from 'vscode-languageserver';
 
 import type {
   CallExpression,
@@ -52,18 +54,17 @@ export const collectCallHierarchyFunctions = (statements: ReadonlyArray<Statemen
     stmt: Statement,
     nameNode: Identifier,
     func: FunctionExpression,
-  ): void => {
-    functions.push({
+  ): void =>
+    void functions.push({
       name,
       kind,
       'range': convertRange(stmt.range),
       'selectionRange': convertRange(nameNode.range),
       'bodyStatements': func.body,
     });
-  };
 
   const walkStatements = (stmts: ReadonlyArray<Statement>): void => {
-    for (const stmt of stmts) {
+    for (const stmt of stmts)
       switch (stmt.kind) {
         case 'LocalFunction':
           addFunc(stmt.name.name, SymbolKind.Function, stmt, stmt.name, stmt.func);
@@ -108,7 +109,6 @@ export const collectCallHierarchyFunctions = (statements: ReadonlyArray<Statemen
           walkStatements([stmt.declaration]);
           break;
       }
-    }
   };
 
   walkStatements(statements);
@@ -176,8 +176,8 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
 
   connection.languages.callHierarchy.onIncomingCalls(
     (params: CallHierarchyIncomingCallsParams): CallHierarchyIncomingCall[] => {
-      const data = params.item.data as { name: string; uri: string } | undefined;
-      if (data === undefined) return [];
+      const data: unknown = params.item.data;
+      if (isNamedItemData(data) === false) return [];
 
       const document = documentManager.getDocument(data.uri);
       if (document === undefined || document.ast === undefined) return [];
@@ -222,8 +222,8 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
 
   connection.languages.callHierarchy.onOutgoingCalls(
     (params: CallHierarchyOutgoingCallsParams): CallHierarchyOutgoingCall[] => {
-      const data = params.item.data as { name: string; uri: string } | undefined;
-      if (data === undefined) return [];
+      const data: unknown = params.item.data;
+      if (isNamedItemData(data) === false) return [];
 
       const document = documentManager.getDocument(data.uri);
       if (document === undefined || document.ast === undefined) return [];
@@ -237,7 +237,7 @@ export const setupCallHierarchyHandler = (connection: Connection, documentManage
       const collectFromBody = (stmts: ReadonlyArray<Statement>): void => {
         const fakeChunk: Chunk = {
           'kind': 'Chunk',
-          'body': stmts as Statement[],
+          'body': [...stmts],
           'comments': [],
           'range': {
             'start': { 'line': targetFunc.range.start.line, 'column': targetFunc.range.start.character, 'offset': 0 },

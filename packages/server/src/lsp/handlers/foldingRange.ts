@@ -161,11 +161,10 @@ export const collectFoldingRanges = (chunk: Chunk): FoldingRange[] => {
 };
 
 /** Provides folding ranges for code blocks, tables, and multiline comments. */
-export const setupFoldingRangeHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onFoldingRanges((params: FoldingRangeParams): FoldingRange[] => {
+export const setupFoldingRangeHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onFoldingRanges((params: FoldingRangeParams): FoldingRange[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined || document.ast === undefined) return [];
 
     return collectFoldingRanges(document.ast);
   });
-};

@@ -1,35 +1,42 @@
 import { hasCapability } from 'rbxdev-server';
 
 import { createLuaLookupFromPath, escapeLuaString } from '@mcp/utils/lua';
-import { bridgeCall, NOT_CONNECTED, errorResult, requirePath, textResult } from '@mcp/utils/results';
+import { bridgeCall, errorResult, failureResult, NOT_CONNECTED, textResult } from '@mcp/utils/results';
+import {
+  decodeOptionalBoolean,
+  decodeOptionalString,
+  decodeOptionalStrings,
+  decodePath,
+  decodeString,
+} from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from '@mcp/typings/tools';
+import type { SaveInstanceInput, ToolHandlerMap } from '@mcp/types/tools';
 
-const buildSaveInstanceCode = (args: { path?: string[]; fileName?: string; decompile?: boolean }): string => {
-  const fileName = args.fileName ?? 'game.rbxl';
-  const decompile = args.decompile !== false;
+const buildSaveInstanceCode = (input: SaveInstanceInput): string => {
+  const optionParts = [`FilePath = "${escapeLuaString(input.fileName)}"`, `Decompile = ${input.decompile}`];
+  if (input.path !== undefined && input.path.length > 0)
+    optionParts.push(`Object = ${createLuaLookupFromPath(input.path)}`);
 
-  const optionParts: string[] = [];
-  optionParts.push(`FilePath = "${escapeLuaString(fileName)}"`);
-  optionParts.push(`Decompile = ${decompile}`);
-
-  if (args.path !== undefined && args.path.length > 0)
-    optionParts.push(`Object = ${createLuaLookupFromPath(args.path)}`);
-
-  return `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(fileName)}" else return "Error: " .. tostring(err) end`;
+  return `if saveinstance == nil then return "Error: saveinstance not available" end\nlocal ok, err = pcall(saveinstance, {${optionParts.join(', ')}})\nif ok then return "Saved to ${escapeLuaString(input.fileName)}" else return "Error: " .. tostring(err) end`;
 };
 
+/** Handlers for tools that read, change, create, move or save instances. */
 export const instanceToolHandlers: ToolHandlerMap = {
   'set_property': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[]; property: string; value: string; valueType: string };
-    const pathError = requirePath(typedArgs.path);
-    if (pathError !== undefined) return pathError;
+    const path = decodePath(args['path'], 'path');
+    if (path.ok === false) return path.error;
+    const property = decodeString(args['property'], 'property');
+    if (property.ok === false) return property.error;
+    const value = decodeString(args['value'], 'value');
+    if (value.ok === false) return value.error;
+    const valueType = decodeString(args['valueType'], 'valueType');
+    if (valueType.ok === false) return valueType.error;
 
     return bridgeCall(
-      () => bridge.setProperty(typedArgs.path, typedArgs.property, typedArgs.value, typedArgs.valueType),
-      () => `Successfully set ${typedArgs.property} to ${typedArgs.value}`,
+      () => bridge.setProperty(path.value, property.value, value.value, valueType.value),
+      () => `Successfully set ${property.value} to ${value.value}`,
       'Failed to set property',
     );
   },
@@ -37,13 +44,12 @@ export const instanceToolHandlers: ToolHandlerMap = {
   'teleport_player': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[] };
-    const pathError = requirePath(typedArgs.path);
-    if (pathError !== undefined) return pathError;
+    const path = decodePath(args['path'], 'path');
+    if (path.ok === false) return path.error;
 
     return bridgeCall(
-      () => bridge.teleportTo(typedArgs.path),
-      () => `Successfully teleported to ${typedArgs.path.join('.')}`,
+      () => bridge.teleportTo(path.value),
+      () => `Successfully teleported to ${path.value.join('.')}`,
       'Failed to teleport',
     );
   },
@@ -51,13 +57,12 @@ export const instanceToolHandlers: ToolHandlerMap = {
   'delete_instance': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[] };
-    const pathError = requirePath(typedArgs.path);
-    if (pathError !== undefined) return pathError;
+    const path = decodePath(args['path'], 'path');
+    if (path.ok === false) return path.error;
 
     return bridgeCall(
-      () => bridge.deleteInstance(typedArgs.path),
-      () => `Successfully deleted ${typedArgs.path.join('.')}`,
+      () => bridge.deleteInstance(path.value),
+      () => `Successfully deleted ${path.value.join('.')}`,
       'Failed to delete instance',
     );
   },
@@ -65,15 +70,14 @@ export const instanceToolHandlers: ToolHandlerMap = {
   'reparent_instance': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { sourcePath: string[]; targetPath: string[] };
-    const sourceError = requirePath(typedArgs.sourcePath);
-    if (sourceError !== undefined) return sourceError;
-    const targetError = requirePath(typedArgs.targetPath);
-    if (targetError !== undefined) return targetError;
+    const source = decodePath(args['sourcePath'], 'sourcePath');
+    if (source.ok === false) return source.error;
+    const target = decodePath(args['targetPath'], 'targetPath');
+    if (target.ok === false) return target.error;
 
     return bridgeCall(
-      () => bridge.reparentInstance(typedArgs.sourcePath, typedArgs.targetPath),
-      () => `Successfully moved ${typedArgs.sourcePath.join('.')} to ${typedArgs.targetPath.join('.')}`,
+      () => bridge.reparentInstance(source.value, target.value),
+      () => `Successfully moved ${source.value.join('.')} to ${target.value.join('.')}`,
       'Failed to reparent instance',
     );
   },
@@ -81,17 +85,17 @@ export const instanceToolHandlers: ToolHandlerMap = {
   'create_instance': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { className: string; parentPath: string[]; name?: string };
-    if (typeof typedArgs.className !== 'string' || typedArgs.className.trim() === '')
+    const className = decodeString(args['className'], 'className');
+    if (className.ok === false || className.value.trim() === '')
       return errorResult('Error: className parameter is required');
-
-    const pathError = requirePath(typedArgs.parentPath);
-    if (pathError !== undefined) return pathError;
+    const parent = decodePath(args['parentPath'], 'parentPath');
+    if (parent.ok === false) return parent.error;
+    const name = decodeOptionalString(args['name'], 'name');
+    if (name.ok === false) return name.error;
 
     return bridgeCall(
-      () => bridge.createInstance(typedArgs.className, typedArgs.parentPath, typedArgs.name),
-      result =>
-        `Successfully created ${result.instanceName} (${typedArgs.className}) in ${typedArgs.parentPath.join('.')}`,
+      () => bridge.createInstance(className.value, parent.value, name.value),
+      result => `Successfully created ${result.instanceName} (${className.value}) in ${parent.value.join('.')}`,
       'Failed to create instance',
     );
   },
@@ -99,13 +103,12 @@ export const instanceToolHandlers: ToolHandlerMap = {
   'clone_instance': async (args, { bridge }) => {
     if (bridge.isConnected === false) return NOT_CONNECTED;
 
-    const typedArgs = args as { path: string[] };
-    const pathError = requirePath(typedArgs.path);
-    if (pathError !== undefined) return pathError;
+    const path = decodePath(args['path'], 'path');
+    if (path.ok === false) return path.error;
 
     return bridgeCall(
-      () => bridge.cloneInstance(typedArgs.path),
-      result => `Successfully cloned ${typedArgs.path.join('.')} as ${result.cloneName}`,
+      () => bridge.cloneInstance(path.value),
+      result => `Successfully cloned ${path.value.join('.')} as ${result.cloneName}`,
       'Failed to clone instance',
     );
   },
@@ -115,15 +118,24 @@ export const instanceToolHandlers: ToolHandlerMap = {
     if (hasCapability(bridge.clientCapabilities, 'saveInstance') === false)
       return errorResult('Error: Save instance is not available with the current client');
 
-    const typedArgs = args as { path?: string[]; fileName?: string; decompile?: boolean };
-    const fileName = typedArgs.fileName ?? 'game.rbxl';
+    const path = decodeOptionalStrings(args['path'], 'path');
+    if (path.ok === false) return path.error;
+    const fileName = decodeOptionalString(args['fileName'], 'fileName');
+    if (fileName.ok === false) return fileName.error;
+    const decompile = decodeOptionalBoolean(args['decompile'], 'decompile', true);
+    if (decompile.ok === false) return decompile.error;
+    const input: SaveInstanceInput = {
+      'path': path.value,
+      'fileName': fileName.value ?? 'game.rbxl',
+      'decompile': decompile.value,
+    };
 
     try {
-      const result = await bridge.execute(buildSaveInstanceCode(typedArgs));
-      if (result.success) return textResult(result.result ?? `Save initiated to ${fileName}`);
+      const result = await bridge.execute(buildSaveInstanceCode(input));
+      if (result.success) return textResult(result.result ?? `Save initiated to ${input.fileName}`);
       return errorResult(`Save failed: ${result.error?.message ?? 'Unknown error'}`);
-    } catch (err) {
-      return errorResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (cause) {
+      return failureResult(cause);
     }
   },
 };

@@ -1,11 +1,12 @@
 import { hasCapability } from 'rbxdev-server';
 
 import { formatLogEntry } from '@mcp/utils/formatters';
-import { NOT_CONNECTED, errorResult, textResult } from '@mcp/utils/results';
-import { asRecord, normalizePositiveInteger } from '@mcp/utils/validation';
+import { errorResult, failureResult, NOT_CONNECTED, orFallback, textResult } from '@mcp/utils/results';
+import { decodeLevel, decodeLimit, decodeString } from '@mcp/utils/validation';
 
-import type { ToolHandlerMap } from '@mcp/typings/tools';
+import type { ToolHandlerMap } from '@mcp/types/tools';
 
+/** Handlers for bridge status, code execution and console output tools. */
 export const bridgeToolHandlers: ToolHandlerMap = {
   'get_bridge_status': async (_args, { bridge }) =>
     textResult(
@@ -28,26 +29,28 @@ export const bridgeToolHandlers: ToolHandlerMap = {
     if (hasCapability(bridge.clientCapabilities, 'execute') === false)
       return errorResult('Error: Code execution is not available with the current client');
 
-    const rawArgs = asRecord(args);
-    const code = rawArgs?.['code'];
-    if (typeof code !== 'string' || code.trim() === '') return errorResult('Error: code parameter is required');
+    const code = decodeString(args['code'], 'code');
+    if (code.ok === false || code.value.trim() === '') return errorResult('Error: code parameter is required');
 
     try {
-      const result = await bridge.execute(code);
+      const result = await bridge.execute(code.value);
       if (result.success) return textResult(result.result ?? '(no output)');
+      const stack = result.error?.stack;
       return errorResult(
-        `Execution error: ${result.error?.message ?? 'Unknown error'}${result.error?.stack !== undefined ? `\n\nStack trace:\n${result.error.stack}` : ''}`,
+        `Execution error: ${result.error?.message ?? 'Unknown error'}${stack !== undefined ? `\n\nStack trace:\n${stack}` : ''}`,
       );
-    } catch (err) {
-      return errorResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } catch (cause) {
+      return failureResult(cause);
     }
   },
 
   'get_console_output': async (args, { logBuffer }) => {
-    const rawArgs = asRecord(args);
-    const limit = normalizePositiveInteger(rawArgs?.['limit'], 50, 1000);
-    const level = rawArgs?.['level'] ?? 'all';
-    const filtered = level !== 'all' ? logBuffer.filter(entry => entry.level === level) : logBuffer;
-    return textResult(filtered.slice(-limit).map(formatLogEntry).join('\n') || 'No console output');
+    const limit = decodeLimit(args['limit'], 50, 1000);
+    if (limit.ok === false) return limit.error;
+    const level = decodeLevel(args['level']);
+    if (level.ok === false) return level.error;
+
+    const filtered = level.value === 'all' ? logBuffer : logBuffer.filter(entry => entry.level === level.value);
+    return textResult(orFallback(filtered.slice(-limit.value).map(formatLogEntry).join('\n'), 'No console output'));
   },
 };

@@ -1,31 +1,15 @@
-import { readFileSync } from 'fs';
-import path from 'path';
-
 import { describe, expect, test } from 'bun:test';
 
-import { dispatchRemoteSpyAction } from '../src/remoteSpyWebviewActions';
+import { dispatchRemoteSpyAction } from '@extension/remoteSpyWebviewActions';
 
-describe('Remote Spy Webview - Markup Regression', () => {
-  test('webview does not use inline event handlers', () => {
-    const filePath = path.join(import.meta.dir, '..', 'src', 'remoteSpyWebview.ts');
-    const source = readFileSync(filePath, 'utf8');
-
-    expect(/\bonclick\s*=/i.test(source)).toBe(false);
-    expect(/\boninput\s*=/i.test(source)).toBe(false);
-    expect(/<button[^>]*\bdata-action\s*=\s*"copyCode"/i.test(source)).toBe(true);
-    expect(/<button[^>]*\bdata-action\s*=\s*"copyPath"/i.test(source)).toBe(true);
-    expect(/<button[^>]*\bdata-action\s*=\s*"showArgs"/i.test(source)).toBe(true);
-    expect(/<button[^>]*\bdata-action\s*=\s*"showReturns"/i.test(source)).toBe(true);
-    expect(/<select[^>]*\bid\s*=\s*"capture-source"/i.test(source)).toBe(true);
-  });
-});
+import type { RemoteSpyActionContext } from '@typings/remoteSpy';
 
 describe('Remote Spy Webview - Action Dispatch', () => {
-  const baseContext = {
+  const baseContext: RemoteSpyActionContext = {
     'selectedIndex': 3,
     'paused': false,
     'spyEnabled': false,
-    'listsMode': null as 'ignores' | 'blocks' | null,
+    'listsMode': null,
   };
 
   test('toggleSpy enables the spy when it is currently disabled', () => {

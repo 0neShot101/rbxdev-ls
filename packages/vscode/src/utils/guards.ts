@@ -21,6 +21,16 @@ export const isBoolean = (value: unknown): value is boolean => typeof value === 
 export const isObject = (value: unknown): value is object => typeof value === 'object' && value !== null;
 
 /**
+ * Checks that a decoded value is an array of strings, such as a game path.
+ */
+export const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(isString);
+
+/**
+ * Checks that a decoded value is a list of string arrays, such as dragged game paths.
+ */
+export const isPathList = (value: unknown): value is string[][] => Array.isArray(value) && value.every(isStringArray);
+
+/**
  * Checks that a decoded value is a remote spy ignore or block entry.
  */
 export const isListEntry = (value: unknown): value is ListEntry =>

@@ -11,7 +11,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
 
-import { bundle, resolveRojoProject } from './bundler';
+import { bundle, resolveRojoProject } from '@bundler/bundler';
+
+import type { BundlerOptions } from '@bundler/types/bundler';
 
 const args = process.argv.slice(2);
 
@@ -58,11 +60,9 @@ if (existsSync(resolvedSrc) === false) {
 
 console.log(`Bundling ${resolvedSrc} ...`);
 
-const result = bundle({
-  'sourceDir': resolvedSrc,
-  entry,
-  ...(header !== undefined ? { header } : {}),
-});
+const options: BundlerOptions = { 'sourceDir': resolvedSrc, entry };
+if (header !== undefined) options.header = header;
+const result = bundle(options);
 
 const outDir = dirname(resolvedOut);
 if (existsSync(outDir) === false) mkdirSync(outDir, { 'recursive': true });

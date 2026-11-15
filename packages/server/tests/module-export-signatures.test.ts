@@ -1,29 +1,26 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
-
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-
 import { resolveAnnotationToType } from '@workspace/annotationResolver';
 import { buildModuleIndex } from '@workspace/moduleIndex';
 import { loadSourcemapState } from '@workspace/sourcemap';
-import { typeToString } from '@typings/types';
+import { typeToString } from '@analyzer/values';
+import type { ExportSignature } from '@tests/types/signatures';
+import type { TypeReference } from '@typings/ast';
 
-import type { TypeAnnotation } from '@typings/ast';
+const origin = { 'offset': 0, 'line': 0, 'column': 0 };
 
-const makeRef = (name: string): TypeAnnotation =>
-  ({
-    'kind': 'TypeReference',
-    name,
-    'module': undefined,
-    'typeArgs': undefined,
-    'range': { 'start': { 'line': 0, 'character': 0 }, 'end': { 'line': 0, 'character': 0 } },
-  }) as unknown as TypeAnnotation;
+const makeRef = (name: string): TypeReference => ({
+  'kind': 'TypeReference',
+  name,
+  'module': undefined,
+  'typeArgs': undefined,
+  'range': { 'start': origin, 'end': origin },
+});
 
 describe('resolveAnnotationToType', () => {
-  test('undefined annotation → any', () => {
-    expect(resolveAnnotationToType(undefined).kind).toBe('Any');
-  });
+  test('undefined annotation → any', () => expect(resolveAnnotationToType(undefined).kind).toBe('Any'));
 
   test('number primitive', () => {
     const t = resolveAnnotationToType(makeRef('number'));
@@ -49,32 +46,20 @@ describe('resolveAnnotationToType', () => {
     if (t.kind === 'Primitive') expect(t.name).toBe('nil');
   });
 
-  test('any keyword → AnyType', () => {
-    expect(resolveAnnotationToType(makeRef('any')).kind).toBe('Any');
-  });
+  test('any keyword → AnyType', () => expect(resolveAnnotationToType(makeRef('any')).kind).toBe('Any'));
 
-  test('unknown keyword → UnknownType', () => {
-    expect(resolveAnnotationToType(makeRef('unknown')).kind).toBe('Unknown');
-  });
+  test('unknown keyword → UnknownType', () => expect(resolveAnnotationToType(makeRef('unknown')).kind).toBe('Unknown'));
 
-  test('unrecognised class/type reference → any', () => {
-    // User type aliases, Roblox classes (Part), generics, etc. are out of
-    // reach for this lossy converter — they fall back to any.
+  test('unrecognised class or alias reference falls back to any', () => {
     expect(resolveAnnotationToType(makeRef('Part')).kind).toBe('Any');
     expect(resolveAnnotationToType(makeRef('MyAlias')).kind).toBe('Any');
   });
 });
 
-// End-to-end check: a real file on disk, walked through the same code path
-// the language server uses (loadSourcemapState → buildModuleIndex) and
-// observed via typeToString output. This catches regressions in the AST
-// shape the extractor walks, not just the converter in isolation.
-describe('extractModuleExports captures function signatures end-to-end', () => {
+describe('extractModuleExports captures function signatures end-to-end via the sourcemap and module index', () => {
   let tempDir: string;
 
-  beforeEach(() => {
-    tempDir = mkdtempSync(path.join(tmpdir(), 'rbxdev-signatures-'));
-  });
+  beforeEach(() => void (tempDir = mkdtempSync(path.join(tmpdir(), 'rbxdev-signatures-'))));
 
   afterEach(() => {
     try {
@@ -122,22 +107,22 @@ describe('extractModuleExports captures function signatures end-to-end', () => {
     writeFileSync(path.join(tempDir, 'src', 'Module.lua'), moduleSource);
   };
 
-  const loadExports = (): Map<string, { params: string; returnType: string; kind: string }> => {
+  const loadExports = (): Map<string, ExportSignature> => {
     const state = loadSourcemapState(tempDir);
     const index = buildModuleIndex(state, tempDir);
 
-    const result = new Map<string, { params: string; returnType: string; kind: string }>();
-    for (const [, info] of index) {
-      for (const exp of info.exports) {
-        if (exp.signature === undefined) {
-          result.set(exp.name, { 'params': '', 'returnType': '', 'kind': exp.kind });
+    const result = new Map<string, ExportSignature>();
+    for (const [, info] of index)
+      for (const moduleExport of info.exports) {
+        const signature = moduleExport.signature;
+        if (signature === undefined) {
+          result.set(moduleExport.name, { 'params': '', 'returnType': '', 'kind': moduleExport.kind });
           continue;
         }
-        const params = exp.signature.params.map(p => `${p.name ?? '?'}: ${typeToString(p.type)}`).join(', ');
-        const returnType = typeToString(exp.signature.returnType);
-        result.set(exp.name, { params, returnType, 'kind': exp.kind });
+        const params = signature.params.map(p => `${p.name ?? '?'}: ${typeToString(p.type)}`).join(', ');
+        const returnType = typeToString(signature.returnType);
+        result.set(moduleExport.name, { params, returnType, 'kind': moduleExport.kind });
       }
-    }
     return result;
   };
 
@@ -208,7 +193,6 @@ return Module
     const exports = loadExports();
     const bare = exports.get('bare');
     expect(bare).toBeDefined();
-    // Two params recorded with any as their type
     expect(bare?.params).toBe('x: any, y: any');
     expect(bare?.returnType).toBe('any');
   });

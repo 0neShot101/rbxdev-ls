@@ -28,9 +28,7 @@ const formatWithStyLua = (code: string): Promise<string | undefined> =>
 
     let stdout = '';
 
-    process.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
+    process.stdout.on('data', (data: Buffer) => void (stdout += data.toString()));
 
     process.on('error', () => resolve(undefined));
     process.on('close', code => {
@@ -61,9 +59,7 @@ const formatWithStyLuaRange = (code: string, rangeStart: number, rangeEnd: numbe
 
     let stdout = '';
 
-    process.stdout.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
+    process.stdout.on('data', (data: Buffer) => void (stdout += data.toString()));
 
     process.on('error', () => resolve(undefined));
     process.on('close', code => {

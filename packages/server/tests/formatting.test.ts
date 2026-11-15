@@ -1,5 +1,5 @@
-import { basicFormat } from '@lsp/handlers/formatting';
 import { describe, expect, test } from 'bun:test';
+import { basicFormat } from '@lsp/handlers/formatting';
 
 describe('Basic Formatter', () => {
   describe('Indentation', () => {

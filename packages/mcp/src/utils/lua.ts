@@ -1,6 +1,14 @@
+/**
+ * Escapes a value for a double-quoted Lua string literal.
+ * @param value - Raw text.
+ */
 export const escapeLuaString = (value: string): string =>
   value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t').replace(/"/g, '\\"');
 
+/**
+ * Builds a Lua expression that resolves an instance path from its service downwards.
+ * @param segments - Service name followed by child names.
+ */
 export const createLuaLookupFromPath = (segments: ReadonlyArray<string>): string => {
   const serviceName = segments[0];
   if (serviceName === undefined) return 'nil';

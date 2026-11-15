@@ -1,5 +1,6 @@
-import { parse } from '@parser/parser';
 import { describe, expect, test } from 'bun:test';
+import { expectDefined } from '@tests/helpers/expect';
+import { parse } from '@parser/parser';
 
 describe('Parser Advanced', () => {
   describe('Continue Statement', () => {
@@ -8,10 +9,10 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'ForNumeric') {
         expect(stmt.body.length).toBe(1);
-        expect(stmt.body[0]!.kind).toBe('ContinueStatement');
+        expect(stmt.body[0]?.kind).toBe('ContinueStatement');
       }
     });
 
@@ -20,10 +21,10 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'WhileStatement') {
         expect(stmt.body.length).toBe(1);
-        expect(stmt.body[0]!.kind).toBe('ContinueStatement');
+        expect(stmt.body[0]?.kind).toBe('ContinueStatement');
       }
     });
 
@@ -31,17 +32,17 @@ describe('Parser Advanced', () => {
       const result = parse('for i = 1, 10 do\n  for j = 1, 10 do\n    continue\n  end\n  continue\nend');
       expect(result.errors.length).toBe(0);
 
-      const outer = result.ast.body[0]!;
+      const outer = expectDefined(result.ast.body[0]);
       if (outer.kind === 'ForNumeric') {
         expect(outer.body.length).toBe(2);
 
-        const inner = outer.body[0]!;
+        const inner = expectDefined(outer.body[0]);
         if (inner.kind === 'ForNumeric') {
           expect(inner.body.length).toBe(1);
-          expect(inner.body[0]!.kind).toBe('ContinueStatement');
+          expect(inner.body[0]?.kind).toBe('ContinueStatement');
         }
 
-        expect(outer.body[1]!.kind).toBe('ContinueStatement');
+        expect(outer.body[1]?.kind).toBe('ContinueStatement');
       }
     });
   });
@@ -52,12 +53,12 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('DoStatement');
       if (stmt.kind === 'DoStatement') {
         expect(stmt.body.length).toBe(2);
-        expect(stmt.body[0]!.kind).toBe('LocalDeclaration');
-        expect(stmt.body[1]!.kind).toBe('CallStatement');
+        expect(stmt.body[0]?.kind).toBe('LocalDeclaration');
+        expect(stmt.body[1]?.kind).toBe('CallStatement');
       }
     });
 
@@ -66,16 +67,16 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const outer = result.ast.body[0]!;
+      const outer = expectDefined(result.ast.body[0]);
       expect(outer.kind).toBe('DoStatement');
       if (outer.kind === 'DoStatement') {
         expect(outer.body.length).toBe(1);
 
-        const inner = outer.body[0]!;
+        const inner = expectDefined(outer.body[0]);
         expect(inner.kind).toBe('DoStatement');
         if (inner.kind === 'DoStatement') {
           expect(inner.body.length).toBe(1);
-          expect(inner.body[0]!.kind).toBe('LocalDeclaration');
+          expect(inner.body[0]?.kind).toBe('LocalDeclaration');
         }
       }
     });
@@ -87,13 +88,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('ParenthesizedExpression');
-        if (value.kind === 'ParenthesizedExpression') {
-          expect(value.expression.kind).toBe('TypeCastExpression');
-        }
+        if (value.kind === 'ParenthesizedExpression') expect(value.expression.kind).toBe('TypeCastExpression');
       }
     });
 
@@ -102,15 +101,13 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('TypeCastExpression');
         if (value.kind === 'TypeCastExpression') {
           expect(value.type.kind).toBe('TypeReference');
-          if (value.type.kind === 'TypeReference') {
-            expect(value.type.name).toBe('string');
-          }
+          if (value.type.kind === 'TypeReference') expect(value.type.name).toBe('string');
         }
       }
     });
@@ -120,15 +117,13 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('TypeCastExpression');
         if (value.kind === 'TypeCastExpression') {
           expect(value.type.kind).toBe('TypeReference');
-          if (value.type.kind === 'TypeReference') {
-            expect(value.type.name).toBe('number');
-          }
+          if (value.type.kind === 'TypeReference') expect(value.type.name).toBe('number');
 
           const inner = value.expression;
           expect(inner.kind).toBe('ParenthesizedExpression');
@@ -136,9 +131,7 @@ describe('Parser Advanced', () => {
             expect(inner.expression.kind).toBe('TypeCastExpression');
             if (inner.expression.kind === 'TypeCastExpression') {
               expect(inner.expression.type.kind).toBe('TypeReference');
-              if (inner.expression.type.kind === 'TypeReference') {
-                expect(inner.expression.type.name).toBe('any');
-              }
+              if (inner.expression.type.kind === 'TypeReference') expect(inner.expression.type.name).toBe('any');
             }
           }
         }
@@ -152,14 +145,12 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.name.name).toBe('A');
         expect(stmt.type.kind).toBe('IntersectionType');
-        if (stmt.type.kind === 'IntersectionType') {
-          expect(stmt.type.types.length).toBe(2);
-        }
+        if (stmt.type.kind === 'IntersectionType') expect(stmt.type.types.length).toBe(2);
       }
     });
 
@@ -168,12 +159,10 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.type.kind).toBe('IntersectionType');
-        if (stmt.type.kind === 'IntersectionType') {
-          expect(stmt.type.types.length).toBeGreaterThanOrEqual(2);
-        }
+        if (stmt.type.kind === 'IntersectionType') expect(stmt.type.types.length).toBeGreaterThanOrEqual(2);
       }
     });
   });
@@ -184,15 +173,13 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.type.kind).toBe('TypeofType');
         if (stmt.type.kind === 'TypeofType') {
           expect(stmt.type.expression.kind).toBe('Identifier');
-          if (stmt.type.expression.kind === 'Identifier') {
-            expect(stmt.type.expression.name).toBe('workspace');
-          }
+          if (stmt.type.expression.kind === 'Identifier') expect(stmt.type.expression.name).toBe('workspace');
         }
       }
     });
@@ -202,13 +189,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
         const typeAnnotation = stmt.types[0];
         expect(typeAnnotation).toBeDefined();
-        if (typeAnnotation !== undefined) {
-          expect(typeAnnotation.kind).toBe('TypeofType');
-        }
+        if (typeAnnotation !== undefined) expect(typeAnnotation.kind).toBe('TypeofType');
       }
     });
   });
@@ -219,11 +204,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('CompoundAssignment');
-      if (stmt.kind === 'CompoundAssignment') {
-        expect(stmt.operator).toBe('+=');
-      }
+      if (stmt.kind === 'CompoundAssignment') expect(stmt.operator).toBe('+=');
     });
 
     test('-= operator', () => {
@@ -231,11 +214,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('CompoundAssignment');
-      if (stmt.kind === 'CompoundAssignment') {
-        expect(stmt.operator).toBe('-=');
-      }
+      if (stmt.kind === 'CompoundAssignment') expect(stmt.operator).toBe('-=');
     });
 
     test('*= operator', () => {
@@ -243,11 +224,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('CompoundAssignment');
-      if (stmt.kind === 'CompoundAssignment') {
-        expect(stmt.operator).toBe('*=');
-      }
+      if (stmt.kind === 'CompoundAssignment') expect(stmt.operator).toBe('*=');
     });
 
     test('..= operator', () => {
@@ -255,11 +234,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('CompoundAssignment');
-      if (stmt.kind === 'CompoundAssignment') {
-        expect(stmt.operator).toBe('..=');
-      }
+      if (stmt.kind === 'CompoundAssignment') expect(stmt.operator).toBe('..=');
     });
   });
 
@@ -269,7 +246,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalDeclaration');
       if (stmt.kind === 'LocalDeclaration') {
         expect(stmt.names.length).toBe(3);
@@ -282,7 +259,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('Assignment');
       if (stmt.kind === 'Assignment') {
         expect(stmt.targets.length).toBe(2);
@@ -295,7 +272,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalDeclaration');
       if (stmt.kind === 'LocalDeclaration') {
         expect(stmt.names.length).toBe(2);
@@ -310,14 +287,12 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
       if (stmt.kind === 'LocalFunction') {
         const lastParam = stmt.func.params[stmt.func.params.length - 1];
         expect(lastParam).toBeDefined();
-        if (lastParam !== undefined) {
-          expect(lastParam.isVariadic).toBe(true);
-        }
+        if (lastParam !== undefined) expect(lastParam.isVariadic).toBe(true);
       }
     });
 
@@ -326,7 +301,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
       if (stmt.kind === 'LocalFunction') {
         const lastParam = stmt.func.params[stmt.func.params.length - 1];
@@ -336,9 +311,7 @@ describe('Parser Advanced', () => {
           expect(lastParam.type).toBeDefined();
           if (lastParam.type !== undefined) {
             expect(lastParam.type.kind).toBe('TypeReference');
-            if (lastParam.type.kind === 'TypeReference') {
-              expect(lastParam.type.name).toBe('number');
-            }
+            if (lastParam.type.kind === 'TypeReference') expect(lastParam.type.name).toBe('number');
           }
         }
       }
@@ -351,13 +324,13 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
       if (stmt.kind === 'LocalFunction') {
         expect(stmt.func.typeParams).toBeDefined();
         if (stmt.func.typeParams !== undefined) {
           expect(stmt.func.typeParams.length).toBe(1);
-          expect(stmt.func.typeParams[0]!.name).toBe('T');
+          expect(stmt.func.typeParams[0]?.name).toBe('T');
         }
       }
     });
@@ -367,14 +340,14 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.typeParams).toBeDefined();
         if (stmt.typeParams !== undefined) {
           expect(stmt.typeParams.length).toBe(2);
-          expect(stmt.typeParams[0]!.name).toBe('T');
-          expect(stmt.typeParams[1]!.name).toBe('U');
+          expect(stmt.typeParams[0]?.name).toBe('T');
+          expect(stmt.typeParams[1]?.name).toBe('U');
         }
       }
     });
@@ -384,15 +357,15 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.typeParams).toBeDefined();
         if (stmt.typeParams !== undefined) {
           expect(stmt.typeParams.length).toBe(3);
-          expect(stmt.typeParams[0]!.name).toBe('A');
-          expect(stmt.typeParams[1]!.name).toBe('B');
-          expect(stmt.typeParams[2]!.name).toBe('C');
+          expect(stmt.typeParams[0]?.name).toBe('A');
+          expect(stmt.typeParams[1]?.name).toBe('B');
+          expect(stmt.typeParams[2]?.name).toBe('C');
         }
       }
     });
@@ -404,11 +377,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
-      if (stmt.kind === 'LocalFunction') {
-        expect(stmt.func.returnType).toBeDefined();
-      }
+      if (stmt.kind === 'LocalFunction') expect(stmt.func.returnType).toBeDefined();
     });
 
     test('function with three-element tuple return type', () => {
@@ -416,11 +387,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('LocalFunction');
-      if (stmt.kind === 'LocalFunction') {
-        expect(stmt.func.returnType).toBeDefined();
-      }
+      if (stmt.kind === 'LocalFunction') expect(stmt.func.returnType).toBeDefined();
     });
   });
 
@@ -430,7 +399,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.type.kind).toBe('TableType');
@@ -449,11 +418,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
-      if (stmt.kind === 'TypeAlias') {
-        expect(stmt.type.kind).toBe('TableType');
-      }
+      if (stmt.kind === 'TypeAlias') expect(stmt.type.kind).toBe('TableType');
     });
 
     test('table type with properties and indexer', () => {
@@ -461,7 +428,7 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('TypeAlias');
       if (stmt.kind === 'TypeAlias') {
         expect(stmt.type.kind).toBe('TableType');
@@ -479,13 +446,13 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('InterpolatedString');
         if (value.kind === 'InterpolatedString') {
           expect(value.parts.length).toBeGreaterThanOrEqual(1);
-          expect(value.parts[0]!.kind).toBe('StringLiteral');
+          expect(value.parts[0]?.kind).toBe('StringLiteral');
         }
       }
     });
@@ -495,13 +462,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('InterpolatedString');
-        if (value.kind === 'InterpolatedString') {
-          expect(value.parts.length).toBeGreaterThanOrEqual(1);
-        }
+        if (value.kind === 'InterpolatedString') expect(value.parts.length).toBeGreaterThanOrEqual(1);
       }
     });
   });
@@ -512,16 +477,15 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       expect(stmt.kind).toBe('CallStatement');
       if (stmt.kind === 'CallStatement') {
         expect(stmt.expression.kind).toBe('MethodCallExpression');
         if (stmt.expression.kind === 'MethodCallExpression') {
           expect(stmt.expression.method.name).toBe('FindFirstChild');
           expect(stmt.expression.object.kind).toBe('MethodCallExpression');
-          if (stmt.expression.object.kind === 'MethodCallExpression') {
+          if (stmt.expression.object.kind === 'MethodCallExpression')
             expect(stmt.expression.object.method.name).toBe('GetService');
-          }
         }
       }
     });
@@ -531,9 +495,9 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('MemberExpression');
         if (value.kind === 'MemberExpression') {
           expect(value.property.name).toBe('c');
@@ -541,9 +505,7 @@ describe('Parser Advanced', () => {
           if (value.object.kind === 'MemberExpression') {
             expect(value.object.property.name).toBe('b');
             expect(value.object.object.kind).toBe('MemberExpression');
-            if (value.object.object.kind === 'MemberExpression') {
-              expect(value.object.object.property.name).toBe('a');
-            }
+            if (value.object.object.kind === 'MemberExpression') expect(value.object.object.property.name).toBe('a');
           }
         }
       }
@@ -580,13 +542,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('TableExpression');
-        if (value.kind === 'TableExpression') {
-          expect(value.fields.length).toBe(0);
-        }
+        if (value.kind === 'TableExpression') expect(value.fields.length).toBe(0);
       }
     });
 
@@ -595,13 +555,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('TableExpression');
-        if (value.kind === 'TableExpression') {
-          expect(value.fields.length).toBe(1);
-        }
+        if (value.kind === 'TableExpression') expect(value.fields.length).toBe(1);
       }
     });
 
@@ -610,13 +568,11 @@ describe('Parser Advanced', () => {
       expect(result.errors.length).toBe(0);
       expect(result.ast.body.length).toBe(1);
 
-      const stmt = result.ast.body[0]!;
+      const stmt = expectDefined(result.ast.body[0]);
       if (stmt.kind === 'LocalDeclaration') {
-        const value = stmt.values[0]!;
+        const value = expectDefined(stmt.values[0]);
         expect(value.kind).toBe('TableExpression');
-        if (value.kind === 'TableExpression') {
-          expect(value.fields.length).toBe(3);
-        }
+        if (value.kind === 'TableExpression') expect(value.fields.length).toBe(3);
       }
     });
   });

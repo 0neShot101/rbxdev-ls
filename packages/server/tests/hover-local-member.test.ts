@@ -1,11 +1,11 @@
+import { describe, expect, test } from 'bun:test';
 import { buildGlobalEnvironment } from '@definitions/globals';
 import { formatMemberHoverForType, resolveSymbolTypeInDocument } from '@lsp/handlers/hover';
 import { parse } from '@parser/parser';
-import { checkProgram } from '@typings/checker';
-import { describe, expect, test } from 'bun:test';
+import { checkProgram } from '@analyzer/checker';
 
-import type { ParsedDocument } from '@typings/lsp';
 import type { ClassType } from '@typings/types';
+import type { ParsedDocument } from '@typings/lsp';
 
 const globalEnv = buildGlobalEnvironment();
 
@@ -17,9 +17,8 @@ const resolveClass = (name: string): ClassType | undefined => {
 const makeParsedDocument = (code: string): ParsedDocument => {
   const result = parse(code);
   const classes = new Map<string, ClassType>();
-  for (const [name, type] of globalEnv.robloxClasses) {
-    if (type.kind === 'Class') classes.set(name, type);
-  }
+  for (const [name, type] of globalEnv.robloxClasses) if (type.kind === 'Class') classes.set(name, type);
+
   const typeCheckResult = checkProgram(result.ast, {
     classes,
     'dataTypes': globalEnv.robloxDataTypes,
@@ -81,8 +80,6 @@ local Counter = {
     const md = formatMemberHoverForType(t, 'increment', resolveClass);
     expect(md).toBeDefined();
     expect(md).toContain('increment');
-    // Should be wrapped in a lua code block (either via formatFunctionDocFull
-    // or the plain typeToString fallback).
     expect(md).toContain('```lua');
   });
 
@@ -135,8 +132,7 @@ local inst: Instance = nil :: any
   });
 
   test('walks the class superclass chain', () => {
-    // Part inherits from BasePart inherits from PVInstance inherits from Instance.
-    // FindFirstChild lives on Instance — should still be found via the chain.
+    /** FindFirstChild is declared on Instance, so Part must reach it through BasePart and PVInstance. */
     const doc = makeParsedDocument(`
 local p: Part = nil :: any
 `);
@@ -156,12 +152,11 @@ local p: Part = nil :: any
   });
 });
 
-describe('formatMemberHoverForType — non-applicable types', () => {
+describe('formatMemberHoverForType — non-applicable types', () =>
   test('returns undefined for primitive types', () => {
     const doc = makeParsedDocument('local n = 42');
     const t = resolveSymbolTypeInDocument(doc, 'n');
     expect(t).toBeDefined();
     if (t === undefined) return;
     expect(formatMemberHoverForType(t, 'anything', resolveClass)).toBeUndefined();
-  });
-});
+  }));

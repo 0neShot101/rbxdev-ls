@@ -5,7 +5,6 @@ local M = {}
 M.WebSocket = WebSocket
   or (syn and syn.websocket)
   or (Fluxus and Fluxus.websocket)
-  or (krnl and krnl.websocket)
   or (Xeno and Xeno.websocket)
   or websocket
 

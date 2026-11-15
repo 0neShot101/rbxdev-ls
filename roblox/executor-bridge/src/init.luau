@@ -109,6 +109,8 @@ local onSocketClose = function()
   scheduleReconnect()
 end
 
+state.bindHandlers(handleMessage, onSocketClose)
+
 local adoptSocket = function(ws)
   state.connection = ws
   state.connected = true

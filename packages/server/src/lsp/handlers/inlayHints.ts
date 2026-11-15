@@ -1,5 +1,6 @@
-import { typeToString } from '@typings/types';
 import { InlayHintKind } from 'vscode-languageserver';
+
+import { typeToString } from '@analyzer/values';
 
 import type { Statement } from '@typings/ast';
 import type { DocumentManager, ParsedDocument } from '@typings/lsp';
@@ -18,7 +19,7 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
   const allSymbols = document.typeCheckResult.allSymbols;
 
   const processStatements = (statements: ReadonlyArray<Statement>) => {
-    for (const stmt of statements) {
+    for (const stmt of statements)
       switch (stmt.kind) {
         case 'LocalDeclaration': {
           for (let i = 0; i < stmt.names.length; i++) {
@@ -134,7 +135,6 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
           break;
         }
       }
-    }
   };
 
   processStatements(document.ast.body);
@@ -142,11 +142,10 @@ export const collectInlayHints = (document: ParsedDocument): InlayHint[] => {
 };
 
 /** Provides inline type hints for variables and parameters. */
-export const setupInlayHintsHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.languages.inlayHint.on((params: InlayHintParams): InlayHint[] => {
+export const setupInlayHintsHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.languages.inlayHint.on((params: InlayHintParams): InlayHint[] => {
     const document = documentManager.getDocument(params.textDocument.uri);
     if (document === undefined) return [];
 
     return collectInlayHints(document);
   });
-};

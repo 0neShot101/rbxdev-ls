@@ -1,14 +1,23 @@
 import { createServer as createHttpServer, get as httpGet } from 'node:http';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { WebSocket } from 'ws';
-
 import { createBridgeCore } from '@executor/bridgeCore';
-import { parseRemoteSpyPolicyMessage } from '@executor/protocol';
+import { parseClientMessage, parseProxyMessage, parseRemoteSpyPolicyMessage } from '@executor/protocol';
 import { createProxyBridge } from '@executor/proxy';
 import { createExecutorBridge } from '@executor/server';
+
+import type { AddressInfo } from 'node:net';
 import type { SpyExecutor } from '@tests/types/proxy';
 import type { BridgeStatus, ExecutorBridge } from '@typings/bridge';
-import type { RemoteSpyBlockEntry, RemoteSpyPolicyMessage } from '@typings/protocol';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import type {
+  ClientMessage,
+  ExecuteMessage,
+  ProxyMessage,
+  RemoteSpyBlockEntry,
+  RemoteSpyPolicyMessage,
+  RequestPropertiesMessage,
+  ServerMessage,
+} from '@typings/protocol';
 
 let nextPort = 44100;
 const getPort = (): number => nextPort++;
@@ -26,6 +35,17 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<void
 
   throw new Error('Condition was not met before timeout');
 };
+
+/** Resolves with the rejection message of a promise, or undefined when it fulfils. */
+const captureRejection = async (promise: Promise<unknown>): Promise<string | undefined> =>
+  await promise.then(
+    () => undefined,
+    (cause: unknown) => String(cause),
+  );
+
+/** Distinguishes a bound TCP address from a pipe path or an unbound server. */
+const isAddressInfo = (address: AddressInfo | string | null): address is AddressInfo =>
+  typeof address === 'object' && address !== null;
 
 const getAvailablePort = async (): Promise<number> =>
   await new Promise((resolve, reject) => {
@@ -46,7 +66,7 @@ const getAvailablePort = async (): Promise<number> =>
 
     const onListening = (): void => {
       const address = server.address();
-      if (address === null || typeof address === 'string') {
+      if (!isAddressInfo(address)) {
         cleanup();
         server.close();
         reject(new Error('Failed to resolve ephemeral port'));
@@ -56,7 +76,7 @@ const getAvailablePort = async (): Promise<number> =>
       const port = address.port;
       server.close(error => {
         cleanup();
-        if (error) {
+        if (error !== undefined) {
           reject(error);
           return;
         }
@@ -71,29 +91,59 @@ const getAvailablePort = async (): Promise<number> =>
 
 const getJson = async (port: number, path: string): Promise<{ statusCode: number; body: string }> =>
   await new Promise((resolve, reject) => {
-    const req = httpGet(
+    const request = httpGet(
       {
         'host': '127.0.0.1',
         port,
         path,
       },
-      res => {
+      response => {
         const chunks: Buffer[] = [];
-        res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-        res.on('end', () => {
+        response.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        response.on('end', () =>
           resolve({
-            'statusCode': res.statusCode ?? 0,
+            'statusCode': response.statusCode ?? 0,
             'body': Buffer.concat(chunks).toString('utf-8'),
-          });
-        });
+          }),
+        );
       },
     );
 
-    req.on('error', reject);
+    request.on('error', reject);
   });
 
-const parseFrame = (data: Buffer | string): Record<string, unknown> =>
-  JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')) as Record<string, unknown>;
+/** Decodes a frame received by a proxy socket: bridge-level proxy messages or forwarded client traffic. */
+const decodeProxyFrame = (data: Buffer | string): ProxyMessage | ClientMessage | undefined =>
+  parseProxyMessage(data.toString()) ?? parseClientMessage(data.toString());
+
+/** Recognises the execute request a bridge forwards to an executor socket. */
+const isExecuteFrame = (value: unknown): value is Pick<ExecuteMessage, 'type' | 'id' | 'code'> =>
+  typeof value === 'object' &&
+  value !== null &&
+  'type' in value &&
+  value.type === 'execute' &&
+  'id' in value &&
+  typeof value.id === 'string' &&
+  'code' in value &&
+  typeof value.code === 'string';
+
+/** Recognises the properties request a bridge forwards to an executor socket. */
+const isRequestPropertiesFrame = (value: unknown): value is Pick<RequestPropertiesMessage, 'type' | 'id'> =>
+  typeof value === 'object' &&
+  value !== null &&
+  'type' in value &&
+  value.type === 'requestProperties' &&
+  'id' in value &&
+  typeof value.id === 'string';
+
+/** Decodes a request frame received by a fake executor socket; undefined for other server messages. */
+const decodeExecutorFrame = (
+  data: Buffer | string,
+): Pick<ExecuteMessage, 'type' | 'id' | 'code'> | Pick<RequestPropertiesMessage, 'type' | 'id'> | undefined => {
+  const value: unknown = JSON.parse(data.toString());
+  if (isExecuteFrame(value) || isRequestPropertiesFrame(value)) return value;
+  return undefined;
+};
 
 const openExecutor = async (port: number, name: string): Promise<WebSocket> => {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
@@ -218,7 +268,7 @@ describe('BridgeCore', () => {
     const core = createBridgeCore(
       noop,
       () => true,
-      msg => logMessages.push(msg),
+      message => void logMessages.push(message),
     );
 
     core.handleMessage('not json {{{');
@@ -229,9 +279,9 @@ describe('BridgeCore', () => {
   });
 
   test('handleMessage resolves execute result', async () => {
-    const sent: unknown[] = [];
+    const sent: ServerMessage[] = [];
     const core = createBridgeCore(
-      msg => sent.push(msg),
+      message => void sent.push(message),
       () => true,
       noop,
     );
@@ -242,13 +292,13 @@ describe('BridgeCore', () => {
     const promise = core.execute('print("hi")');
 
     expect(sent.length).toBe(1);
-    const sentMsg = sent[0] as { type: string; id: string; code: string };
-    expect(sentMsg.type).toBe('execute');
+    const sentMessage = sent[0];
+    if (sentMessage?.type !== 'execute') throw new Error('expected execute message');
 
     core.handleMessage(
       JSON.stringify({
         'type': 'executeResult',
-        'id': sentMsg.id,
+        'id': sentMessage.id,
         'success': true,
         'result': 'hi',
       }),
@@ -261,12 +311,12 @@ describe('BridgeCore', () => {
 
   test('execute rejects when not ready', async () => {
     const core = createBridgeCore(noop, () => false, noop);
-    await expect(core.execute('test')).rejects.toThrow('No executor connected');
+    expect(await captureRejection(core.execute('test'))).toContain('No executor connected');
   });
 
   test('execute rejects when no executor name', async () => {
     const core = createBridgeCore(noop, () => true, noop);
-    await expect(core.execute('test')).rejects.toThrow('handshake not completed');
+    expect(await captureRejection(core.execute('test'))).toContain('handshake not completed');
   });
 
   test('rejectAllPending rejects pending executions', async () => {
@@ -276,38 +326,38 @@ describe('BridgeCore', () => {
     const promise = core.execute('test');
     core.rejectAllPending('disconnected');
 
-    await expect(promise).rejects.toThrow('disconnected');
+    expect(await captureRejection(promise)).toContain('disconnected');
   });
 
   test('requestGameTree sends message', () => {
-    const sent: unknown[] = [];
+    const sent: ServerMessage[] = [];
     const core = createBridgeCore(
-      msg => sent.push(msg),
+      message => void sent.push(message),
       () => true,
       noop,
     );
 
     core.requestGameTree();
-    expect(sent.length).toBe(1);
-    expect((sent[0] as { type: string }).type).toBe('requestGameTree');
+    expect(sent).toEqual([{ 'type': 'requestGameTree' }]);
   });
 
   test('handleMessage resolves properties result', async () => {
-    const sent: unknown[] = [];
+    const sent: ServerMessage[] = [];
     const core = createBridgeCore(
-      msg => sent.push(msg),
+      message => void sent.push(message),
       () => true,
       noop,
     );
     core.setExecutorName('Exec');
 
     const promise = core.requestProperties(['Workspace', 'Part']);
-    const sentMsg = sent[0] as { id: string };
+    const sentMessage = sent[0];
+    if (sentMessage?.type !== 'requestProperties') throw new Error('expected requestProperties message');
 
     core.handleMessage(
       JSON.stringify({
         'type': 'propertiesResult',
-        'id': sentMsg.id,
+        'id': sentMessage.id,
         'success': true,
         'properties': [{ 'name': 'Name', 'valueType': 'string', 'value': 'Part' }],
       }),
@@ -315,8 +365,7 @@ describe('BridgeCore', () => {
 
     const result = await promise;
     expect(result.success).toBe(true);
-    expect(result.properties).toBeDefined();
-    expect(result.properties!.length).toBe(1);
+    expect(result.properties?.length).toBe(1);
   });
 
   test('remote spy tracking', () => {
@@ -357,9 +406,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     bridge.start(port);
   });
 
-  afterEach(() => {
-    bridge.stop();
-  });
+  afterEach(() => bridge.stop());
 
   test('bridge starts in waiting state', () => {
     expect(bridge.isRunning).toBe(true);
@@ -369,24 +416,14 @@ describe('ExecutorBridge - Proxy Support', () => {
   test('bridge serves health endpoint on the bridge port', async () => {
     const healthPort = await getAvailablePort();
     const healthLogs: string[] = [];
-    const healthBridge = createExecutorBridge(msg => healthLogs.push(msg));
+    const healthBridge = createExecutorBridge(message => void healthLogs.push(message));
     healthBridge.start(healthPort);
 
     try {
       await waitFor(() => healthLogs.some(log => log.includes(`WebSocket server started on port ${healthPort}`)));
       const response = await getJson(healthPort, '/health');
-      const payload = JSON.parse(response.body) as {
-        ok: boolean;
-        connected: boolean;
-        executorName?: string;
-        clientType?: string;
-      };
-
       expect(response.statusCode).toBe(200);
-      expect(payload.ok).toBe(true);
-      expect(payload.connected).toBe(false);
-      expect(payload.executorName).toBeUndefined();
-      expect(payload.clientType).toBeUndefined();
+      expect(JSON.parse(response.body)).toEqual({ 'ok': true, 'connected': false });
     } finally {
       healthBridge.stop();
     }
@@ -428,18 +465,14 @@ describe('ExecutorBridge - Proxy Support', () => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => ws.on('open', resolve));
 
-    const messages: unknown[] = [];
-    ws.on('message', (data: Buffer | string) => {
-      messages.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const messages: Array<ProxyMessage | ClientMessage | undefined> = [];
+    ws.on('message', (data: Buffer | string) => void messages.push(decodeProxyFrame(data)));
 
     ws.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     await wait(100);
 
     expect(messages.length).toBe(1);
-    const welcome = messages[0] as { type: string; isConnected: boolean };
-    expect(welcome.type).toBe('proxyWelcome');
-    expect(welcome.isConnected).toBe(false);
+    expect(messages[0]).toMatchObject({ 'type': 'proxyWelcome', 'isConnected': false });
 
     ws.close();
     await wait(50);
@@ -460,19 +493,14 @@ describe('ExecutorBridge - Proxy Support', () => {
     const proxy = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => proxy.on('open', resolve));
 
-    const messages: unknown[] = [];
-    proxy.on('message', (data: Buffer | string) => {
-      messages.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const messages: Array<ProxyMessage | ClientMessage | undefined> = [];
+    proxy.on('message', (data: Buffer | string) => void messages.push(decodeProxyFrame(data)));
 
     proxy.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     await wait(100);
 
     expect(messages.length).toBe(1);
-    const welcome = messages[0] as { type: string; isConnected: boolean; executorName: string };
-    expect(welcome.type).toBe('proxyWelcome');
-    expect(welcome.isConnected).toBe(true);
-    expect(welcome.executorName).toBe('MyExec');
+    expect(messages[0]).toMatchObject({ 'type': 'proxyWelcome', 'isConnected': true, 'executorName': 'MyExec' });
 
     proxy.close();
     executor.close();
@@ -494,10 +522,8 @@ describe('ExecutorBridge - Proxy Support', () => {
     const proxy = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => proxy.on('open', resolve));
 
-    const proxyMessages: unknown[] = [];
-    proxy.on('message', (data: Buffer | string) => {
-      proxyMessages.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const proxyMessages: Array<ProxyMessage | ClientMessage | undefined> = [];
+    proxy.on('message', (data: Buffer | string) => void proxyMessages.push(decodeProxyFrame(data)));
 
     proxy.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     await wait(100);
@@ -512,7 +538,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     await wait(100);
 
     expect(proxyMessages.length).toBe(1);
-    expect((proxyMessages[0] as { type: string }).type).toBe('gameTree');
+    expect(proxyMessages[0]?.type).toBe('gameTree');
 
     proxy.close();
     executor.close();
@@ -523,7 +549,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     const executor = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => executor.on('open', resolve));
 
-    const executorReceived: unknown[] = [];
+    const executorReceived: Array<ReturnType<typeof decodeExecutorFrame>> = [];
     executor.on('message', () => {});
     executor.send(
       JSON.stringify({
@@ -534,9 +560,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     );
     await wait(100);
 
-    executor.on('message', (data: Buffer | string) => {
-      executorReceived.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    executor.on('message', (data: Buffer | string) => void executorReceived.push(decodeExecutorFrame(data)));
 
     const proxy = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => proxy.on('open', resolve));
@@ -553,10 +577,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     await wait(100);
 
     expect(executorReceived.length).toBe(1);
-    const forwarded = executorReceived[0] as { type: string; id: string; code: string };
-    expect(forwarded.type).toBe('execute');
-    expect(forwarded.id).toBe('test-id-1');
-    expect(forwarded.code).toBe('print("hello")');
+    expect(executorReceived[0]).toEqual({ 'type': 'execute', 'id': 'test-id-1', 'code': 'print("hello")' });
 
     proxy.close();
     executor.close();
@@ -578,10 +599,8 @@ describe('ExecutorBridge - Proxy Support', () => {
     const proxy = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => proxy.on('open', resolve));
 
-    const proxyMessages: unknown[] = [];
-    proxy.on('message', (data: Buffer | string) => {
-      proxyMessages.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const proxyMessages: Array<ProxyMessage | ClientMessage | undefined> = [];
+    proxy.on('message', (data: Buffer | string) => void proxyMessages.push(decodeProxyFrame(data)));
 
     proxy.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     await wait(100);
@@ -590,11 +609,8 @@ describe('ExecutorBridge - Proxy Support', () => {
     executor.close();
     await wait(200);
 
-    const statusChange = proxyMessages.find(m => (m as { type: string }).type === 'proxyStatusChange') as
-      | { type: string; status: string }
-      | undefined;
-    expect(statusChange).toBeDefined();
-    expect(statusChange!.status).toBe('disconnected');
+    const statusChange = proxyMessages.find(message => message?.type === 'proxyStatusChange');
+    expect(statusChange).toMatchObject({ 'status': 'disconnected' });
 
     proxy.close();
     await wait(50);
@@ -604,10 +620,8 @@ describe('ExecutorBridge - Proxy Support', () => {
     const proxy = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>(resolve => proxy.on('open', resolve));
 
-    const proxyMessages: unknown[] = [];
-    proxy.on('message', (data: Buffer | string) => {
-      proxyMessages.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const proxyMessages: Array<ProxyMessage | ClientMessage | undefined> = [];
+    proxy.on('message', (data: Buffer | string) => void proxyMessages.push(decodeProxyFrame(data)));
 
     proxy.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     await wait(100);
@@ -624,12 +638,8 @@ describe('ExecutorBridge - Proxy Support', () => {
     );
     await wait(100);
 
-    const connected = proxyMessages.find(m => (m as { type: string }).type === 'proxyStatusChange') as
-      | { type: string; status: string; executorName?: string }
-      | undefined;
-    expect(connected).toBeDefined();
-    expect(connected!.status).toBe('connected');
-    expect(connected!.executorName).toBe('NewExec');
+    const connected = proxyMessages.find(message => message?.type === 'proxyStatusChange');
+    expect(connected).toMatchObject({ 'status': 'connected', 'executorName': 'NewExec' });
 
     proxy.close();
     executor.close();
@@ -655,14 +665,10 @@ describe('ExecutorBridge - Proxy Support', () => {
       new Promise<void>(resolve => proxy2.on('open', resolve)),
     ]);
 
-    const messages1: unknown[] = [];
-    const messages2: unknown[] = [];
-    proxy1.on('message', (data: Buffer | string) => {
-      messages1.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
-    proxy2.on('message', (data: Buffer | string) => {
-      messages2.push(JSON.parse(typeof data === 'string' ? data : data.toString('utf-8')));
-    });
+    const messages1: Array<ProxyMessage | ClientMessage | undefined> = [];
+    const messages2: Array<ProxyMessage | ClientMessage | undefined> = [];
+    proxy1.on('message', (data: Buffer | string) => void messages1.push(decodeProxyFrame(data)));
+    proxy2.on('message', (data: Buffer | string) => void messages2.push(decodeProxyFrame(data)));
 
     proxy1.send(JSON.stringify({ 'type': 'proxyHandshake' }));
     proxy2.send(JSON.stringify({ 'type': 'proxyHandshake' }));
@@ -680,8 +686,8 @@ describe('ExecutorBridge - Proxy Support', () => {
 
     expect(messages1.length).toBeGreaterThanOrEqual(1);
     expect(messages2.length).toBeGreaterThanOrEqual(1);
-    expect((messages1[0] as { type: string }).type).toBe('gameTree');
-    expect((messages2[0] as { type: string }).type).toBe('gameTree');
+    expect(messages1[0]?.type).toBe('gameTree');
+    expect(messages2[0]?.type).toBe('gameTree');
 
     proxy1.close();
     proxy2.close();
@@ -696,9 +702,7 @@ describe('ExecutorBridge - Proxy Support', () => {
     await wait(100);
 
     let proxyClosed = false;
-    proxy.on('close', () => {
-      proxyClosed = true;
-    });
+    proxy.on('close', () => void (proxyClosed = true));
 
     bridge.stop();
     await wait(200);
@@ -818,17 +822,16 @@ describe('ProxyBridge', () => {
     await new Promise<void>(resolve => executor.on('open', resolve));
 
     executor.on('message', (data: Buffer | string) => {
-      const msg = JSON.parse(typeof data === 'string' ? data : data.toString('utf-8'));
-      if (msg.type === 'execute') {
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute')
         executor.send(
           JSON.stringify({
             'type': 'executeResult',
-            'id': msg.id,
+            'id': frame.id,
             'success': true,
             'result': 'executed!',
           }),
         );
-      }
     });
 
     executor.send(
@@ -857,17 +860,16 @@ describe('ProxyBridge', () => {
     await new Promise<void>(resolve => executor.on('open', resolve));
 
     executor.on('message', (data: Buffer | string) => {
-      const msg = JSON.parse(typeof data === 'string' ? data : data.toString('utf-8'));
-      if (msg.type === 'requestProperties') {
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'requestProperties')
         executor.send(
           JSON.stringify({
             'type': 'propertiesResult',
-            'id': msg.id,
+            'id': frame.id,
             'success': true,
             'properties': [{ 'name': 'Name', 'valueType': 'string', 'value': 'TestPart' }],
           }),
         );
-      }
     });
 
     executor.send(
@@ -885,8 +887,7 @@ describe('ProxyBridge', () => {
 
     const result = await proxy.requestProperties(['Workspace', 'Part']);
     expect(result.success).toBe(true);
-    expect(result.properties).toBeDefined();
-    expect(result.properties![0]!.name).toBe('Name');
+    expect(result.properties?.[0]?.name).toBe('Name');
 
     executor.close();
     await wait(100);
@@ -994,9 +995,7 @@ describe('ProxyBridge', () => {
     await wait(200);
 
     let rejected = false;
-    const executePromise = proxy.execute('print("test")').catch(() => {
-      rejected = true;
-    });
+    const executePromise = proxy.execute('print("test")').catch(() => void (rejected = true));
     await wait(50);
 
     executor.close();
@@ -1028,30 +1027,6 @@ describe('ProxyBridge - Standalone', () => {
     expect(proxy.liveGameModel.services.size).toBe(0);
   });
 
-  test('proxy has all expected methods', () => {
-    const proxy = createProxyBridge(noop);
-    expect(typeof proxy.execute).toBe('function');
-    expect(typeof proxy.requestGameTree).toBe('function');
-    expect(typeof proxy.requestProperties).toBe('function');
-    expect(typeof proxy.requestModuleInterface).toBe('function');
-    expect(typeof proxy.setProperty).toBe('function');
-    expect(typeof proxy.teleportTo).toBe('function');
-    expect(typeof proxy.deleteInstance).toBe('function');
-    expect(typeof proxy.reparentInstance).toBe('function');
-    expect(typeof proxy.requestChildren).toBe('function');
-    expect(typeof proxy.requestScriptSource).toBe('function');
-    expect(typeof proxy.createInstance).toBe('function');
-    expect(typeof proxy.cloneInstance).toBe('function');
-    expect(typeof proxy.setRemoteSpyEnabled).toBe('function');
-    expect(typeof proxy.setRemoteSpyFilter).toBe('function');
-    expect(typeof proxy.setRemoteSpyBlockList).toBe('function');
-    expect(typeof proxy.onStatusChange).toBe('function');
-    expect(typeof proxy.onRuntimeError).toBe('function');
-    expect(typeof proxy.onGameTreeUpdate).toBe('function');
-    expect(typeof proxy.onLog).toBe('function');
-    expect(typeof proxy.onRemoteSpy).toBe('function');
-  });
-
   test('proxy remoteSpyCalls starts empty', () => {
     const proxy = createProxyBridge(noop);
     expect(proxy.remoteSpyCalls.length).toBe(0);
@@ -1069,9 +1044,7 @@ describe('ExecutorBridge - EADDRINUSE auto-fallback', () => {
     ownerBridge.start(port);
   });
 
-  afterEach(() => {
-    ownerBridge.stop();
-  });
+  afterEach(() => ownerBridge.stop());
 
   test('second bridge falls back to proxy mode on same port', async () => {
     const secondBridge = createExecutorBridge(noop);
@@ -1112,17 +1085,16 @@ describe('ExecutorBridge - EADDRINUSE auto-fallback', () => {
     await new Promise<void>(resolve => executor.on('open', resolve));
 
     executor.on('message', (data: Buffer | string) => {
-      const msg = JSON.parse(typeof data === 'string' ? data : data.toString('utf-8'));
-      if (msg.type === 'execute') {
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute')
         executor.send(
           JSON.stringify({
             'type': 'executeResult',
-            'id': msg.id,
+            'id': frame.id,
             'success': true,
             'result': 'fallback works!',
           }),
         );
-      }
     });
 
     executor.send(
@@ -1201,23 +1173,21 @@ describe('ExecutorBridge - protocol robustness', () => {
   beforeEach(() => {
     port = getPort();
     logs = [];
-    bridge = createExecutorBridge(msg => logs.push(msg));
+    bridge = createExecutorBridge(message => void logs.push(message));
     bridge.start(port);
   });
 
-  afterEach(() => {
-    bridge.stop();
-  });
+  afterEach(() => bridge.stop());
 
   test('malformed frames do not crash or drop the connection', async () => {
     const executor = await openExecutor(port, 'GarbageExec');
     await waitFor(() => bridge.isConnected === true);
 
     executor.on('message', (data: Buffer | string) => {
-      const frame = parseFrame(data);
-      if (frame['type'] === 'execute')
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute')
         executor.send(
-          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'still alive' }),
+          JSON.stringify({ 'type': 'executeResult', 'id': frame.id, 'success': true, 'result': 'still alive' }),
         );
     });
 
@@ -1244,11 +1214,11 @@ describe('ExecutorBridge - protocol robustness', () => {
     await waitFor(() => bridge.isConnected === true);
 
     executor.on('message', (data: Buffer | string) => {
-      const frame = parseFrame(data);
-      if (frame['type'] === 'execute') executor.close();
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute') executor.close();
     });
 
-    await expect(bridge.execute('while true do end')).rejects.toThrow('Client disconnected');
+    expect(await captureRejection(bridge.execute('while true do end'))).toContain('Client disconnected');
 
     await waitFor(() => bridge.isConnected === false);
   });
@@ -1258,15 +1228,15 @@ describe('ExecutorBridge - protocol robustness', () => {
     await waitFor(() => bridge.isConnected === true);
 
     executor.on('message', (data: Buffer | string) => {
-      const frame = parseFrame(data);
-      if (frame['type'] !== 'execute') return;
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type !== 'execute') return;
       executor.send(
-        JSON.stringify({ 'type': 'executeResult', 'id': `${frame['id']}-wrong`, 'success': true, 'result': 'stray' }),
+        JSON.stringify({ 'type': 'executeResult', 'id': `${frame.id}-wrong`, 'success': true, 'result': 'stray' }),
       );
       setTimeout(
         () =>
           executor.send(
-            JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'matched' }),
+            JSON.stringify({ 'type': 'executeResult', 'id': frame.id, 'success': true, 'result': 'matched' }),
           ),
         50,
       );
@@ -1297,10 +1267,10 @@ describe('ExecutorBridge - protocol robustness', () => {
     expect(bridge.isConnected).toBe(true);
 
     second.on('message', (data: Buffer | string) => {
-      const frame = parseFrame(data);
-      if (frame['type'] === 'execute')
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute')
         second.send(
-          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': 'routed to second' }),
+          JSON.stringify({ 'type': 'executeResult', 'id': frame.id, 'success': true, 'result': 'routed to second' }),
         );
     });
 
@@ -1315,23 +1285,23 @@ describe('ExecutorBridge - protocol robustness', () => {
     const executor = await openExecutor(port, 'OddExec');
     await waitFor(() => bridge.isConnected === true);
 
-    let replyResult: unknown = 12345;
+    let replyResult: number | { nested: boolean; list: number[] } = 12345;
     executor.on('message', (data: Buffer | string) => {
-      const frame = parseFrame(data);
-      if (frame['type'] === 'execute')
+      const frame = decodeExecutorFrame(data);
+      if (frame?.type === 'execute')
         executor.send(
-          JSON.stringify({ 'type': 'executeResult', 'id': frame['id'], 'success': true, 'result': replyResult }),
+          JSON.stringify({ 'type': 'executeResult', 'id': frame.id, 'success': true, 'result': replyResult }),
         );
     });
 
     const numberResult = await bridge.execute('return 1');
     expect(numberResult.success).toBe(true);
-    expect(JSON.stringify(numberResult.result)).toBe('12345');
+    expect(numberResult.result).toBe('12345');
 
     replyResult = { 'nested': true, 'list': [1, 2, 3] };
     const objectResult = await bridge.execute('return {}');
     expect(objectResult.success).toBe(true);
-    expect(JSON.stringify(objectResult.result)).toBe('{"nested":true,"list":[1,2,3]}');
+    expect(objectResult.result).toBe('{"nested":true,"list":[1,2,3]}');
 
     executor.close();
     await waitFor(() => bridge.isConnected === false);
@@ -1463,6 +1433,5 @@ describe('MCP Server - injected bridge', () => {
     const { createMcpServer } = await import('@oneshot101/rbxdev-mcp/server');
     const result = createMcpServer();
     expect(result.bridge).toBeDefined();
-    expect(typeof result.bridge.execute).toBe('function');
   });
 });

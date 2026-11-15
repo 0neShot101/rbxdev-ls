@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { isBoolean, isObject, isString } from '@utils/guards';
+
 import type { DataModelNode, RojoProject, RojoState, RojoTree } from '@typings/workspace';
 
 /** Searches for a Rojo project file in the specified workspace directory. */
@@ -18,15 +20,32 @@ export const findRojoProject = (workspacePath: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * Accepts a Rojo tree node: `$className`/`$path` are strings, `$ignoreUnknownInstances` is a boolean,
+ * other `$` metadata (such as `$properties`) is skipped by consumers, and every other key is a child node or scalar.
+ */
+const isRojoTree = (value: unknown): value is RojoTree => {
+  if (!isObject(value) || Array.isArray(value)) return false;
+  const entries: ReadonlyArray<readonly [string, unknown]> = Object.entries(value);
+  return entries.every(([key, entry]) => {
+    if (key === '$className' || key === '$path') return isString(entry);
+    if (key === '$ignoreUnknownInstances') return isBoolean(entry);
+    if (key.startsWith('$')) return true;
+    return isString(entry) || isBoolean(entry) || isRojoTree(entry);
+  });
+};
+
+const isRojoProject = (value: unknown): value is RojoProject =>
+  isObject(value) && 'name' in value && isString(value.name) && 'tree' in value && isRojoTree(value.tree);
+
+const isChildTree = (value: RojoTree[string]): value is RojoTree => typeof value === 'object';
+
 /** Parses a Rojo project JSON file and validates its structure. */
 export const parseRojoProject = (projectPath: string): RojoProject | undefined => {
   try {
     const content = fs.readFileSync(projectPath, 'utf-8');
-    const project = JSON.parse(content) as RojoProject;
-
-    if (project.name === undefined || project.tree === undefined) return undefined;
-
-    return project;
+    const project: unknown = JSON.parse(content);
+    return isRojoProject(project) ? project : undefined;
   } catch {
     return undefined;
   }
@@ -43,15 +62,15 @@ export const buildDataModelTree = (project: RojoProject, projectDir: string): Da
     for (const [key, value] of Object.entries(tree)) {
       if (key.startsWith('$')) continue;
 
-      if (typeof value === 'object' && value !== null) {
-        const childNode = buildNode(key, value as RojoTree, filePath ?? parentPath);
+      if (isChildTree(value)) {
+        const childNode = buildNode(key, value, filePath ?? parentPath);
         children.set(key, childNode);
       }
     }
 
     if (filePath !== undefined && fs.existsSync(filePath)) {
       const stat = fs.statSync(filePath);
-      if (stat.isDirectory()) {
+      if (stat.isDirectory())
         try {
           const entries = fs.readdirSync(filePath);
           for (const entry of entries) {
@@ -89,15 +108,10 @@ export const buildDataModelTree = (project: RojoProject, projectDir: string): Da
         } catch {
           /* noop */
         }
-      }
     }
 
-    return {
-      name,
-      className,
-      ...(filePath !== undefined ? { filePath } : {}),
-      children,
-    };
+    if (filePath === undefined) return { name, className, children };
+    return { name, className, filePath, children };
   };
 
   return buildNode(project.name, project.tree, projectDir);

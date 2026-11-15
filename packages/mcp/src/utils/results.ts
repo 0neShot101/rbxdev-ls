@@ -14,29 +14,39 @@ export const textResult = (text: string): ToolResult => ({ 'content': [{ 'type':
  */
 export const errorResult = (text: string): ToolResult => ({ 'content': [{ 'type': 'text', text }], 'isError': true });
 
+/**
+ * Substitutes a placeholder for empty output text.
+ * @param text - Formatted output.
+ * @param fallback - Placeholder shown when the output is empty.
+ */
+export const orFallback = (text: string, fallback: string): string => (text === '' ? fallback : text);
+
+/**
+ * Formats a caught failure as a tool error result.
+ * @param cause - The thrown value.
+ */
+export const failureResult = (cause: unknown): ToolResult =>
+  errorResult(`Error: ${cause instanceof Error ? cause.message : String(cause)}`);
+
+/** Result returned by tools that need a connected client while none is connected. */
 export const NOT_CONNECTED = errorResult('Error: No executor connected');
 
 /**
- * Validates that a path argument is a non-empty array, returning an error result if not.
- * @param path - The path argument to validate.
- * @returns An error ToolResult if invalid, or undefined if the path is valid.
+ * Runs a bridge request and maps its success flag to a text or error result.
+ * @param request - Starts the bridge request.
+ * @param onSuccess - Formats the success text from the bridge result.
+ * @param failureMessage - Message used when the bridge reports failure without an error.
  */
-export const requirePath = (path: unknown): ToolResult | undefined => {
-  if (Array.isArray(path) === false) return errorResult('Error: path parameter is required');
-  if (path.length === 0) return errorResult('Error: path parameter is required');
-  return undefined;
-};
-
 export const bridgeCall = async <T extends { success: boolean; error?: string | undefined }>(
-  fn: () => Promise<T>,
+  request: () => Promise<T>,
   onSuccess: (result: T) => string,
   failureMessage: string,
 ): Promise<ToolResult> => {
   try {
-    const result = await fn();
+    const result = await request();
     if (result.success) return textResult(onSuccess(result));
     return errorResult(`Error: ${result.error ?? failureMessage}`);
-  } catch (err) {
-    return errorResult(`Error: ${err instanceof Error ? err.message : String(err)}`);
+  } catch (cause) {
+    return failureResult(cause);
   }
 };

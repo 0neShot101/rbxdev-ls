@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { CompletionItemTag, MarkupContent } from 'vscode-languageserver';
 
+import { checkProgram } from '@analyzer/checker';
+import { typeToString } from '@analyzer/values';
 import { createExecutorBridge } from '@executor/server';
 import { createDocumentManager } from '@lsp/documents';
 import { setupCompletionHandler } from '@lsp/handlers/completion';
@@ -8,12 +10,10 @@ import { setupHoverHandler } from '@lsp/handlers/hover';
 import { setupSignatureHelpHandler } from '@lsp/handlers/signature';
 import { parse } from '@parser/parser';
 import { createLspHarness } from '@tests/helpers/lsp';
-import { checkProgram } from '@typings/checker';
-import { typeToString } from '@typings/types';
 
 import type { Position } from 'vscode-languageserver';
 
-const manager = createDocumentManager();
+const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
 const bridge = createExecutorBridge(() => undefined);
 const harness = createLspHarness(manager);
 
@@ -132,7 +132,7 @@ end
     const parsed = parse(source);
     expect(parsed.errors).toEqual([]);
 
-    const result = checkProgram(parsed.ast, { 'mode': 'strict' });
+    const result = checkProgram(parsed.ast, { 'globals': manager.globalEnv, 'mode': 'strict' });
     expect(result.diagnostics.filter(diagnostic => diagnostic.severity === 'error')).toEqual([]);
 
     for (const [name, expected] of [
@@ -162,7 +162,7 @@ local plain = LPH_NO_VIRTUALIZE(function() end)
 local wrapped = LPH_NO_UPVALUES(function() end)
 `);
     expect(parsed.errors).toEqual([]);
-    const result = checkProgram(parsed.ast, { 'mode': 'strict' });
+    const result = checkProgram(parsed.ast, { 'globals': manager.globalEnv, 'mode': 'strict' });
     expect(result.diagnostics.filter(diagnostic => diagnostic.severity === 'error')).toEqual([]);
 
     for (const name of [
@@ -250,7 +250,7 @@ local sum = inferred + 1
 `);
 
   expect(parsed.errors).toEqual([]);
-  const result = checkProgram(parsed.ast, { 'mode': 'strict' });
+  const result = checkProgram(parsed.ast, { 'globals': manager.globalEnv, 'mode': 'strict' });
   expect(result.diagnostics.filter(diagnostic => diagnostic.severity === 'error')).toEqual([]);
 });
 

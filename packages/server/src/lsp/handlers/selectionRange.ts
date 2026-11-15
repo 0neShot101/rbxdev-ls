@@ -262,19 +262,21 @@ const rangesEqual = (a: AstRange, b: AstRange): boolean =>
 const rangeSize = (r: AstRange): number => (r.endLine - r.startLine) * 100000 + (r.endCharacter - r.startCharacter);
 
 /** Provides smart selection ranges for expand/shrink selection based on AST structure. */
-export const setupSelectionRangeHandler = (connection: Connection, documentManager: DocumentManager): void => {
-  connection.onSelectionRanges((params: SelectionRangeParams): SelectionRange[] => {
-    const document = documentManager.getDocument(params.textDocument.uri);
-    if (document === undefined || document.ast === undefined) return [];
+export const setupSelectionRangeHandler = (connection: Connection, documentManager: DocumentManager): void =>
+  void connection.onSelectionRanges((params: SelectionRangeParams): SelectionRange[] => {
+    const ast = documentManager.getDocument(params.textDocument.uri)?.ast;
+    if (ast === undefined) return [];
 
     return params.positions.map(position => {
-      const ranges = collectContainingRanges(document.ast!, position.line, position.character);
+      const ranges = collectContainingRanges(ast, position.line, position.character);
 
       ranges.sort((a, b) => rangeSize(b) - rangeSize(a));
 
       const deduped: AstRange[] = [];
-      for (const r of ranges)
-        if (deduped.length === 0 || rangesEqual(r, deduped[deduped.length - 1]!) === false) deduped.push(r);
+      for (const r of ranges) {
+        const previous = deduped.at(-1);
+        if (previous === undefined || rangesEqual(r, previous) === false) deduped.push(r);
+      }
 
       let current: SelectionRange | undefined;
       for (const r of deduped) {
@@ -298,4 +300,3 @@ export const setupSelectionRangeHandler = (connection: Connection, documentManag
       return current;
     });
   });
-};

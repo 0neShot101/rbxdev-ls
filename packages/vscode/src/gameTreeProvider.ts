@@ -5,21 +5,15 @@
 
 import * as path from 'path';
 
-import {
-  CancellationToken,
-  DataTransfer,
-  DataTransferItem,
-  Event,
-  EventEmitter,
-  TreeDataProvider,
-  TreeDragAndDropController,
-  TreeItem,
-  TreeItemCollapsibleState,
-  Uri,
-} from 'vscode';
+import { DataTransferItem, EventEmitter, TreeItem, TreeItemCollapsibleState, Uri } from 'vscode';
 
+import { isPathList } from '#extension/utils/guards';
+
+import type { CancellationToken, DataTransfer, Event, TreeDataProvider, TreeDragAndDropController } from 'vscode';
 import type {
+  CachedChildren,
   GameTreeItem,
+  IconRule,
   GameTreeNode,
   ReparentCallback,
   RequestChildrenCallback,
@@ -33,322 +27,372 @@ const GAME_TREE_MIME_TYPE = 'application/vnd.code.tree.rbxdev-gametree';
 const SCRIPT_CLASSES = ['Script', 'LocalScript', 'ModuleScript'];
 
 /** Map of class names to icon file names */
-const CLASS_ICON_MAP: Record<string, string> = {
-  'Script': 'script',
-  'LocalScript': 'localscript',
-  'ModuleScript': 'modulescript',
+const CLASS_ICON_MAP = new Map(
+  Object.entries({
+    'Script': 'script',
+    'LocalScript': 'localscript',
+    'ModuleScript': 'modulescript',
 
-  'Folder': 'folder',
-  'Model': 'model',
-  'Configuration': 'configuration',
-  'Actor': 'model',
+    'Folder': 'folder',
+    'Model': 'model',
+    'Configuration': 'configuration',
+    'Actor': 'model',
 
-  'Part': 'part',
-  'MeshPart': 'meshpart',
-  'UnionOperation': 'union',
-  'NegateOperation': 'negate',
-  'WedgePart': 'wedgepart',
-  'CornerWedgePart': 'cornerpart',
-  'SpawnLocation': 'spawnlocation',
-  'Seat': 'seat',
-  'VehicleSeat': 'vehicleseat',
-  'TrussPart': 'trusspart',
-  'SkateboardPlatform': 'part',
+    'Part': 'part',
+    'MeshPart': 'meshpart',
+    'UnionOperation': 'union',
+    'NegateOperation': 'negate',
+    'WedgePart': 'wedgepart',
+    'CornerWedgePart': 'cornerpart',
+    'SpawnLocation': 'spawnlocation',
+    'Seat': 'seat',
+    'VehicleSeat': 'vehicleseat',
+    'TrussPart': 'trusspart',
+    'SkateboardPlatform': 'part',
 
-  'Workspace': 'workspace',
-  'Terrain': 'workspace',
-  'Camera': 'camera',
-  'Players': 'players',
-  'ReplicatedStorage': 'storage',
-  'ReplicatedFirst': 'storage',
-  'ServerStorage': 'storage',
-  'ServerScriptService': 'storage',
-  'StarterGui': 'screengui',
-  'StarterPack': 'folder',
-  'StarterPlayer': 'players',
-  'StarterPlayerScripts': 'folder',
-  'StarterCharacterScripts': 'folder',
-  'Lighting': 'lighting',
-  'SoundService': 'sound',
-  'Teams': 'players',
+    'Workspace': 'workspace',
+    'Terrain': 'workspace',
+    'Camera': 'camera',
+    'Players': 'players',
+    'ReplicatedStorage': 'storage',
+    'ReplicatedFirst': 'storage',
+    'ServerStorage': 'storage',
+    'ServerScriptService': 'storage',
+    'StarterGui': 'screengui',
+    'StarterPack': 'folder',
+    'StarterPlayer': 'players',
+    'StarterPlayerScripts': 'folder',
+    'StarterCharacterScripts': 'folder',
+    'Lighting': 'lighting',
+    'SoundService': 'sound',
+    'Teams': 'players',
 
-  'RunService': 'clock',
-  'TweenService': 'clock',
-  'Debris': 'clock',
+    'RunService': 'clock',
+    'TweenService': 'clock',
+    'Debris': 'clock',
 
-  'HttpService': 'network',
-  'HttpRbxApiService': 'network',
-  'MarketplaceService': 'network',
-  'TeleportService': 'globe',
-  'MessagingService': 'network',
-  'DataStoreService': 'database',
-  'MemoryStoreService': 'database',
+    'HttpService': 'network',
+    'HttpRbxApiService': 'network',
+    'MarketplaceService': 'network',
+    'TeleportService': 'globe',
+    'MessagingService': 'network',
+    'DataStoreService': 'database',
+    'MemoryStoreService': 'database',
 
-  'Chat': 'chat',
-  'TextChatService': 'chat',
-  'SocialService': 'chat',
-  'FriendService': 'chat',
-  'GroupService': 'chat',
+    'Chat': 'chat',
+    'TextChatService': 'chat',
+    'SocialService': 'chat',
+    'FriendService': 'chat',
+    'GroupService': 'chat',
 
-  'UserInputService': 'gamepad',
-  'ContextActionService': 'gamepad',
-  'VRService': 'gamepad',
-  'HapticService': 'gamepad',
-  'GamepadService': 'gamepad',
-  'VirtualInputManager': 'gamepad',
-  'ControllerService': 'gamepad',
-  'TextBoxService': 'textlabel',
+    'UserInputService': 'gamepad',
+    'ContextActionService': 'gamepad',
+    'VRService': 'gamepad',
+    'HapticService': 'gamepad',
+    'GamepadService': 'gamepad',
+    'VirtualInputManager': 'gamepad',
+    'ControllerService': 'gamepad',
+    'TextBoxService': 'textlabel',
 
-  'PolicyService': 'shield',
-  'PermissionsService': 'shield',
-  'UGCValidationService': 'shield',
+    'PolicyService': 'shield',
+    'PermissionsService': 'shield',
+    'UGCValidationService': 'shield',
 
-  'LocalizationService': 'globe',
-  'TextService': 'globe',
+    'LocalizationService': 'globe',
+    'TextService': 'globe',
 
-  'ContentProvider': 'database',
-  'MeshContentProvider': 'database',
-  'SolidModelContentProvider': 'database',
-  'HSRDataContentProvider': 'database',
-  'KeyframeSequenceProvider': 'database',
-  'AnimationClipProvider': 'database',
-  'AssetService': 'database',
-  'InsertService': 'database',
+    'ContentProvider': 'database',
+    'MeshContentProvider': 'database',
+    'SolidModelContentProvider': 'database',
+    'HSRDataContentProvider': 'database',
+    'KeyframeSequenceProvider': 'database',
+    'AnimationClipProvider': 'database',
+    'AssetService': 'database',
+    'InsertService': 'database',
 
-  'BadgeService': 'badge',
-  'GamePassService': 'badge',
-  'PointsService': 'badge',
-  'AnalyticsService': 'badge',
+    'BadgeService': 'badge',
+    'GamePassService': 'badge',
+    'PointsService': 'badge',
+    'AnalyticsService': 'badge',
 
-  'PhysicsService': 'cube',
-  'CollectionService': 'cube',
-  'PathfindingService': 'cube',
-  'JointsService': 'cube',
-  'MaterialService': 'cube',
+    'PhysicsService': 'cube',
+    'CollectionService': 'cube',
+    'PathfindingService': 'cube',
+    'JointsService': 'cube',
+    'MaterialService': 'cube',
 
-  'VideoCaptureService': 'video',
-  'VideoService': 'video',
+    'VideoCaptureService': 'video',
+    'VideoService': 'video',
 
-  'PluginManagementService': 'plugin',
-  'DraggerService': 'plugin',
-  'HeightmapImporterService': 'plugin',
-  'UIDragDetectorService': 'plugin',
+    'PluginManagementService': 'plugin',
+    'DraggerService': 'plugin',
+    'HeightmapImporterService': 'plugin',
+    'UIDragDetectorService': 'plugin',
 
-  'LogService': 'gear',
-  'MicroProfilerService': 'gear',
-  'TestService': 'gear',
-  'ReflectionService': 'gear',
-  'PlacesService': 'gear',
-  'UniqueIdLookupService': 'gear',
-  'InstanceExtensionsService': 'gear',
-  'SharedTableRegistry': 'gear',
-  'NotificationService': 'notification',
-  'UserService': 'players',
-  'ProximityPromptService': 'proximityprompt',
-  'InstanceFileSyncService': 'gear',
-  'FilteredSelection': 'gear',
-  'ProcessInstancePhysicsService': 'cube',
-  'NetworkClient': 'network',
-  'NetworkServer': 'network',
-  'ScriptEditorService': 'script',
-  'ScriptContext': 'script',
-  'RemoteDebuggerServer': 'network',
-  'PluginDebugService': 'plugin',
-  'PackageService': 'plugin',
-  'Visit': 'gear',
-  'GuidRegistryService': 'gear',
-  'Stats': 'gear',
+    'LogService': 'gear',
+    'MicroProfilerService': 'gear',
+    'TestService': 'gear',
+    'ReflectionService': 'gear',
+    'PlacesService': 'gear',
+    'UniqueIdLookupService': 'gear',
+    'InstanceExtensionsService': 'gear',
+    'SharedTableRegistry': 'gear',
+    'NotificationService': 'notification',
+    'UserService': 'players',
+    'ProximityPromptService': 'proximityprompt',
+    'InstanceFileSyncService': 'gear',
+    'FilteredSelection': 'gear',
+    'ProcessInstancePhysicsService': 'cube',
+    'NetworkClient': 'network',
+    'NetworkServer': 'network',
+    'ScriptEditorService': 'script',
+    'ScriptContext': 'script',
+    'RemoteDebuggerServer': 'network',
+    'PluginDebugService': 'plugin',
+    'PackageService': 'plugin',
+    'Visit': 'gear',
+    'GuidRegistryService': 'gear',
+    'Stats': 'gear',
 
-  'PointLight': 'lighting',
-  'SpotLight': 'lighting',
-  'SurfaceLight': 'lighting',
-  'Atmosphere': 'atmosphere',
-  'Sky': 'sky',
-  'BloomEffect': 'bloom',
-  'BlurEffect': 'blur',
-  'ColorCorrectionEffect': 'colorcorrection',
-  'DepthOfFieldEffect': 'depthoffield',
-  'SunRaysEffect': 'sunrays',
+    'PointLight': 'lighting',
+    'SpotLight': 'lighting',
+    'SurfaceLight': 'lighting',
+    'Atmosphere': 'atmosphere',
+    'Sky': 'sky',
+    'BloomEffect': 'bloom',
+    'BlurEffect': 'blur',
+    'ColorCorrectionEffect': 'colorcorrection',
+    'DepthOfFieldEffect': 'depthoffield',
+    'SunRaysEffect': 'sunrays',
 
-  'Sound': 'sound',
-  'SoundGroup': 'sound',
-  'ChorusSoundEffect': 'sound',
-  'CompressorSoundEffect': 'sound',
-  'DistortionSoundEffect': 'sound',
-  'EchoSoundEffect': 'sound',
-  'EqualizerSoundEffect': 'sound',
-  'FlangeSoundEffect': 'sound',
-  'PitchShiftSoundEffect': 'sound',
-  'ReverbSoundEffect': 'sound',
-  'TremoloSoundEffect': 'sound',
+    'Sound': 'sound',
+    'SoundGroup': 'sound',
+    'ChorusSoundEffect': 'sound',
+    'CompressorSoundEffect': 'sound',
+    'DistortionSoundEffect': 'sound',
+    'EchoSoundEffect': 'sound',
+    'EqualizerSoundEffect': 'sound',
+    'FlangeSoundEffect': 'sound',
+    'PitchShiftSoundEffect': 'sound',
+    'ReverbSoundEffect': 'sound',
+    'TremoloSoundEffect': 'sound',
 
-  'ScreenGui': 'screengui',
-  'SurfaceGui': 'surfacegui',
-  'BillboardGui': 'billboardgui',
-  'PlayerGui': 'screengui',
-  'CoreGui': 'screengui',
-  'Frame': 'frame',
-  'ScrollingFrame': 'frame',
-  'CanvasGroup': 'frame',
-  'ViewportFrame': 'viewportframe',
+    'ScreenGui': 'screengui',
+    'SurfaceGui': 'surfacegui',
+    'BillboardGui': 'billboardgui',
+    'PlayerGui': 'screengui',
+    'CoreGui': 'screengui',
+    'Frame': 'frame',
+    'ScrollingFrame': 'frame',
+    'CanvasGroup': 'frame',
+    'ViewportFrame': 'viewportframe',
 
-  'TextLabel': 'textlabel',
-  'TextButton': 'textlabel',
-  'TextBox': 'textlabel',
-  'ImageLabel': 'image',
-  'ImageButton': 'image',
-  'VideoFrame': 'image',
+    'TextLabel': 'textlabel',
+    'TextButton': 'textlabel',
+    'TextBox': 'textlabel',
+    'ImageLabel': 'image',
+    'ImageButton': 'image',
+    'VideoFrame': 'image',
 
-  'UIListLayout': 'uilayout',
-  'UIGridLayout': 'uilayout',
-  'UITableLayout': 'uilayout',
-  'UIPageLayout': 'uilayout',
+    'UIListLayout': 'uilayout',
+    'UIGridLayout': 'uilayout',
+    'UITableLayout': 'uilayout',
+    'UIPageLayout': 'uilayout',
 
-  'UIAspectRatioConstraint': 'uiconstraint',
-  'UISizeConstraint': 'uiconstraint',
-  'UITextSizeConstraint': 'uiconstraint',
+    'UIAspectRatioConstraint': 'uiconstraint',
+    'UISizeConstraint': 'uiconstraint',
+    'UITextSizeConstraint': 'uiconstraint',
 
-  'UICorner': 'uiconstraint',
-  'UIGradient': 'uiconstraint',
-  'UIPadding': 'uiconstraint',
-  'UIScale': 'uiconstraint',
-  'UIStroke': 'uiconstraint',
+    'UICorner': 'uiconstraint',
+    'UIGradient': 'uiconstraint',
+    'UIPadding': 'uiconstraint',
+    'UIScale': 'uiconstraint',
+    'UIStroke': 'uiconstraint',
 
-  'RemoteEvent': 'remoteevent',
-  'BindableEvent': 'remoteevent',
-  'RemoteFunction': 'remotefunction',
-  'BindableFunction': 'remotefunction',
-  'UnreliableRemoteEvent': 'remoteevent',
+    'RemoteEvent': 'remoteevent',
+    'BindableEvent': 'remoteevent',
+    'RemoteFunction': 'remotefunction',
+    'BindableFunction': 'remotefunction',
+    'UnreliableRemoteEvent': 'remoteevent',
 
-  'IntValue': 'intvalue',
-  'NumberValue': 'intvalue',
-  'BoolValue': 'boolvalue',
-  'StringValue': 'stringvalue',
-  'ObjectValue': 'objectvalue',
-  'Color3Value': 'color3value',
-  'Vector3Value': 'vector3value',
-  'CFrameValue': 'cframevalue',
-  'BrickColorValue': 'color3value',
-  'RayValue': 'vector3value',
-  'IntConstrainedValue': 'intvalue',
-  'DoubleConstrainedValue': 'intvalue',
+    'IntValue': 'intvalue',
+    'NumberValue': 'intvalue',
+    'BoolValue': 'boolvalue',
+    'StringValue': 'stringvalue',
+    'ObjectValue': 'objectvalue',
+    'Color3Value': 'color3value',
+    'Vector3Value': 'vector3value',
+    'CFrameValue': 'cframevalue',
+    'BrickColorValue': 'color3value',
+    'RayValue': 'vector3value',
+    'IntConstrainedValue': 'intvalue',
+    'DoubleConstrainedValue': 'intvalue',
 
-  'Animation': 'animation',
-  'AnimationController': 'animation',
-  'AnimationTrack': 'animation',
-  'Animator': 'animation',
-  'Keyframe': 'animation',
-  'KeyframeSequence': 'animation',
-  'Pose': 'animation',
+    'Animation': 'animation',
+    'AnimationController': 'animation',
+    'AnimationTrack': 'animation',
+    'Animator': 'animation',
+    'Keyframe': 'animation',
+    'KeyframeSequence': 'animation',
+    'Pose': 'animation',
 
-  'Humanoid': 'humanoid',
-  'HumanoidDescription': 'humanoid',
-  'Accessory': 'accessory',
-  'Hat': 'hat',
-  'Shirt': 'shirt',
-  'Pants': 'pants',
-  'ShirtGraphic': 'shirt',
-  'BodyColors': 'color3value',
-  'CharacterMesh': 'meshpart',
+    'Humanoid': 'humanoid',
+    'HumanoidDescription': 'humanoid',
+    'Accessory': 'accessory',
+    'Hat': 'hat',
+    'Shirt': 'shirt',
+    'Pants': 'pants',
+    'ShirtGraphic': 'shirt',
+    'BodyColors': 'color3value',
+    'CharacterMesh': 'meshpart',
 
-  'ParticleEmitter': 'particleemitter',
-  'Fire': 'particleemitter',
-  'Smoke': 'particleemitter',
-  'Sparkles': 'particleemitter',
-  'Explosion': 'explosion',
-  'Beam': 'beam',
-  'Trail': 'trail',
+    'ParticleEmitter': 'particleemitter',
+    'Fire': 'particleemitter',
+    'Smoke': 'particleemitter',
+    'Sparkles': 'particleemitter',
+    'Explosion': 'explosion',
+    'Beam': 'beam',
+    'Trail': 'trail',
 
-  'Decal': 'decal',
-  'Texture': 'texture',
-  'SurfaceAppearance': 'texture',
-  'MaterialVariant': 'texture',
+    'Decal': 'decal',
+    'Texture': 'texture',
+    'SurfaceAppearance': 'texture',
+    'MaterialVariant': 'texture',
 
-  'Attachment': 'attachment',
-  'Bone': 'attachment',
+    'Attachment': 'attachment',
+    'Bone': 'attachment',
 
-  'Weld': 'weld',
-  'WeldConstraint': 'weld',
-  'ManualWeld': 'weld',
-  'Motor': 'motor',
-  'Motor6D': 'motor',
-  'Snap': 'weld',
-  'Glue': 'weld',
-  'Rotate': 'motor',
-  'RotateP': 'motor',
-  'RotateV': 'motor',
-  'VelocityMotor': 'motor',
+    'Weld': 'weld',
+    'WeldConstraint': 'weld',
+    'ManualWeld': 'weld',
+    'Motor': 'motor',
+    'Motor6D': 'motor',
+    'Snap': 'weld',
+    'Glue': 'weld',
+    'Rotate': 'motor',
+    'RotateP': 'motor',
+    'RotateV': 'motor',
+    'VelocityMotor': 'motor',
 
-  'AlignOrientation': 'constraint',
-  'AlignPosition': 'constraint',
-  'AngularVelocity': 'constraint',
-  'BallSocketConstraint': 'constraint',
-  'CylindricalConstraint': 'constraint',
-  'HingeConstraint': 'constraint',
-  'LineForce': 'constraint',
-  'LinearVelocity': 'constraint',
-  'PlaneConstraint': 'constraint',
-  'PrismaticConstraint': 'constraint',
-  'RigidConstraint': 'constraint',
-  'RodConstraint': 'constraint',
-  'RopeConstraint': 'constraint',
-  'SpringConstraint': 'constraint',
-  'Torque': 'constraint',
-  'UniversalConstraint': 'constraint',
-  'VectorForce': 'constraint',
-  'NoCollisionConstraint': 'constraint',
+    'AlignOrientation': 'constraint',
+    'AlignPosition': 'constraint',
+    'AngularVelocity': 'constraint',
+    'BallSocketConstraint': 'constraint',
+    'CylindricalConstraint': 'constraint',
+    'HingeConstraint': 'constraint',
+    'LineForce': 'constraint',
+    'LinearVelocity': 'constraint',
+    'PlaneConstraint': 'constraint',
+    'PrismaticConstraint': 'constraint',
+    'RigidConstraint': 'constraint',
+    'RodConstraint': 'constraint',
+    'RopeConstraint': 'constraint',
+    'SpringConstraint': 'constraint',
+    'Torque': 'constraint',
+    'UniversalConstraint': 'constraint',
+    'VectorForce': 'constraint',
+    'NoCollisionConstraint': 'constraint',
 
-  'BodyForce': 'bodyforce',
-  'BodyGyro': 'bodyforce',
-  'BodyPosition': 'bodyvelocity',
-  'BodyVelocity': 'bodyvelocity',
-  'BodyAngularVelocity': 'bodyvelocity',
-  'BodyThrust': 'bodyforce',
-  'RocketPropulsion': 'bodyforce',
+    'BodyForce': 'bodyforce',
+    'BodyGyro': 'bodyforce',
+    'BodyPosition': 'bodyvelocity',
+    'BodyVelocity': 'bodyvelocity',
+    'BodyAngularVelocity': 'bodyvelocity',
+    'BodyThrust': 'bodyforce',
+    'RocketPropulsion': 'bodyforce',
 
-  'ClickDetector': 'clickdetector',
-  'ProximityPrompt': 'proximityprompt',
-  'DragDetector': 'clickdetector',
+    'ClickDetector': 'clickdetector',
+    'ProximityPrompt': 'proximityprompt',
+    'DragDetector': 'clickdetector',
 
-  'Highlight': 'highlight',
-  'SelectionBox': 'selectionbox',
-  'SelectionSphere': 'selectionbox',
-  'BoxHandleAdornment': 'selectionbox',
-  'ConeHandleAdornment': 'selectionbox',
-  'CylinderHandleAdornment': 'selectionbox',
-  'ImageHandleAdornment': 'selectionbox',
-  'LineHandleAdornment': 'selectionbox',
-  'SphereHandleAdornment': 'selectionbox',
-  'WireframeHandleAdornment': 'selectionbox',
+    'Highlight': 'highlight',
+    'SelectionBox': 'selectionbox',
+    'SelectionSphere': 'selectionbox',
+    'BoxHandleAdornment': 'selectionbox',
+    'ConeHandleAdornment': 'selectionbox',
+    'CylinderHandleAdornment': 'selectionbox',
+    'ImageHandleAdornment': 'selectionbox',
+    'LineHandleAdornment': 'selectionbox',
+    'SphereHandleAdornment': 'selectionbox',
+    'WireframeHandleAdornment': 'selectionbox',
 
-  'Tool': 'tool',
-  'HopperBin': 'tool',
-  'BackpackItem': 'tool',
+    'Tool': 'tool',
+    'HopperBin': 'tool',
+    'BackpackItem': 'tool',
 
-  'Team': 'team',
+    'Team': 'team',
 
-  'Player': 'player',
-  'Backpack': 'backpack',
-  'PlayerScripts': 'folder',
-  'PlayerMouse': 'clickdetector',
-  'Character': 'character',
+    'Player': 'player',
+    'Backpack': 'backpack',
+    'PlayerScripts': 'folder',
+    'PlayerMouse': 'clickdetector',
+    'Character': 'character',
 
-  'BlockMesh': 'blockmesh',
-  'CylinderMesh': 'cylindermesh',
-  'SpecialMesh': 'specialmesh',
-  'FileMesh': 'specialmesh',
-  'EditableMesh': 'meshpart',
+    'BlockMesh': 'blockmesh',
+    'CylinderMesh': 'cylindermesh',
+    'SpecialMesh': 'specialmesh',
+    'FileMesh': 'specialmesh',
+    'EditableMesh': 'meshpart',
 
-  'StarterGear': 'startergear',
+    'StarterGear': 'startergear',
 
-  'TouchTransmitter': 'touchtransmitter',
+    'TouchTransmitter': 'touchtransmitter',
 
-  'Dialog': 'dialog',
-  'DialogChoice': 'dialog',
+    'Dialog': 'dialog',
+    'DialogChoice': 'dialog',
 
-  'ForceField': 'forcefield',
-  'DataModel': 'workspace',
-};
+    'ForceField': 'forcefield',
+    'DataModel': 'workspace',
+  }),
+);
+
+/** Ordered keyword rules for value classes without an explicit icon; the first match wins. */
+const VALUE_ICON_RULES: ReadonlyArray<IconRule> = [
+  { 'keywords': ['Int', 'Number', 'Double'], 'icon': 'intvalue' },
+  { 'keywords': ['Bool'], 'icon': 'boolvalue' },
+  { 'keywords': ['String'], 'icon': 'stringvalue' },
+  { 'keywords': ['Object', 'Instance'], 'icon': 'objectvalue' },
+  { 'keywords': ['Color'], 'icon': 'color3value' },
+  { 'keywords': ['Vector', 'Ray'], 'icon': 'vector3value' },
+  { 'keywords': ['CFrame'], 'icon': 'cframevalue' },
+];
+
+/** Ordered keyword rules for other classes without an explicit icon; the first match wins. */
+const CLASS_ICON_RULES: ReadonlyArray<IconRule> = [
+  { 'keywords': ['Part', 'Mesh'], 'icon': 'part' },
+  { 'keywords': ['Light', 'Atmosphere', 'Sky', 'Effect'], 'icon': 'lighting' },
+  { 'keywords': ['Constraint'], 'icon': 'constraint' },
+  { 'keywords': ['Weld', 'Joint', 'Snap', 'Glue'], 'icon': 'weld' },
+  { 'keywords': ['Motor', 'Rotate'], 'icon': 'motor' },
+  { 'keywords': ['Force', 'Velocity', 'Gyro', 'Thrust'], 'icon': 'bodyforce' },
+  { 'keywords': ['Animation', 'Keyframe', 'Pose'], 'icon': 'animation' },
+  { 'keywords': ['Particle', 'Fire', 'Smoke', 'Sparkle'], 'icon': 'particleemitter' },
+  { 'keywords': ['Beam'], 'icon': 'beam' },
+  { 'keywords': ['Trail'], 'icon': 'trail' },
+  { 'keywords': ['Humanoid'], 'icon': 'humanoid' },
+  { 'keywords': ['Gui'], 'icon': 'frame' },
+  { 'keywords': ['UILayout', 'Layout'], 'icon': 'uilayout' },
+  { 'keywords': ['UIConstraint', 'UI'], 'icon': 'uiconstraint' },
+  { 'keywords': ['Text'], 'icon': 'textlabel' },
+  { 'keywords': ['Image', 'Video'], 'icon': 'image' },
+  { 'keywords': ['Button'], 'icon': 'textlabel' },
+  { 'keywords': ['Sound'], 'icon': 'sound' },
+  { 'keywords': ['Remote', 'Bindable'], 'icon': 'remoteevent' },
+  { 'keywords': ['Decal', 'Texture', 'Surface'], 'icon': 'decal' },
+  { 'keywords': ['Click', 'Drag'], 'icon': 'clickdetector' },
+  { 'keywords': ['Proximity'], 'icon': 'proximityprompt' },
+  { 'keywords': ['Selection', 'Highlight', 'Adornment'], 'icon': 'highlight' },
+  { 'keywords': ['Attachment', 'Bone'], 'icon': 'attachment' },
+  { 'keywords': ['Tool', 'Accessory'], 'icon': 'tool' },
+  { 'keywords': ['Provider'], 'icon': 'database' },
+  { 'keywords': ['Service'], 'icon': 'gear' },
+];
+
+/**
+ * Picks the icon of the first rule with a keyword contained in the class name.
+ */
+const matchIcon = (className: string, rules: ReadonlyArray<IconRule>, fallback: string): string =>
+  rules.find(rule => rule.keywords.some(keyword => className.includes(keyword)))?.icon ?? fallback;
 
 /**
  * TreeDataProvider for displaying the live Roblox game hierarchy
@@ -362,7 +406,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   private requestChildrenCallback: RequestChildrenCallback | undefined;
   private extensionPath: string;
   /** Cache of fetched children by JSON-serialized path */
-  private childrenCache: Map<string, ReadonlyArray<GameTreeNode>> = new Map();
+  private childrenCache: Map<string, CachedChildren> = new Map();
   private readonly searchVisitedPaths = new Set<string>();
 
   /** Search state */
@@ -395,17 +439,13 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
    * Registers a callback for handling reparent operations
    * @param callback - Function to call when an item is dropped onto another
    */
-  onReparent = (callback: ReparentCallback): void => {
-    this.reparentCallback = callback;
-  };
+  onReparent = (callback: ReparentCallback): void => void (this.reparentCallback = callback);
 
   /**
    * Registers a callback for requesting children of a node (lazy loading)
    * @param callback - Function to call when children need to be fetched
    */
-  onRequestChildren = (callback: RequestChildrenCallback): void => {
-    this.requestChildrenCallback = callback;
-  };
+  onRequestChildren = (callback: RequestChildrenCallback): void => void (this.requestChildrenCallback = callback);
 
   /**
    * Refreshes the tree with new game tree data, merging with existing deep data
@@ -461,14 +501,14 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     }
 
     const results: GameTreeItem[] = [];
-    const query = this.searchOptions.query;
+    const { query, searchByName, searchByClass } = this.searchOptions;
 
     const searchNode = (node: GameTreeNode, path: ReadonlyArray<string>, isService: boolean): void => {
       const pathKey = JSON.stringify(path);
       if (this.searchVisitedPaths.has(pathKey)) return;
       this.searchVisitedPaths.add(pathKey);
-      const matchesName = this.searchOptions!.searchByName && node.name.toLowerCase().includes(query);
-      const matchesClass = this.searchOptions!.searchByClass && node.className.toLowerCase().includes(query);
+      const matchesName = searchByName && node.name.toLowerCase().includes(query);
+      const matchesClass = searchByClass && node.className.toLowerCase().includes(query);
 
       if (matchesName || matchesClass)
         results.push({
@@ -486,10 +526,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
 
     for (const node of this.rootNodes) searchNode(node, [node.name], true);
 
-    for (const [pathKey, children] of this.childrenCache) {
-      const basePath = JSON.parse(pathKey) as string[];
-      for (const child of children) searchNode(child, [...basePath, child.name], false);
-    }
+    for (const cached of this.childrenCache.values())
+      for (const child of cached.children) searchNode(child, [...cached.path, child.name], false);
 
     this.searchResults = results;
   };
@@ -549,7 +587,7 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     const nameIndex = new Map<string, number>();
 
     return children.map(child => {
-      const frequency = nameFrequency.get(child.name)!;
+      const frequency = nameFrequency.get(child.name) ?? 0;
       const index = nameIndex.get(child.name) ?? 0;
       nameIndex.set(child.name, index + 1);
 
@@ -575,13 +613,13 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
       return this.mapChildrenToItems(element.children, element.path);
 
     const pathKey = JSON.stringify(element.path);
-    const cachedChildren = this.childrenCache.get(pathKey);
-    if (cachedChildren !== undefined) return this.mapChildrenToItems(cachedChildren, element.path);
+    const cached = this.childrenCache.get(pathKey);
+    if (cached !== undefined) return this.mapChildrenToItems(cached.children, element.path);
 
     if (element.hasChildren === true && this.requestChildrenCallback !== undefined) {
       const fetchedChildren = await this.requestChildrenCallback(element.path);
       if (fetchedChildren !== undefined && fetchedChildren.length > 0) {
-        this.childrenCache.set(pathKey, fetchedChildren);
+        this.childrenCache.set(pathKey, { 'path': element.path, 'children': fetchedChildren });
         return this.mapChildrenToItems(fetchedChildren, element.path);
       }
     }
@@ -613,7 +651,8 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
     const transferItem = dataTransfer.get(GAME_TREE_MIME_TYPE);
     if (transferItem === undefined) return;
 
-    const paths = JSON.parse(await transferItem.asString()) as ReadonlyArray<ReadonlyArray<string>>;
+    const paths: unknown = JSON.parse(await transferItem.asString());
+    if (isPathList(paths) === false) return;
 
     for (const sourcePath of paths) {
       if (this.isParentOrSelf(sourcePath, target.path)) continue;
@@ -675,75 +714,11 @@ export class GameTreeDataProvider implements TreeDataProvider<GameTreeItem>, Tre
   };
 
   private getIconForClass = (className: string): Uri => {
-    let iconName = CLASS_ICON_MAP[className];
-
-    if (iconName === undefined) {
-      if (className.includes('Value')) {
-        if (className.includes('Int') || className.includes('Number') || className.includes('Double'))
-          iconName = 'intvalue';
-        else if (className.includes('Bool')) iconName = 'boolvalue';
-        else if (className.includes('String')) iconName = 'stringvalue';
-        else if (className.includes('Object') || className.includes('Instance')) iconName = 'objectvalue';
-        else if (className.includes('Color')) iconName = 'color3value';
-        else if (className.includes('Vector') || className.includes('Ray')) iconName = 'vector3value';
-        else if (className.includes('CFrame')) iconName = 'cframevalue';
-        else iconName = 'intvalue';
-      } else if (className.includes('Part') || className.includes('Mesh')) iconName = 'part';
-      else if (
-        className.includes('Light') ||
-        className.includes('Atmosphere') ||
-        className.includes('Sky') ||
-        className.includes('Effect')
-      )
-        iconName = 'lighting';
-      else if (className.includes('Constraint')) iconName = 'constraint';
-      else if (
-        className.includes('Weld') ||
-        className.includes('Joint') ||
-        className.includes('Snap') ||
-        className.includes('Glue')
-      )
-        iconName = 'weld';
-      else if (className.includes('Motor') || className.includes('Rotate')) iconName = 'motor';
-      else if (
-        className.includes('Force') ||
-        className.includes('Velocity') ||
-        className.includes('Gyro') ||
-        className.includes('Thrust')
-      )
-        iconName = 'bodyforce';
-      else if (className.includes('Animation') || className.includes('Keyframe') || className.includes('Pose'))
-        iconName = 'animation';
-      else if (
-        className.includes('Particle') ||
-        className.includes('Fire') ||
-        className.includes('Smoke') ||
-        className.includes('Sparkle')
-      )
-        iconName = 'particleemitter';
-      else if (className.includes('Beam')) iconName = 'beam';
-      else if (className.includes('Trail')) iconName = 'trail';
-      else if (className.includes('Humanoid')) iconName = 'humanoid';
-      else if (className.includes('Gui')) iconName = 'frame';
-      else if (className.includes('UILayout') || className.includes('Layout')) iconName = 'uilayout';
-      else if (className.includes('UIConstraint') || className.includes('UI')) iconName = 'uiconstraint';
-      else if (className.includes('Text')) iconName = 'textlabel';
-      else if (className.includes('Image') || className.includes('Video')) iconName = 'image';
-      else if (className.includes('Button')) iconName = 'textlabel';
-      else if (className.includes('Sound')) iconName = 'sound';
-      else if (className.includes('Remote') || className.includes('Bindable')) iconName = 'remoteevent';
-      else if (className.includes('Decal') || className.includes('Texture') || className.includes('Surface'))
-        iconName = 'decal';
-      else if (className.includes('Click') || className.includes('Drag')) iconName = 'clickdetector';
-      else if (className.includes('Proximity')) iconName = 'proximityprompt';
-      else if (className.includes('Selection') || className.includes('Highlight') || className.includes('Adornment'))
-        iconName = 'highlight';
-      else if (className.includes('Attachment') || className.includes('Bone')) iconName = 'attachment';
-      else if (className.includes('Tool') || className.includes('Accessory')) iconName = 'tool';
-      else if (className.includes('Provider')) iconName = 'database';
-      else if (className.includes('Service')) iconName = 'gear';
-      else iconName = 'default';
-    }
+    const iconName =
+      CLASS_ICON_MAP.get(className) ??
+      (className.includes('Value')
+        ? matchIcon(className, VALUE_ICON_RULES, 'intvalue')
+        : matchIcon(className, CLASS_ICON_RULES, 'default'));
 
     return Uri.file(path.join(this.extensionPath, 'images', `${iconName}.svg`));
   };

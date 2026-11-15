@@ -1,167 +1,112 @@
-import type {
-  Assignment,
-  BaseNode,
-  BinaryExpression,
-  BooleanLiteral,
-  BreakStatement,
-  CallExpression,
-  CallStatement,
-  Chunk,
-  Comment,
-  CompoundAssignment,
-  ContinueStatement,
-  DoStatement,
-  ErrorExpression,
-  ErrorStatement,
-  ErrorType,
-  ExportStatement,
-  Expression,
-  ForGeneric,
-  ForNumeric,
-  FunctionDeclaration,
-  FunctionExpression,
-  FunctionType,
-  Identifier,
-  IfExpression,
-  IfStatement,
-  IndexExpression,
-  InterpolatedString,
-  IntersectionType,
-  LocalDeclaration,
-  LocalFunction,
-  MemberExpression,
-  MethodCallExpression,
-  NilLiteral,
-  NumberLiteral,
-  OptionalType,
-  ParenthesizedExpression,
-  ParenthesizedType,
-  RepeatStatement,
-  ReturnStatement,
-  Statement,
-  StringLiteral,
-  TableExpression,
-  TableType,
-  TypeAlias,
-  TypeAnnotation,
-  TypeCastExpression,
-  TypeLiteral,
-  TypeofType,
-  TypeReference,
-  UnaryExpression,
-  UnionType,
-  VarargExpression,
-  VariadicType,
-  WhileStatement,
-} from '@typings/ast';
+import type { Chunk, Expression, Statement, TypeAnnotation, VisitableNode } from '@typings/ast';
 import type { Visitor } from '@typings/parser';
 
 /** Visits a single AST node by dispatching to the appropriate visitor method based on node kind. */
-export const visit = <T>(node: BaseNode, visitor: Visitor<T>): T | undefined => {
+export const visit = <T>(node: VisitableNode, visitor: Visitor<T>): T | undefined => {
   switch (node.kind) {
     case 'Chunk':
-      return visitor.visitChunk?.(node as Chunk);
+      return visitor.visitChunk?.(node);
     case 'Comment':
-      return visitor.visitComment?.(node as Comment);
+      return visitor.visitComment?.(node);
 
     case 'LocalDeclaration':
-      return visitor.visitLocalDeclaration?.(node as LocalDeclaration);
+      return visitor.visitLocalDeclaration?.(node);
     case 'LocalFunction':
-      return visitor.visitLocalFunction?.(node as LocalFunction);
+      return visitor.visitLocalFunction?.(node);
     case 'FunctionDeclaration':
-      return visitor.visitFunctionDeclaration?.(node as FunctionDeclaration);
+      return visitor.visitFunctionDeclaration?.(node);
     case 'Assignment':
-      return visitor.visitAssignment?.(node as Assignment);
+      return visitor.visitAssignment?.(node);
     case 'CompoundAssignment':
-      return visitor.visitCompoundAssignment?.(node as CompoundAssignment);
+      return visitor.visitCompoundAssignment?.(node);
     case 'IfStatement':
-      return visitor.visitIfStatement?.(node as IfStatement);
+      return visitor.visitIfStatement?.(node);
     case 'WhileStatement':
-      return visitor.visitWhileStatement?.(node as WhileStatement);
+      return visitor.visitWhileStatement?.(node);
     case 'RepeatStatement':
-      return visitor.visitRepeatStatement?.(node as RepeatStatement);
+      return visitor.visitRepeatStatement?.(node);
     case 'ForNumeric':
-      return visitor.visitForNumeric?.(node as ForNumeric);
+      return visitor.visitForNumeric?.(node);
     case 'ForGeneric':
-      return visitor.visitForGeneric?.(node as ForGeneric);
+      return visitor.visitForGeneric?.(node);
     case 'DoStatement':
-      return visitor.visitDoStatement?.(node as DoStatement);
+      return visitor.visitDoStatement?.(node);
     case 'ReturnStatement':
-      return visitor.visitReturnStatement?.(node as ReturnStatement);
+      return visitor.visitReturnStatement?.(node);
     case 'BreakStatement':
-      return visitor.visitBreakStatement?.(node as BreakStatement);
+      return visitor.visitBreakStatement?.(node);
     case 'ContinueStatement':
-      return visitor.visitContinueStatement?.(node as ContinueStatement);
+      return visitor.visitContinueStatement?.(node);
     case 'TypeAlias':
-      return visitor.visitTypeAlias?.(node as TypeAlias);
+      return visitor.visitTypeAlias?.(node);
     case 'ExportStatement':
-      return visitor.visitExportStatement?.(node as ExportStatement);
+      return visitor.visitExportStatement?.(node);
     case 'CallStatement':
-      return visitor.visitCallStatement?.(node as CallStatement);
+      return visitor.visitCallStatement?.(node);
     case 'ErrorStatement':
-      return visitor.visitErrorStatement?.(node as ErrorStatement);
+      return visitor.visitErrorStatement?.(node);
 
     case 'Identifier':
-      return visitor.visitIdentifier?.(node as Identifier);
+      return visitor.visitIdentifier?.(node);
     case 'NilLiteral':
-      return visitor.visitNilLiteral?.(node as NilLiteral);
+      return visitor.visitNilLiteral?.(node);
     case 'BooleanLiteral':
-      return visitor.visitBooleanLiteral?.(node as BooleanLiteral);
+      return visitor.visitBooleanLiteral?.(node);
     case 'NumberLiteral':
-      return visitor.visitNumberLiteral?.(node as NumberLiteral);
+      return visitor.visitNumberLiteral?.(node);
     case 'StringLiteral':
-      return visitor.visitStringLiteral?.(node as StringLiteral);
+      return visitor.visitStringLiteral?.(node);
     case 'VarargExpression':
-      return visitor.visitVarargExpression?.(node as VarargExpression);
+      return visitor.visitVarargExpression?.(node);
     case 'FunctionExpression':
-      return visitor.visitFunctionExpression?.(node as FunctionExpression);
+      return visitor.visitFunctionExpression?.(node);
     case 'TableExpression':
-      return visitor.visitTableExpression?.(node as TableExpression);
+      return visitor.visitTableExpression?.(node);
     case 'BinaryExpression':
-      return visitor.visitBinaryExpression?.(node as BinaryExpression);
+      return visitor.visitBinaryExpression?.(node);
     case 'UnaryExpression':
-      return visitor.visitUnaryExpression?.(node as UnaryExpression);
+      return visitor.visitUnaryExpression?.(node);
     case 'CallExpression':
-      return visitor.visitCallExpression?.(node as CallExpression);
+      return visitor.visitCallExpression?.(node);
     case 'MethodCallExpression':
-      return visitor.visitMethodCallExpression?.(node as MethodCallExpression);
+      return visitor.visitMethodCallExpression?.(node);
     case 'IndexExpression':
-      return visitor.visitIndexExpression?.(node as IndexExpression);
+      return visitor.visitIndexExpression?.(node);
     case 'MemberExpression':
-      return visitor.visitMemberExpression?.(node as MemberExpression);
+      return visitor.visitMemberExpression?.(node);
     case 'IfExpression':
-      return visitor.visitIfExpression?.(node as IfExpression);
+      return visitor.visitIfExpression?.(node);
     case 'TypeCastExpression':
-      return visitor.visitTypeCastExpression?.(node as TypeCastExpression);
+      return visitor.visitTypeCastExpression?.(node);
     case 'InterpolatedString':
-      return visitor.visitInterpolatedString?.(node as InterpolatedString);
+      return visitor.visitInterpolatedString?.(node);
     case 'ParenthesizedExpression':
-      return visitor.visitParenthesizedExpression?.(node as ParenthesizedExpression);
+      return visitor.visitParenthesizedExpression?.(node);
     case 'ErrorExpression':
-      return visitor.visitErrorExpression?.(node as ErrorExpression);
+      return visitor.visitErrorExpression?.(node);
 
     case 'TypeReference':
-      return visitor.visitTypeReference?.(node as TypeReference);
+      return visitor.visitTypeReference?.(node);
     case 'TypeLiteral':
-      return visitor.visitTypeLiteral?.(node as TypeLiteral);
+      return visitor.visitTypeLiteral?.(node);
     case 'FunctionType':
-      return visitor.visitFunctionType?.(node as FunctionType);
+      return visitor.visitFunctionType?.(node);
     case 'TableType':
-      return visitor.visitTableType?.(node as TableType);
+      return visitor.visitTableType?.(node);
     case 'UnionType':
-      return visitor.visitUnionType?.(node as UnionType);
+      return visitor.visitUnionType?.(node);
     case 'IntersectionType':
-      return visitor.visitIntersectionType?.(node as IntersectionType);
+      return visitor.visitIntersectionType?.(node);
     case 'OptionalType':
-      return visitor.visitOptionalType?.(node as OptionalType);
+      return visitor.visitOptionalType?.(node);
     case 'TypeofType':
-      return visitor.visitTypeofType?.(node as TypeofType);
+      return visitor.visitTypeofType?.(node);
     case 'VariadicType':
-      return visitor.visitVariadicType?.(node as VariadicType);
+      return visitor.visitVariadicType?.(node);
     case 'ParenthesizedType':
-      return visitor.visitParenthesizedType?.(node as ParenthesizedType);
+      return visitor.visitParenthesizedType?.(node);
     case 'ErrorType':
-      return visitor.visitErrorType?.(node as ErrorType);
+      return visitor.visitErrorType?.(node);
 
     default:
       return undefined;
@@ -273,7 +218,7 @@ export const walkExpression = (expr: Expression, visitor: Visitor): void => {
       break;
 
     case 'TableExpression':
-      for (const field of expr.fields) {
+      for (const field of expr.fields)
         switch (field.kind) {
           case 'TableFieldKey':
             visit(field.key, visitor);
@@ -287,7 +232,7 @@ export const walkExpression = (expr: Expression, visitor: Visitor): void => {
             walkExpression(field.value, visitor);
             break;
         }
-      }
+
       break;
 
     case 'BinaryExpression':

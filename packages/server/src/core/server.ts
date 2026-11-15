@@ -1,56 +1,84 @@
 import * as fs from 'fs';
 import * as url from 'url';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { TextDocuments } from 'vscode-languageserver/node';
 
+import { createInitializeResult, createServerConnection } from '@core/connection';
+import { createUpdateScheduler } from '@core/updates';
+import { findDataDir, loadDefinitions } from '@definitions/loader';
 import { createExecutorBridge } from '@executor';
 import { hasCapability } from '@executor/capabilities';
-import type { BridgeCapability } from '@typings/clientType';
-import type { RemoteSpySource } from '@typings/protocol';
 import { createDocumentManager } from '@lsp/documents';
 import { setupCallHierarchyHandler } from '@lsp/handlers/callHierarchy';
-import { setupCodeLensHandler } from '@lsp/handlers/codeLens';
 import { setupCodeActionHandler } from '@lsp/handlers/codeAction';
+import { setupCodeLensHandler } from '@lsp/handlers/codeLens';
 import { setupColorHandler } from '@lsp/handlers/color';
 import { setupCompletionHandler } from '@lsp/handlers/completion';
 import { setupDefinitionHandler } from '@lsp/handlers/definition';
-import { setupDocumentHighlightHandler } from '@lsp/handlers/documentHighlight';
-import { setupImplementationHandler } from '@lsp/handlers/implementation';
-import { setupDocumentLinkHandler } from '@lsp/handlers/documentLink';
-import { setupFoldingRangeHandler } from '@lsp/handlers/foldingRange';
 import { setupDiagnosticsHandler } from '@lsp/handlers/diagnostics';
+import { setupDocumentHighlightHandler } from '@lsp/handlers/documentHighlight';
+import { setupDocumentLinkHandler } from '@lsp/handlers/documentLink';
 import { setupDocumentSymbolHandler } from '@lsp/handlers/documentSymbol';
+import { setupFoldingRangeHandler } from '@lsp/handlers/foldingRange';
 import { setupFormattingHandler } from '@lsp/handlers/formatting';
 import { setupHoverHandler } from '@lsp/handlers/hover';
+import { setupImplementationHandler } from '@lsp/handlers/implementation';
 import { setupInlayHintsHandler } from '@lsp/handlers/inlayHints';
 import { setupLinkedEditingRangeHandler } from '@lsp/handlers/linkedEditingRange';
 import { setupReferencesHandler } from '@lsp/handlers/references';
 import { setupRenameHandler } from '@lsp/handlers/rename';
-import { setupSemanticTokensHandler } from '@lsp/handlers/semanticTokens';
 import { setupSelectionRangeHandler } from '@lsp/handlers/selectionRange';
+import { setupSemanticTokensHandler } from '@lsp/handlers/semanticTokens';
 import { setupSignatureHelpHandler } from '@lsp/handlers/signature';
 import { setupTypeDefinitionHandler } from '@lsp/handlers/typeDefinition';
 import { setupTypeHierarchyHandler } from '@lsp/handlers/typeHierarchy';
 import { setupWorkspaceSymbolHandler } from '@lsp/handlers/workspaceSymbol';
-import { TextDocument } from 'vscode-languageserver-textdocument';
-import { TextDocuments } from 'vscode-languageserver/node';
 
+import type { BridgeCapability } from '@typings/clientType';
 import type { ServerState } from '@typings/lsp';
-import { createInitializeResult, createServerConnection } from '@core/connection';
+import type { RemoteSpySource } from '@typings/protocol';
+import type { ApiUpdateSettings, ServerOptions, UpdateScheduler } from '@typings/updates';
 
-/** Creates a new language server instance with all required components. */
-export const createServer = (): ServerState => {
+/**
+ * Creates a new language server instance with all required components. With a definitions cache directory, newer
+ * cached Roblox API and docs are selected before the document manager builds its environment; no network is used.
+ * @param options - Definitions cache and background update settings read from the command line.
+ */
+export const createServer = (
+  options: ServerOptions = { 'cacheDirectory': undefined, 'isUpdateEnabled': false },
+): ServerState => {
   const connection = createServerConnection();
   const documents = new TextDocuments(TextDocument);
-  const documentManager = createDocumentManager();
-  const executorBridge = createExecutorBridge(msg => connection.console.log(msg));
+  const documentManager = createDocumentManager(
+    loadDefinitions(
+      options.cacheDirectory === undefined
+        ? { 'prefetchDocs': true }
+        : { 'cacheDirectory': options.cacheDirectory, 'prefetchDocs': true },
+    ),
+  );
+  const executorBridge = createExecutorBridge(message => connection.console.log(message));
 
-  return { connection, documents, documentManager, executorBridge, 'initialized': false };
+  return { connection, documents, documentManager, executorBridge, options, 'initialized': false };
 };
 
 const EXECUTOR_BRIDGE_PORT = 21324;
 
+const isApiUpdateSettings = (value: unknown): value is ApiUpdateSettings =>
+  typeof value === 'object' && value !== null && 'enabled' in value && typeof value.enabled === 'boolean';
+
 /** Starts the language server and registers all LSP handlers. */
 export const startServer = (state: ServerState): void => {
-  const { connection, documents, documentManager, executorBridge } = state;
+  const { connection, documents, documentManager, executorBridge, options } = state;
+  const cacheDirectory = options.cacheDirectory;
+  const updates: UpdateScheduler | undefined =
+    cacheDirectory === undefined
+      ? undefined
+      : createUpdateScheduler({
+          cacheDirectory,
+          'bundledDirectory': findDataDir(),
+          'entryScript': process.argv[1] ?? '',
+          'log': message => connection.console.log(message),
+        });
 
   let workspacePath: string | undefined;
 
@@ -84,20 +112,19 @@ export const startServer = (state: ServerState): void => {
       params.workspaceFolders.length > 0
     ) {
       const firstFolder = params.workspaceFolders[0];
-      if (firstFolder !== undefined) {
+      if (firstFolder !== undefined)
         try {
           workspacePath = url.fileURLToPath(firstFolder.uri);
         } catch {
           workspacePath = firstFolder.uri.replace('file:///', '').replace('file://', '');
         }
-      }
-    } else if (params.rootUri !== undefined && params.rootUri !== null) {
+    } else if (params.rootUri !== undefined && params.rootUri !== null)
       try {
         workspacePath = url.fileURLToPath(params.rootUri);
       } catch {
         workspacePath = params.rootUri.replace('file:///', '').replace('file://', '');
       }
-    } else if (params.rootPath !== undefined && params.rootPath !== null) workspacePath = params.rootPath;
+    else if (params.rootPath !== undefined && params.rootPath !== null) workspacePath = params.rootPath;
 
     return createInitializeResult(params);
   });
@@ -147,6 +174,7 @@ export const startServer = (state: ServerState): void => {
     }
 
     executorBridge.start(EXECUTOR_BRIDGE_PORT);
+    updates?.setEnabled(options.isUpdateEnabled);
   });
 
   connection.onShutdown(() => {
@@ -164,6 +192,13 @@ export const startServer = (state: ServerState): void => {
       sourcemapWatcher = undefined;
     }
     executorBridge.stop();
+    return updates?.stop();
+  });
+
+  connection.onRequest('custom/setApiUpdates', params => {
+    if (isApiUpdateSettings(params) === false) return { 'success': false, 'error': 'Expected { enabled: boolean }' };
+    updates?.setEnabled(params.enabled);
+    return { 'success': true };
   });
 
   connection.onRequest('custom/executorStatus', () => ({

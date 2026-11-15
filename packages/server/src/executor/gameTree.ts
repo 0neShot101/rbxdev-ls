@@ -1,5 +1,6 @@
-import type { LiveGameModel, MutableLiveGameModel } from '@typings/bridge';
+import type { LiveGameModel, LiveGameModelHandle, MutableLiveGameModel } from '@typings/bridge';
 import type { GameTreeNode } from '@typings/protocol';
+import type { Mutable } from '@typings/types';
 
 const findNode = (root: GameTreeNode, path: string[]): GameTreeNode | undefined => {
   if (path.length === 0) return root;
@@ -20,13 +21,7 @@ const getChildrenMap = (node: GameTreeNode): Map<string, GameTreeNode> => {
 };
 
 /** Creates a new live game model instance for tracking the Roblox game tree structure. */
-export const createLiveGameModel = (): {
-  model: LiveGameModel;
-  update: (nodes: GameTreeNode[]) => void;
-  mergeChildren: (path: ReadonlyArray<string>, children: GameTreeNode[]) => void;
-  setConnected: (connected: boolean) => void;
-  clear: () => void;
-} => {
+export const createLiveGameModel = (): LiveGameModelHandle => {
   const state: MutableLiveGameModel = {
     'isConnected': false,
     'lastUpdate': 0,
@@ -91,8 +86,9 @@ export const createLiveGameModel = (): {
     const targetNode = rest.length === 0 ? service : findNode(service, rest);
     if (targetNode === undefined) return;
 
-    (targetNode as { children?: GameTreeNode[] }).children = children;
-    delete (targetNode as { hasChildren?: boolean }).hasChildren;
+    const target: Mutable<GameTreeNode> = targetNode;
+    target.children = children;
+    delete target.hasChildren;
   };
 
   const model: LiveGameModel = {

@@ -1,6 +1,7 @@
-import { walk } from '@parser/visitor';
-import { typeToString } from '@typings/types';
 import { CodeActionKind } from 'vscode-languageserver';
+
+import { walk } from '@parser/visitor';
+import { typeToString } from '@analyzer/values';
 
 import type { DocumentManager } from '@typings/lsp';
 import type { CodeAction, CodeActionParams, Connection, Range, TextDocuments, TextEdit } from 'vscode-languageserver';
@@ -42,8 +43,8 @@ export const setupCodeActionHandler = (
   connection: Connection,
   documents: TextDocuments<TextDocument>,
   documentManager: DocumentManager,
-): void => {
-  connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
+): void =>
+  void connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
     const doc = documents.get(params.textDocument.uri);
     if (doc === undefined) return [];
 
@@ -302,4 +303,3 @@ export const setupCodeActionHandler = (
 
     return actions;
   });
-};

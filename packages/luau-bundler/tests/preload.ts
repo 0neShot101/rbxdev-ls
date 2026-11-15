@@ -8,22 +8,22 @@ import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { plugin } from 'bun';
 
-const serverSrc = join(import.meta.dir, '..', '..', 'server', 'src');
+const serverSource = join(import.meta.dir, '..', '..', 'server', 'src');
 
-const aliases = [
-  '@parser/parser',
-  '@parser/lexer',
-  '@parser/tokens',
-  '@parser/docComment',
-  '@typings/parser',
-  '@typings/ast',
+const aliasTargets: ReadonlyArray<readonly [string, string]> = [
+  ['@parser/parser', 'parser/parser.ts'],
+  ['@parser/lexer', 'parser/lexer.ts'],
+  ['@parser/tokens', 'parser/tokens.ts'],
+  ['@parser/docComment', 'parser/docComment.ts'],
+  ['@typings/parser', 'types/parser.ts'],
+  ['@typings/ast', 'types/ast.ts'],
 ];
 
 plugin({
   'name': 'rbxdev-server-aliases',
   'setup': build => {
-    for (const alias of aliases) {
-      const target = pathToFileURL(join(serverSrc, `${alias.slice(1)}.ts`)).href;
+    for (const [alias, relativePath] of aliasTargets) {
+      const target = pathToFileURL(join(serverSource, relativePath)).href;
       build.module(alias, () => ({
         'contents': `export * from ${JSON.stringify(target)};`,
         'loader': 'ts',

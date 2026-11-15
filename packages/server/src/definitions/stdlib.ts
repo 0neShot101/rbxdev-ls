@@ -3,12 +3,11 @@ import {
   BooleanType,
   createFunctionType,
   createTableType,
-  type FunctionParam,
-  type LuauType,
   NilType,
   NumberType,
   StringType,
-} from '@typings/types';
+} from '@analyzer/values';
+import type { FunctionParam, LuauType } from '@typings/types';
 
 const createParam = (name: string, type: LuauType, optional = false): FunctionParam => ({
   name,
@@ -16,8 +15,11 @@ const createParam = (name: string, type: LuauType, optional = false): FunctionPa
   optional,
 });
 
-const createMethod = (params: FunctionParam[], returnType: LuauType, isVariadic = false, description?: string) =>
-  createFunctionType(params, returnType, { isVariadic, ...(description !== undefined ? { description } : {}) });
+const createMethod = (params: FunctionParam[], returnType: LuauType, isVariadic = false, description?: string) => {
+  const options: NonNullable<Parameters<typeof createFunctionType>[2]> = { isVariadic };
+  if (description !== undefined) options.description = description;
+  return createFunctionType(params, returnType, options);
+};
 
 /** Creates the Luau math library type definition with trigonometric, rounding, and utility functions. */
 export const createMathLibrary = (): LuauType =>
