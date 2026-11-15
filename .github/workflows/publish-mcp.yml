@@ -89,6 +89,8 @@ jobs:
       - name: Setup Bun
         if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
 
       - name: Install dependencies
         if: steps.npm_status.outputs.publish_mcp == 'true' || steps.npm_status.outputs.publish_luau_bundler == 'true'

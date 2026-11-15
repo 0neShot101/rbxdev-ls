@@ -2,7 +2,7 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-15
 
 ### Added
 
