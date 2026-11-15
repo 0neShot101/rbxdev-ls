@@ -4,6 +4,7 @@ import * as url from 'url';
 import { createExecutorBridge } from '@executor';
 import { hasCapability } from '@executor/capabilities';
 import type { BridgeCapability } from '@typings/clientType';
+import type { RemoteSpySource } from '@typings/protocol';
 import { createDocumentManager } from '@lsp/documents';
 import { setupCallHierarchyHandler } from '@lsp/handlers/callHierarchy';
 import { setupCodeLensHandler } from '@lsp/handlers/codeLens';
@@ -266,7 +267,11 @@ export const startServer = (state: ServerState): void => {
 
   connection.onRequest(
     'custom/setRemoteSpyEnabled',
-    bridgeRequest((params: { enabled: boolean }) => executorBridge.setRemoteSpyEnabled(params.enabled), 'remoteSpy'),
+    bridgeRequest(
+      (params: { enabled: boolean; source?: RemoteSpySource }) =>
+        executorBridge.setRemoteSpyEnabled(params.enabled, params.source),
+      'remoteSpy',
+    ),
   );
 
   connection.onRequest(

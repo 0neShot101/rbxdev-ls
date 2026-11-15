@@ -1,10 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { parse } from '@parser/parser';
 
-import { bundle, resolveRojoProject } from '../src/bundler';
+import { bundle, resolveRojoProject } from '@bundler/bundler';
 
 const packageRoot = join(import.meta.dir, '..');
 const fixtures = join(import.meta.dir, 'fixtures');
@@ -40,21 +40,21 @@ describe('module registry', () => {
   const { output, moduleCount } = bundle({ 'sourceDir': basicDir });
 
   test('registers every fixture file by relative path', () => {
-    expect(output).toContain('_modules["init.luau"] = {');
-    expect(output).toContain('_modules["util.luau"] = {');
-    expect(output).toContain('_modules["nested/helper.luau"] = {');
-    expect(output).toContain('_modules["nested/sub/init.luau"] = {');
+    expect(output).toContain("_modules['init.luau'] = {");
+    expect(output).toContain("_modules['util.luau'] = {");
+    expect(output).toContain("_modules['nested/helper.luau'] = {");
+    expect(output).toContain("_modules['nested/sub/init.luau'] = {");
   });
 
   test('emits extension-stripped aliases', () => {
-    expect(output).toContain('_modules["init"] = _modules["init.luau"]');
-    expect(output).toContain('_modules["util"] = _modules["util.luau"]');
-    expect(output).toContain('_modules["nested/helper"] = _modules["nested/helper.luau"]');
-    expect(output).toContain('_modules["nested/sub/init"] = _modules["nested/sub/init.luau"]');
+    expect(output).toContain("_modules['init'] = _modules['init.luau']");
+    expect(output).toContain("_modules['util'] = _modules['util.luau']");
+    expect(output).toContain("_modules['nested/helper'] = _modules['nested/helper.luau']");
+    expect(output).toContain("_modules['nested/sub/init'] = _modules['nested/sub/init.luau']");
   });
 
   test('emits init-collapsed alias for nested init.luau', () =>
-    expect(output).toContain('_modules["nested/sub"] = _modules["nested/sub/init.luau"]'));
+    expect(output).toContain("_modules['nested/sub'] = _modules['nested/sub/init.luau']"));
 
   test('moduleCount matches the number of fixture files', () => expect(moduleCount).toBe(4));
 });
@@ -62,13 +62,23 @@ describe('module registry', () => {
 describe('entry resolution', () => {
   test('defaults to init', () => {
     const { output } = bundle({ 'sourceDir': basicDir });
-    expect(output).toContain('return require("init")');
+    expect(output).toContain("return require('init')");
   });
 
   test('respects a custom entry', () => {
     const { output } = bundle({ 'sourceDir': basicDir, 'entry': 'util' });
-    expect(output).toContain('return require("util")');
-    expect(output).not.toContain('return require("init")');
+    expect(output).toContain("return require('util')");
+    expect(output).not.toContain("return require('init')");
+  });
+
+  test('escapes single quotes in module paths, aliases, and the entry point', () => {
+    const sourceDir = mkdtempSync(join(tmpDir, 'quoted-'));
+    writeFileSync(join(sourceDir, "user's.luau"), 'return 1');
+    const { output } = bundle({ sourceDir, 'entry': "user's" });
+    expect(output).toContain("_modules['user\\'s.luau']");
+    expect(output).toContain("_modules['user\\'s']");
+    expect(output).toContain("return require('user\\'s')");
+    expect(parseErrorCount(output)).toBe(0);
   });
 });
 
@@ -76,8 +86,14 @@ describe('header', () => {
   test('emits header lines as leading comments', () => {
     const { output } = bundle({ 'sourceDir': basicDir, 'header': 'rbxdev bridge\nv1.0' });
     const lines = output.split('\n');
-    expect(lines[0]).toBe('-- rbxdev bridge');
-    expect(lines[1]).toBe('-- v1.0');
+    expect(lines[0]).toBe('--[[ rbxdev bridge ]]--');
+    expect(lines[1]).toBe('--[[ v1.0 ]]--');
+    expect(parseErrorCount(output)).toBe(0);
+  });
+
+  test('header text cannot close a block comment early', () => {
+    const { output } = bundle({ 'sourceDir': basicDir, 'header': 'title ]]] error()' });
+    expect(output.split('\n')[0]).toBe('--[[ title ] ] ] error() ]]--');
     expect(parseErrorCount(output)).toBe(0);
   });
 
@@ -106,20 +122,19 @@ describe('require shim', () => {
   const { output } = bundle({ 'sourceDir': basicDir });
 
   test('wraps the oldRequire fallback in pcall', () =>
-    expect(output).toContain('pcall(function() fallback = oldRequire(path) end)'));
+    expect(output).toContain('pcall(function()\n        fallback = oldRequire(path)\n      end)'));
 
   test('closes with the oldRequire-injecting tail', () =>
-    expect(output.endsWith('end)(require or function() end, ...)')).toBe(true));
+    expect(output.endsWith('end)(require or function()\nend, ...)')).toBe(true));
 });
 
-describe('determinism', () => {
+describe('determinism', () =>
   test('two bundles of the same source are identical', () => {
     const first = bundle({ 'sourceDir': basicDir });
     const second = bundle({ 'sourceDir': basicDir });
     expect(first.output).toBe(second.output);
     expect(first.moduleCount).toBe(second.moduleCount);
-  });
-});
+  }));
 
 describe('cli', () => {
   test('bundles a fixture directory to a parseable output file', () => {

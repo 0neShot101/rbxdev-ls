@@ -94,6 +94,7 @@ export interface IfStatement extends BaseNode {
   readonly kind: 'IfStatement';
   readonly condition: Expression;
   readonly thenBody: ReadonlyArray<Statement>;
+  readonly thenRange: NodeRange;
   readonly elseifClauses: ReadonlyArray<ElseifClause>;
   readonly elseBody: ReadonlyArray<Statement> | undefined;
 }
@@ -123,6 +124,7 @@ export interface ForNumeric extends BaseNode {
   readonly end: Expression;
   readonly step: Expression | undefined;
   readonly body: ReadonlyArray<Statement>;
+  readonly bodyStart: TokenPosition;
 }
 
 export interface ForGeneric extends BaseNode {
@@ -130,6 +132,7 @@ export interface ForGeneric extends BaseNode {
   readonly variables: ReadonlyArray<Identifier>;
   readonly iterators: ReadonlyArray<Expression>;
   readonly body: ReadonlyArray<Statement>;
+  readonly bodyStart: TokenPosition;
 }
 
 export interface DoStatement extends BaseNode {

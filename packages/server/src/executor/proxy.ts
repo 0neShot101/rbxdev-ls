@@ -28,6 +28,7 @@ export const createProxyBridge = (log: (message: string) => void): ExecutorBridg
     },
     () => ws !== undefined && ws.readyState === WebSocket.OPEN && core.getExecutorName() !== undefined,
     log,
+    () => false,
   );
 
   const handleProxyMessage = (message: ProxyWelcomeMessage | ProxyStatusChangeMessage): void => {

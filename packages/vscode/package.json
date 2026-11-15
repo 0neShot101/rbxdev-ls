@@ -5,6 +5,14 @@
   "version": "0.4.13",
   "publisher": "rbxdev",
   "license": "MIT",
+  "imports": {
+    "#extension/*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "rbxdev-source": "./src/*.ts",
+      "default": "./out/*.js"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/0neShot101/rbxdev-ls"
@@ -843,7 +851,7 @@
     "build-all": "bun run --cwd ../server build && bun run --cwd ../mcp build && bun run bundle && bun run copy-server",
     "copy-server": "bun ./scripts/copy-server.ts",
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
-    "bundle": "bun run clean && esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap --minify",
+    "bundle": "bun run clean && esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --conditions=rbxdev-source --sourcemap --minify",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "vsce package --no-dependencies"

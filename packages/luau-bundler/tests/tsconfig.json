@@ -5,6 +5,7 @@
     "noEmit": true,
     "typeRoots": ["../node_modules/@types", "../../../node_modules/@types"],
     "paths": {
+      "@bundler/*": ["../src/*"],
       "@parser/*": ["../../server/src/parser/*"],
       "@typings/*": ["../../server/src/typings/*"]
     }

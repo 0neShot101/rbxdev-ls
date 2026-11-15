@@ -18,7 +18,14 @@ export const remoteSpyToolHandlers: ToolHandlerMap = {
     const formatted = calls
       .map(call => {
         const time = new Date(call.timestamp * 1000).toISOString().slice(11, 23);
-        return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Code:\n${call.code}`;
+        const response =
+          call.returnStatus === 'returned'
+            ? `\n  Returned (${call.returnCount ?? 0} values):\n${call.returns ?? ''}`
+            : call.method === 'InvokeServer'
+              ? `\n  Return capture: ${call.returnStatus ?? 'not recorded'}`
+              : '\n  One-way event: no return value';
+
+        return `[${time}] ${call.method} - ${call.remoteName} (${call.remoteType})\n  Code:\n${call.code}${response}`;
       })
       .join('\n\n');
     return textResult(`Recent remote calls (${calls.length}):\n\n${formatted}`);

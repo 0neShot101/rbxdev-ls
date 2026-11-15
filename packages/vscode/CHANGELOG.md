@@ -2,6 +2,30 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Remote Spy capture-source selection: Game (default), Executor, or Both. Source changes retain existing calls and apply without reinstalling hooks.
+- RemoteFunction return inspection with a Returns tab and copy action. Completed invocations update their original row, preserving multiple values and nil positions.
+- Luraph v15 macros and attribute helpers from the official documentation. v14 macros and aliases remain available, with version-specific deprecation and migration guidance.
+
+### Changed
+
+- Remote Spy uses a compact, theme-aware call list and detail pane with keyboard navigation, replay code, arguments, and grouped ignore/block actions.
+- Lua/Luau sources and generated bridge output use single quotes, expanded control flow, spaced declarations, and section-header comments.
+
+### Fixed
+
+- Remote Spy activation errors are surfaced instead of silently leaving capture enabled. Namecall capture takes priority over executor-dependent method hooks.
+- Reloaded bridges restore acknowledged spy policy through the execution-socket owner; proxies no longer race to restore conflicting settings.
+- Return updates still reach the editor after server-buffer eviction. Panel reopen, clear, and snapshot operations discard stale batches.
+- Local declarations take precedence over Luraph attribute globals in completion, hover, and signatures, respecting lexical scope and declaration order.
+
+### Validation limits
+
+- Executor hook coverage and anti-cheat compatibility still require live Roblox validation. This update does not claim a verified detector bypass.
+
 ## [0.3.6] - 2026-04-11
 
 ### Added

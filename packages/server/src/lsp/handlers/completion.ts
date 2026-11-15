@@ -1,6 +1,7 @@
 import * as path from 'path';
 
 import { COMMON_CHILDREN, getCommonChildType } from '@definitions/commonChildren';
+import { getVisibleLocals } from '@lsp/handlers/lexical';
 import { formatDocCommentForDisplay } from '@parser/docComment';
 import type { ExecutorBridge, LiveGameModel } from '@typings/bridge';
 import {
@@ -876,6 +877,8 @@ const getGlobalCompletions = (documentManager: DocumentManager, prefix: string):
 
     item.data = { 'resolve': 'global', 'name': name };
 
+    if (symbol.docComment?.deprecated !== undefined) item.tags = [CompletionItemTag.Deprecated];
+
     items.push(item);
   }
 
@@ -1563,14 +1566,26 @@ const getLocalSymbolCompletions = (
   document: ParsedDocument | undefined,
   prefix: string,
   documentManager: DocumentManager,
+  position: Position,
 ): CompletionItem[] => {
   if (document === undefined || document.typeCheckResult === undefined) return [];
 
   const items: CompletionItem[] = [];
-  const globalNames = new Set(documentManager.globalEnv.env.globalScope.symbols.keys());
+  const environment = document.typeCheckResult.environment;
+  const hasLexical = environment.localBindings !== undefined;
+  const visible = new Map<string, LuauType>();
 
-  for (const [name, symbolType] of document.typeCheckResult.allSymbols) {
-    if (globalNames.has(name)) continue;
+  if (hasLexical) for (const [name, symbol] of getVisibleLocals(document, position)) visible.set(name, symbol.type);
+
+  const symbols = hasLexical ? visible : document.typeCheckResult.allSymbols;
+
+  for (const [name, symbolType] of symbols) {
+    if (
+      hasLexical === false &&
+      documentManager.globalEnv.env.globalScope.symbols.has(name) &&
+      environment.globalScope.symbols.get(name)?.kind === 'Global'
+    )
+      continue;
     if (prefix !== '' && name.toLowerCase().startsWith(prefix.toLowerCase()) === false) continue;
 
     const resolved = resolveTypeReference(symbolType, documentManager);
@@ -3144,8 +3159,11 @@ export const setupCompletionHandler = (
     const wordMatch = beforeCursor.match(/(\w*)$/);
     const prefix = wordMatch?.[1] ?? '';
 
-    const localItems = getLocalSymbolCompletions(document, prefix, documentManager);
-    const globalItems = getGlobalCompletions(documentManager, prefix);
+    const localItems = getLocalSymbolCompletions(document, prefix, documentManager, params.position);
+    const localNames = new Set(localItems.map(item => item.label));
+    const globalItems = getGlobalCompletions(documentManager, prefix).filter(
+      item => localNames.has(item.label) === false,
+    );
     const snippetItems = getSnippetCompletions(prefix);
     const autoImportItems = getAutoImportCompletions(prefix, documentManager, params.textDocument.uri, content);
 

@@ -30,6 +30,7 @@ const makeCall = (overrides: Partial<RemoteSpyCallEntry> = {}): RemoteSpyCallEnt
 describe('Remote Spy State - createRemoteSpyState', () => {
   test('creates an empty state with no selection', () => {
     expect(createRemoteSpyState()).toEqual({
+      'captureSource': 'game',
       'calls': [],
       'ignoreList': [],
       'blockList': [],
@@ -55,6 +56,23 @@ describe('Remote Spy State - addCall', () => {
     expect(state.calls.length).toBe(1000);
     expect(state.calls[0]?.remoteName).toBe('call-1');
     expect(state.calls[999]?.remoteName).toBe('call-1000');
+  });
+
+  test('keeps selection on the same call when older calls are evicted', () => {
+    const state = createRemoteSpyState();
+    for (let index = 0; index < 1000; index++) addCall(state, makeCall({ 'remoteName': `call-${index}` }));
+    state.selectedIndex = 50;
+    addCall(state, makeCall());
+    expect(state.selectedIndex).toBe(49);
+    expect(state.calls[state.selectedIndex]?.remoteName).toBe('call-50');
+  });
+
+  test('clears selection if its call is evicted', () => {
+    const state = createRemoteSpyState();
+    for (let index = 0; index < 1000; index++) addCall(state, makeCall());
+    state.selectedIndex = 0;
+    addCall(state, makeCall());
+    expect(state.selectedIndex).toBe(-1);
   });
 });
 
@@ -166,5 +184,32 @@ describe('Remote Spy State - clearCalls', () => {
 
     expect(state.calls).toEqual([]);
     expect(state.selectedIndex).toBe(-1);
+  });
+});
+
+describe('Remote Spy return updates', () => {
+  test('updates the original call without adding a row or changing selection', () => {
+    const state = createRemoteSpyState();
+    const pending = makeCall({ 'id': 'request-1', 'returnStatus': 'pending' });
+
+    addCall(state, pending);
+    state.selectedIndex = 0;
+    addCall(state, { ...pending, 'returnStatus': 'returned', 'returns': 'nil, 42, nil', 'returnCount': 3 });
+
+    expect(state.calls).toHaveLength(1);
+    expect(state.selectedIndex).toBe(0);
+    expect(state.calls[0]?.returns).toBe('nil, 42, nil');
+    expect(state.calls[0]?.returnCount).toBe(3);
+  });
+
+  test('a late return cannot resurrect a cleared call', () => {
+    const state = createRemoteSpyState();
+    const pending = makeCall({ 'id': 'request-2', 'returnStatus': 'pending' });
+
+    addCall(state, pending);
+    clearCalls(state);
+    addCall(state, { ...pending, 'returnStatus': 'returned', 'returns': 'nil', 'returnCount': 1 });
+
+    expect(state.calls).toEqual([]);
   });
 });

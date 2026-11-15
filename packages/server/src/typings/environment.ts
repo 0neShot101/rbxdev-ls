@@ -10,7 +10,8 @@ import {
   StringType,
 } from '@typings/types';
 
-import type { DocComment } from '@typings/parser';
+import type { DocComment, TokenPosition } from '@typings/parser';
+import type { NodeRange } from '@typings/ast';
 import type { TypeCheckMode } from '@typings/subtyping';
 import type { ClassType, EnumType, LuauType } from '@typings/types';
 
@@ -49,20 +50,35 @@ export interface Scope {
   readonly symbols: Map<string, Symbol>;
   readonly types: Map<string, LuauType>;
   readonly kind: ScopeKind;
+  readonly range?: NodeRange | undefined;
 }
 
 /** The kind of lexical scope. */
 export type ScopeKind = 'Global' | 'Module' | 'Function' | 'Block' | 'Loop' | 'Conditional';
 
+/** Source positions at which a declaration is named and becomes visible. */
+export interface BindingSite {
+  readonly declaration: NodeRange;
+  readonly visibleFrom: TokenPosition;
+  readonly scope?: Scope;
+}
+
+/** A source-level binding retained after its lexical scope has been checked. */
+export interface LocalBinding extends BindingSite {
+  readonly symbol: Symbol;
+  readonly scope: Scope;
+}
+
 let scopeIdCounter = 0;
 
 /** Creates a new lexical scope. */
-export const createScope = (parent: Scope | undefined, kind: ScopeKind = 'Block'): Scope => ({
+export const createScope = (parent: Scope | undefined, kind: ScopeKind = 'Block', range?: NodeRange): Scope => ({
   'id': scopeIdCounter++,
   parent,
   'symbols': new Map(),
   'types': new Map(),
   kind,
+  range,
 });
 
 /** Resets the scope ID counter (primarily for testing). */
@@ -77,6 +93,7 @@ export interface TypeEnvironment {
   currentScope: Scope;
   readonly classes: Map<string, ClassType>;
   readonly enums: Map<string, EnumType>;
+  readonly localBindings?: LocalBinding[];
 }
 
 /** Creates a new type environment for type checking. */
@@ -88,6 +105,7 @@ export const createTypeEnvironment = (mode: TypeCheckMode = 'strict'): TypeEnvir
     'currentScope': globalScope,
     'classes': new Map(),
     'enums': new Map(),
+    'localBindings': [],
   };
 };
 
@@ -99,15 +117,20 @@ export const defineSymbol = (
   kind: SymbolKind,
   mutable = true,
   docComment?: DocComment,
+  site?: BindingSite,
 ): void => {
-  env.currentScope.symbols.set(name, {
+  const symbol: Symbol = {
     name,
     type,
     kind,
     mutable,
     'declarationLocation': undefined,
     docComment,
-  });
+  };
+
+  env.currentScope.symbols.set(name, symbol);
+
+  if (site !== undefined) env.localBindings?.push({ ...site, symbol, 'scope': site.scope ?? env.currentScope });
 };
 
 /** Defines a symbol in the current scope with a source location. */
@@ -181,8 +204,8 @@ export const defineEnum = (env: TypeEnvironment, enumType: EnumType): void => {
 export const lookupEnum = (env: TypeEnvironment, name: string): EnumType | undefined => env.enums.get(name);
 
 /** Enters a new scope, making it the current scope. */
-export const enterScope = (env: TypeEnvironment, kind: ScopeKind = 'Block'): Scope => {
-  const newScope = createScope(env.currentScope, kind);
+export const enterScope = (env: TypeEnvironment, kind: ScopeKind = 'Block', range?: NodeRange): Scope => {
+  const newScope = createScope(env.currentScope, kind, range);
   env.currentScope = newScope;
   return newScope;
 };

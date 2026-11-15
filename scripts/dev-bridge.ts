@@ -26,9 +26,27 @@ const BRIDGE_PORT = Number(process.env['RBXDEV_BRIDGE_PORT'] ?? 21324);
 const SOURCE_DIR = join(import.meta.dir, '..', 'roblox', 'executor-bridge', 'src');
 const DEBOUNCE_MS = 150;
 const RECONNECT_DELAY_MS = 2000;
+/**
+ * Delay before the first inject after an executor appears. A freshly connected
+ * prod bridge is mid-way through serialising its full first-connect tree;
+ * letting it finish before the dev build takes over avoids overlapping two
+ * heavy serialisations and tearing the connection down while it is encoding.
+ */
+const INITIAL_INJECT_DELAY_MS = 1500;
 
-/** Preamble prepended to every dev bundle so the bridge identifies as a dev build. */
-const DEV_PREAMBLE = 'if getgenv then getgenv()._RBXDEV_DEV = true end\n';
+/**
+ * Wraps a dev bundle so it runs safely when pushed through the live bridge.
+ *
+ * The bundle is delivered as an `execute` message, which the running bridge
+ * handles synchronously inside its own WebSocket message callback. The bundle's
+ * re-execution takeover closes that very socket, and tearing a WebSocket down
+ * from inside its own callback crashes the executor. Deferring the bundle onto
+ * a fresh task thread moves the takeover off the callback stack so the close is
+ * safe. The dev flag is set before the deferred body so the swapped-in build
+ * still identifies as a dev build.
+ */
+const wrapDevBundle = (bundleSource: string): string =>
+  `if getgenv then getgenv()._RBXDEV_DEV = true end\ntask.defer(function(...)\n${bundleSource}\nend)\n`;
 
 interface ProxyWelcome {
   readonly type: 'proxyWelcome';
@@ -51,6 +69,7 @@ interface ConnectedMessage {
 let socket: WebSocket | undefined;
 let executorConnected = false;
 let hasPushedInitial = false;
+let initialInjectScheduled = false;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 const stamp = (): string => new Date().toLocaleTimeString();
@@ -62,7 +81,7 @@ const generateId = (): string => Math.random().toString(36).slice(2, 10);
 const buildDevBundle = (): string => {
   const result = bundle({ 'sourceDir': SOURCE_DIR, 'header': 'rbxdev executor bridge (dev)' });
   log(`bundled ${result.moduleCount} modules in ${result.elapsedMs.toFixed(1)}ms`);
-  return DEV_PREAMBLE + result.output;
+  return wrapDevBundle(result.output);
 };
 
 const pushBundle = (reason: string): void => {
@@ -78,7 +97,13 @@ const pushBundle = (reason: string): void => {
 
 const onExecutorAvailable = (): void => {
   executorConnected = true;
-  if (hasPushedInitial === false) pushBundle('initial inject');
+  if (hasPushedInitial || initialInjectScheduled) return;
+  initialInjectScheduled = true;
+  log(`executor present; pushing dev build in ${INITIAL_INJECT_DELAY_MS / 1000}s`);
+  setTimeout(() => {
+    initialInjectScheduled = false;
+    pushBundle('initial inject');
+  }, INITIAL_INJECT_DELAY_MS);
 };
 
 const handleMessage = (raw: string): void => {
@@ -138,6 +163,7 @@ const connect = (): void => {
     socket = undefined;
     executorConnected = false;
     hasPushedInitial = false;
+    initialInjectScheduled = false;
     log(`disconnected from bridge, retrying in ${RECONNECT_DELAY_MS / 1000}s (is the LSP server running?)`);
     setTimeout(connect, RECONNECT_DELAY_MS);
   });

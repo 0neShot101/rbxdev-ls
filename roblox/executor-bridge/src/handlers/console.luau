@@ -1,70 +1,84 @@
-local state = require("state")
-local protocol = require("protocol")
+--[[ Dependencies ]]--
+
+local state    = require('state')
+local protocol = require('protocol')
 
 local M = {}
 
+--[[ Functions ]]--
+
 M.setupLogHooks = function()
-	-- Prevent double-hooking on re-execution
-	if getgenv and getgenv()._RBXDEV_LOG_HOOKED then return end
 
-	local inHook = false
+  if getgenv and getgenv()._RBXDEV_LOG_HOOKED then
+    return
+  end
 
-	local safeLog = function(level, ...)
-		if inHook or not state.connected then return end
-		inHook = true
+  local inHook = false
 
-		local args = { ... }
-		local parts = {}
-		for i = 1, select('#', ...) do parts[i] = tostring(args[i]) end
+  local safeLog = function(level, ...)
+    if inHook or not state.connected then
+      return
+    end
+    inHook = true
 
-		pcall(protocol.send, {
-			type = 'log',
-			level = level,
-			message = table.concat(parts, '\t'),
-			timestamp = os.time(),
-		})
+    local args  = { ... }
+    local parts = {}
+    for i = 1, select('#', ...) do
+      parts[i] = tostring(args[i])
+    end
 
-		inHook = false
-	end
+    pcall(protocol.send, {
+      type = 'log',
+      level = level,
+      message = table.concat(parts, '\t'),
+      timestamp = os.time(),
+    })
 
-	if hookfunction ~= nil then
-		local originalPrint = clonefunction(print)
-		local originalWarn = clonefunction(warn)
-		local originalError = clonefunction(error)
+    inHook = false
+  end
 
-		hookfunction(print, function(...)
-			safeLog('info', ...)
-			return originalPrint(...)
-		end)
+  if hookfunction ~= nil then
+    local originalPrint = clonefunction(print)
+    local originalWarn  = clonefunction(warn)
+    local originalError = clonefunction(error)
 
-		hookfunction(warn, function(...)
-			safeLog('warn', ...)
-			return originalWarn(...)
-		end)
+    hookfunction(print, function(...)
+      safeLog('info', ...)
+      return originalPrint(...)
+    end)
 
-		hookfunction(error, function(message, level)
-			safeLog('error', message)
-			return originalError(message, level)
-		end)
+    hookfunction(warn, function(...)
+      safeLog('warn', ...)
+      return originalWarn(...)
+    end)
 
-		if getgenv then getgenv()._RBXDEV_LOG_HOOKED = true end
-		return
-	end
+    hookfunction(error, function(message, level)
+      safeLog('error', message)
+      return originalError(message, level)
+    end)
 
-	local originalPrint = print
-	local originalWarn = warn
+    if getgenv then
+      getgenv()._RBXDEV_LOG_HOOKED = true
+    end
+    return
+  end
 
-	getgenv().print = function(...)
-		safeLog('info', ...)
-		return originalPrint(...)
-	end
+  local originalPrint = print
+  local originalWarn  = warn
 
-	getgenv().warn = function(...)
-		safeLog('warn', ...)
-		return originalWarn(...)
-	end
+  getgenv().print = function(...)
+    safeLog('info', ...)
+    return originalPrint(...)
+  end
 
-	if getgenv then getgenv()._RBXDEV_LOG_HOOKED = true end
+  getgenv().warn = function(...)
+    safeLog('warn', ...)
+    return originalWarn(...)
+  end
+
+  if getgenv then
+    getgenv()._RBXDEV_LOG_HOOKED = true
+  end
 end
 
 return M

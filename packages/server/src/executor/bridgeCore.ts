@@ -6,6 +6,7 @@ import type {
   CreateInstanceResult,
   DeleteResult,
   ExecuteResult,
+  ForwardedSpyRequest,
   LogEntry,
   ModuleInterfaceResult,
   PendingRequest,
@@ -25,14 +26,20 @@ import type {
   ModuleReference,
   RemoteSpyBlockEntry,
   RemoteSpyCall,
+  RemoteSpyPolicyMessage,
+  RemoteSpySource,
   RuntimeError,
   ServerMessage,
+  SetRemoteSpyEnabledMessage,
+  SetRemoteSpyEnabledResultMessage,
 } from '@typings/protocol';
 import { resolveCapabilities } from '@executor/capabilities';
 import { createLiveGameModel } from '@executor/gameTree';
-import { parseClientMessage } from '@executor/protocol';
+import { parseClientMessage, parseRemoteSpyPolicyMessage } from '@executor/protocol';
 
 const MAX_REMOTE_SPY_BUFFER = 500;
+
+const REMOTE_SPY_REQUEST_TIMEOUT_MS = 2000;
 
 /**
  * Creates the shared bridge core that handles protocol messages, pending request tracking,
@@ -40,18 +47,27 @@ const MAX_REMOTE_SPY_BUFFER = 500;
  * @param sendFn - Transport function for sending messages to the connected client.
  * @param isReady - Returns true when the underlying transport is open and ready.
  * @param log - Logger callback for bridge status messages.
+ * @param ownsExecutorSession - Returns true while this core owns the executor socket. Only the owner replays the
+ * shared Remote Spy policy after a same-socket reload; proxies stay passive so their stale defaults never race it.
  * @returns The bridge core interface with message handling, request methods, and event callbacks.
  */
 export const createBridgeCore = (
   sendFn: (message: ServerMessage) => void,
   isReady: () => boolean,
   log: (message: string) => void,
+  ownsExecutorSession: () => boolean = () => true,
 ): BridgeCore => {
   let executorName: string | undefined;
   let clientType: ClientType | undefined;
   let clientCapabilities: ClientCapabilities | undefined;
   let status: BridgeStatus = 'stopped';
   let remoteSpyEnabled = false;
+  let handshakes = 0;
+  let spySession = 0;
+  let requestedSpyEnabled = false;
+  let requestedSpySource: RemoteSpySource = 'game';
+  let requestedSpyFilter = '';
+  let requestedSpyBlocks: ReadonlyArray<RemoteSpyBlockEntry> = [];
 
   const pendingExecutions = new Map<string, PendingRequest<ExecuteResult>>();
   const pendingProperties = new Map<string, PendingRequest<PropertiesResult>>();
@@ -68,6 +84,8 @@ export const createBridgeCore = (
   const pendingSetRemoteSpyFilter = new Map<string, PendingRequest<SetRemoteSpyFilterResult>>();
   const pendingSetRemoteSpyBlockList = new Map<string, PendingRequest<SetRemoteSpyBlockListResult>>();
   const pendingSetScriptSources = new Map<string, PendingRequest<SetScriptSourceResult>>();
+  /** Proxy requests share the executor's spy policy, so the owning core adopts them once the executor acknowledges. */
+  const forwardedSpyRequests = new Map<string, ForwardedSpyRequest>();
 
   const statusCallbacks: Array<(status: BridgeStatus) => void> = [];
   const errorCallbacks: Array<(error: RuntimeError) => void> = [];
@@ -121,17 +139,51 @@ export const createBridgeCore = (
       sendFn(buildMessage(id));
     });
 
+  const resetSpySession = (reason: string): void => {
+    spySession += 1;
+    remoteSpyEnabled = false;
+    for (const pendingMap of [pendingSetRemoteSpyEnabled, pendingSetRemoteSpyFilter, pendingSetRemoteSpyBlockList]) {
+      for (const pending of pendingMap.values()) {
+        clearTimeout(pending.timeout);
+        pending.resolve({ 'success': false, 'error': reason });
+      }
+      pendingMap.clear();
+    }
+    for (const forwarded of forwardedSpyRequests.values()) clearTimeout(forwarded.timeout);
+    forwardedSpyRequests.clear();
+  };
+
+  const takeForwardedSpyRequest = (id: string): RemoteSpyPolicyMessage | undefined => {
+    const forwarded = forwardedSpyRequests.get(id);
+    if (forwarded === undefined) return undefined;
+    clearTimeout(forwarded.timeout);
+    forwardedSpyRequests.delete(id);
+    return forwarded.request;
+  };
+
+  const acknowledgeSpyEnabled = (message: SetRemoteSpyEnabledResultMessage): void => {
+    if (message.success === false || message.enabled === undefined) return;
+    remoteSpyEnabled = message.enabled;
+    requestedSpyEnabled = message.enabled;
+    if (message.source !== undefined) requestedSpySource = message.source;
+  };
+
   const handleMessage = (data: string): void => {
     const message = parseClientMessage(data);
     if (message === undefined) return log('[bridge] Received invalid message');
 
     switch (message.type) {
       case 'connected': {
+        const reloadSpy = handshakes > 0 && status === 'connected';
+        resetSpySession('Executor session replaced');
         executorName = message.executorName;
         clientType = message.clientType ?? 'executor';
         clientCapabilities = resolveCapabilities(clientType);
         setConnected(true);
         setStatus('connected');
+        handshakes += 1;
+        if (reloadSpy && ownsExecutorSession() && clientCapabilities.capabilities.has('remoteSpy'))
+          void restoreSpySession(spySession);
         const clientLabel = clientType === 'studio' ? 'Studio' : 'Executor';
         log(`[bridge] ${clientLabel} connected: ${message.executorName} v${message.version}`);
         break;
@@ -251,32 +303,45 @@ export const createBridgeCore = (
 
       case 'setRemoteSpyEnabledResult': {
         const pending = pendingSetRemoteSpyEnabled.get(message.id);
-        if (pending !== undefined) {
-          clearTimeout(pending.timeout);
-          pendingSetRemoteSpyEnabled.delete(message.id);
-          if (message.success && message.enabled !== undefined) remoteSpyEnabled = message.enabled;
-          pending.resolve({
-            'success': message.success,
-            'enabled': message.enabled ?? undefined,
-            'error': message.error ?? undefined,
-          });
+        if (pending === undefined) {
+          /** Proxies receive every acknowledgement but none of the requests, so they mirror the executor's state. */
+          const forwarded = takeForwardedSpyRequest(message.id);
+          if (forwarded?.type === 'setRemoteSpyEnabled' || ownsExecutorSession() === false)
+            acknowledgeSpyEnabled(message);
+          break;
         }
+        clearTimeout(pending.timeout);
+        pendingSetRemoteSpyEnabled.delete(message.id);
+        acknowledgeSpyEnabled(message);
+        pending.resolve({
+          'success': message.success,
+          'enabled': message.enabled ?? undefined,
+          'source': message.source ?? undefined,
+          'error': message.error ?? undefined,
+        });
         break;
       }
 
-      case 'setRemoteSpyFilterResult':
+      case 'setRemoteSpyFilterResult': {
+        const forwarded = takeForwardedSpyRequest(message.id);
+        if (forwarded?.type === 'setRemoteSpyFilter' && message.success) requestedSpyFilter = forwarded.filter;
         resolvePending(pendingSetRemoteSpyFilter, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
         break;
+      }
 
-      case 'setRemoteSpyBlockListResult':
+      case 'setRemoteSpyBlockListResult': {
+        const forwarded = takeForwardedSpyRequest(message.id);
+        if (forwarded?.type === 'setRemoteSpyBlockList' && message.success)
+          requestedSpyBlocks = forwarded.blocks.map(entry => ({ 'type': entry.type, 'value': entry.value }));
         resolvePending(pendingSetRemoteSpyBlockList, message.id, {
           'success': message.success,
           'error': message.error ?? undefined,
         });
         break;
+      }
 
       case 'setScriptSourceResult':
         resolvePending(pendingSetScriptSources, message.id, {
@@ -285,15 +350,25 @@ export const createBridgeCore = (
         });
         break;
 
-      case 'remoteSpy':
-        remoteSpyCallsBuffer.push(message.call);
-        if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) remoteSpyCallsBuffer.shift();
+      case 'remoteSpy': {
+        const index =
+          message.call.id === undefined ? -1 : remoteSpyCallsBuffer.findIndex(call => call.id === message.call.id);
+
+        if (index >= 0) remoteSpyCallsBuffer[index] = message.call;
+        else if (message.call.returnStatus !== 'returned' && message.call.returnStatus !== 'unavailable') {
+          remoteSpyCallsBuffer.push(message.call);
+          if (remoteSpyCallsBuffer.length > MAX_REMOTE_SPY_BUFFER) remoteSpyCallsBuffer.shift();
+        }
+
+        /** A completion whose call was evicted is not buffered again, but subscribers may still hold the row. */
         notify(remoteSpyCallbacks, message.call);
         break;
+      }
     }
   };
 
   const rejectAllPending = (reason: string): void => {
+    resetSpySession(reason);
     for (const [id, pending] of pendingExecutions) {
       clearTimeout(pending.timeout);
       pending.reject(new Error(reason));
@@ -416,26 +491,66 @@ export const createBridgeCore = (
       'path': [...path],
     }));
 
-  const setRemoteSpyEnabledFn = (enabled: boolean): Promise<SetRemoteSpyEnabledResult> =>
-    createRequest(pendingSetRemoteSpyEnabled, 2000, id => ({
-      'type': 'setRemoteSpyEnabled' as const,
-      id,
-      enabled,
-    }));
+  const setRemoteSpyEnabledFn = (enabled: boolean, source?: RemoteSpySource): Promise<SetRemoteSpyEnabledResult> =>
+    createRequest(
+      pendingSetRemoteSpyEnabled,
+      REMOTE_SPY_REQUEST_TIMEOUT_MS,
+      (id): SetRemoteSpyEnabledMessage =>
+        source === undefined
+          ? { 'type': 'setRemoteSpyEnabled', id, enabled }
+          : { 'type': 'setRemoteSpyEnabled', id, enabled, source },
+    );
 
-  const setRemoteSpyFilterFn = (filter: string): Promise<SetRemoteSpyFilterResult> =>
-    createRequest(pendingSetRemoteSpyFilter, 2000, id => ({
+  const setRemoteSpyFilterFn = async (filter: string): Promise<SetRemoteSpyFilterResult> => {
+    const session = spySession;
+    const result = await createRequest(pendingSetRemoteSpyFilter, REMOTE_SPY_REQUEST_TIMEOUT_MS, id => ({
       'type': 'setRemoteSpyFilter' as const,
       id,
       filter,
     }));
+    if (session === spySession && result.success) requestedSpyFilter = filter;
+    return result;
+  };
 
-  const setRemoteSpyBlockListFn = (blocks: ReadonlyArray<RemoteSpyBlockEntry>): Promise<SetRemoteSpyBlockListResult> =>
-    createRequest(pendingSetRemoteSpyBlockList, 2000, id => ({
+  const setRemoteSpyBlockListFn = async (
+    blocks: ReadonlyArray<RemoteSpyBlockEntry>,
+  ): Promise<SetRemoteSpyBlockListResult> => {
+    const session = spySession;
+    const snapshot = blocks.map(entry => ({ ...entry }));
+    const result = await createRequest(pendingSetRemoteSpyBlockList, REMOTE_SPY_REQUEST_TIMEOUT_MS, id => ({
       'type': 'setRemoteSpyBlockList' as const,
       id,
-      blocks,
+      'blocks': snapshot,
     }));
+    if (session === spySession && result.success) requestedSpyBlocks = snapshot;
+    return result;
+  };
+
+  const observeForwardedRequest = (data: string): void => {
+    const request = parseRemoteSpyPolicyMessage(data);
+    if (request === undefined) return;
+    takeForwardedSpyRequest(request.id);
+    const timeout = setTimeout(() => forwardedSpyRequests.delete(request.id), REMOTE_SPY_REQUEST_TIMEOUT_MS);
+    forwardedSpyRequests.set(request.id, { request, timeout });
+  };
+
+  /** The reloaded Luau module starts disabled, so policy is restored before capture hooks are reinstalled. */
+  const restoreSpySession = async (session: number): Promise<void> => {
+    try {
+      const filter = await setRemoteSpyFilterFn(requestedSpyFilter);
+      if (session !== spySession) return;
+      if (filter.success === false) throw new Error(filter.error ?? 'Filter restore failed');
+      const blocks = await setRemoteSpyBlockListFn(requestedSpyBlocks);
+      if (session !== spySession) return;
+      if (blocks.success === false) throw new Error(blocks.error ?? 'Block list restore failed');
+      const enabled = await setRemoteSpyEnabledFn(requestedSpyEnabled, requestedSpySource);
+      if (session !== spySession) return;
+      if (enabled.success === false) throw new Error(enabled.error ?? 'Enable restore failed');
+    } catch (error) {
+      if (session === spySession)
+        log(`[bridge] Failed to restore Remote Spy: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   const setScriptSourceFn = (path: ReadonlyArray<string>, source: string): Promise<SetScriptSourceResult> =>
     createRequest(pendingSetScriptSources, 10000, id => ({
@@ -448,6 +563,7 @@ export const createBridgeCore = (
   return {
     liveGameModel,
     handleMessage,
+    observeForwardedRequest,
     setStatus,
     'setConnected': (connected: boolean) => setConnected(connected),
     'setExecutorName': (name: string | undefined) => {

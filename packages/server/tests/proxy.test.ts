@@ -2,9 +2,12 @@ import { createServer as createHttpServer, get as httpGet } from 'node:http';
 import { WebSocket } from 'ws';
 
 import { createBridgeCore } from '@executor/bridgeCore';
+import { parseRemoteSpyPolicyMessage } from '@executor/protocol';
 import { createProxyBridge } from '@executor/proxy';
 import { createExecutorBridge } from '@executor/server';
+import type { SpyExecutor } from '@tests/types/proxy';
 import type { BridgeStatus, ExecutorBridge } from '@typings/bridge';
+import type { RemoteSpyBlockEntry, RemoteSpyPolicyMessage } from '@typings/protocol';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 let nextPort = 44100;
@@ -1332,6 +1335,118 @@ describe('ExecutorBridge - protocol robustness', () => {
 
     executor.close();
     await waitFor(() => bridge.isConnected === false);
+  });
+});
+
+describe('Remote Spy - shared policy across primary and proxies', () => {
+  let port: number;
+  let bridges: ExecutorBridge[];
+  let sockets: WebSocket[];
+
+  beforeEach(async () => {
+    port = await getAvailablePort();
+    bridges = [];
+    sockets = [];
+  });
+
+  afterEach(() => {
+    for (const socket of sockets) socket.close();
+    for (const bridge of bridges.reverse()) bridge.stop();
+  });
+
+  const track = (bridge: ExecutorBridge): ExecutorBridge => {
+    bridges.push(bridge);
+    bridge.start(port);
+    return bridge;
+  };
+
+  /** Fake executor that acknowledges spy policy like the Luau module, rejecting the filter named `Rejected`. */
+  const openSpyExecutor = async (): Promise<SpyExecutor> => {
+    const received: RemoteSpyPolicyMessage[] = [];
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    sockets.push(ws);
+    ws.on('message', (data: Buffer | string) => {
+      const request = parseRemoteSpyPolicyMessage(data.toString());
+      if (request === undefined) return;
+      received.push(request);
+      if (request.type === 'setRemoteSpyEnabled')
+        return ws.send(
+          JSON.stringify({
+            'type': 'setRemoteSpyEnabledResult',
+            'id': request.id,
+            'success': true,
+            'enabled': request.enabled,
+            'source': request.source ?? 'game',
+          }),
+        );
+      const rejected = request.type === 'setRemoteSpyFilter' && request.filter === 'Rejected';
+      return ws.send(JSON.stringify({ 'type': `${request.type}Result`, 'id': request.id, 'success': !rejected }));
+    });
+    const { promise, resolve } = Promise.withResolvers<void>();
+    ws.on('open', resolve);
+    await promise;
+    const handshake = (): void =>
+      ws.send(JSON.stringify({ 'type': 'connected', 'executorName': 'SpyExec', 'version': '1.0' }));
+    handshake();
+    return { received, 'reload': handshake };
+  };
+
+  const reloadAndSettle = async (executor: SpyExecutor): Promise<void> => {
+    executor.received.length = 0;
+    executor.reload();
+    await waitFor(() => executor.received.some(request => request.type === 'setRemoteSpyEnabled'));
+    /** Leave room for any competing replay a proxy might still send. */
+    await wait(200);
+  };
+
+  test('a passive proxy cannot disable active capture or clear rules on reload', async () => {
+    const primary = track(createExecutorBridge(noop));
+    await wait(100);
+    const passive = track(createExecutorBridge(noop));
+    await wait(300);
+    const executor = await openSpyExecutor();
+    await waitFor(() => primary.isConnected && passive.isConnected);
+
+    expect((await primary.setRemoteSpyFilter('Chat')).success).toBe(true);
+    expect((await primary.setRemoteSpyBlockList([{ 'type': 'name', 'value': 'Blocked' }])).success).toBe(true);
+    expect(await primary.setRemoteSpyEnabled(true, 'both')).toMatchObject({ 'success': true, 'source': 'both' });
+    await waitFor(() => passive.isRemoteSpyEnabled);
+
+    await reloadAndSettle(executor);
+
+    expect(executor.received).toHaveLength(3);
+    expect(executor.received).toMatchObject([
+      { 'type': 'setRemoteSpyFilter', 'filter': 'Chat' },
+      { 'type': 'setRemoteSpyBlockList', 'blocks': [{ 'type': 'name', 'value': 'Blocked' }] },
+      { 'type': 'setRemoteSpyEnabled', 'enabled': true, 'source': 'both' },
+    ]);
+    await waitFor(() => primary.isRemoteSpyEnabled && passive.isRemoteSpyEnabled);
+  });
+
+  test('proxy-selected acknowledged source and rules are restored after reload', async () => {
+    const primary = track(createExecutorBridge(noop));
+    await wait(100);
+    const proxy = track(createProxyBridge(noop));
+    await wait(200);
+    const executor = await openSpyExecutor();
+    await waitFor(() => primary.isConnected && proxy.isConnected);
+
+    const blocks: RemoteSpyBlockEntry[] = [{ 'type': 'path', 'value': 'ReplicatedStorage.Spam' }];
+    expect((await proxy.setRemoteSpyFilter('Chat')).success).toBe(true);
+    expect((await proxy.setRemoteSpyBlockList(blocks)).success).toBe(true);
+    expect(await proxy.setRemoteSpyEnabled(true, 'executor')).toMatchObject({ 'success': true, 'source': 'executor' });
+    expect((await proxy.setRemoteSpyFilter('Rejected')).success).toBe(false);
+    await waitFor(() => primary.isRemoteSpyEnabled);
+
+    await reloadAndSettle(executor);
+
+    expect(executor.received).toHaveLength(3);
+    expect(executor.received).toMatchObject([
+      { 'type': 'setRemoteSpyFilter', 'filter': 'Chat' },
+      { 'type': 'setRemoteSpyBlockList', blocks },
+      { 'type': 'setRemoteSpyEnabled', 'enabled': true, 'source': 'executor' },
+    ]);
+    await waitFor(() => primary.isRemoteSpyEnabled && proxy.isRemoteSpyEnabled);
   });
 });
 

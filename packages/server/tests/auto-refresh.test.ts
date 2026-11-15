@@ -85,7 +85,7 @@ describe('studio-plugin gameTree.luau auto-refresh subsystem', () => {
   });
 
   test('uses RunService.Heartbeat for the coalesced flush gate', () => {
-    expect(/local\s+RunService\s*=\s*game:GetService['"]RunService['"]/.test(source)).toBe(true);
+    expect(/local\s+RunService\s*=\s*game:GetService\(['"]RunService['"]\)/.test(source)).toBe(true);
     expect(/RunService\.Heartbeat:Connect/.test(source)).toBe(true);
   });
 
@@ -160,7 +160,7 @@ describe('executor-bridge.lua auto-refresh subsystem', () => {
   });
 
   test('uses RunService.Heartbeat (declared at file top) for the flush gate', () => {
-    expect(/local\s+RunService\s*=\s*game:GetService['"]RunService['"]/.test(source)).toBe(true);
+    expect(/local\s+RunService\s*=\s*game:GetService\(['"]RunService['"]\)/.test(source)).toBe(true);
     expect(/RunService\.Heartbeat:Connect\(autoRefreshHeartbeatTick\)/.test(source)).toBe(true);
   });
 
@@ -195,9 +195,14 @@ describe('executor-bridge.lua auto-refresh subsystem', () => {
     ).toBe(true);
   });
 
-  test('calls shutdownAutoRefresh on ws.OnClose so listeners release on disconnect', () => {
+  test('routes ws.OnClose through the cleanup handler so listeners release on disconnect', () => {
     const onClose = source.match(/ws\.OnClose:Connect\(function\(\)[\s\S]*?end\)/);
-    expect(onClose?.[0]).toContain('shutdownAutoRefresh()');
+    const cleanup = source.match(/local\s+onSocketClose\s*=\s*function\(\)[\s\S]*?end/);
+
+    expect(onClose?.[0]).toContain('onSocketClose()');
+    expect(onClose?.[0]).toContain('closer()');
+    expect(source).toContain('bridge.onClose = onSocketClose');
+    expect(cleanup?.[0]).toContain('gameTree.shutdownAutoRefresh()');
   });
 
   test('clears dirty state before serialising the tree (reentrancy)', () => {

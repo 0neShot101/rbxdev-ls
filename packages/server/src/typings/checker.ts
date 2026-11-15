@@ -445,7 +445,7 @@ const checkStatement = (state: CheckerState, stmt: Statement): void => {
       break;
 
     case 'DoStatement':
-      enterScope(state.env, 'Block');
+      enterScope(state.env, 'Block', stmt.range);
       checkBlock(state, stmt.body);
       exitScope(state.env);
       break;
@@ -580,14 +580,20 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
       declaredType = docType !== undefined ? docType : widenTypeForMutableVariable(valueType);
     } else declaredType = widenTypeForMutableVariable(valueType);
 
-    defineSymbol(state.env, name.name, declaredType, 'Variable', true, docComment);
+    defineSymbol(state.env, name.name, declaredType, 'Variable', true, docComment, {
+      'declaration': name.range,
+      'visibleFrom': decl.range.end,
+    });
     trackSymbol(state, name.name, declaredType);
   }
 };
 
 const checkLocalFunction = (state: CheckerState, decl: LocalFunction): void => {
   const funcType = checkFunctionExpressionWithDocComment(state, decl.func, decl.docComment);
-  defineSymbol(state.env, decl.name.name, funcType, 'Function', false, decl.docComment);
+  defineSymbol(state.env, decl.name.name, funcType, 'Function', false, decl.docComment, {
+    'declaration': decl.name.range,
+    'visibleFrom': decl.name.range.start,
+  });
   trackSymbol(state, decl.name.name, funcType);
 };
 
@@ -595,7 +601,21 @@ const checkFunctionDeclaration = (state: CheckerState, decl: FunctionDeclaration
   const funcType = checkFunctionExpressionWithDocComment(state, decl.func, decl.docComment);
 
   if (decl.name.path.length === 0 && decl.name.method === undefined) {
-    defineSymbol(state.env, decl.name.base.name, funcType, 'Function', false, decl.docComment);
+    let bindingScope = state.env.currentScope;
+
+    if (decl.isLocal === false) {
+      while (bindingScope.parent !== undefined && bindingScope.symbols.has(decl.name.base.name) === false)
+        bindingScope = bindingScope.parent;
+
+      const existing = bindingScope.symbols.get(decl.name.base.name);
+      if (existing === undefined || existing.kind === 'Global') bindingScope = state.env.globalScope;
+    }
+
+    defineSymbol(state.env, decl.name.base.name, funcType, 'Function', false, decl.docComment, {
+      'declaration': decl.name.base.range,
+      'visibleFrom': decl.name.base.range.start,
+      'scope': bindingScope,
+    });
     trackSymbol(state, decl.name.base.name, funcType);
   }
 };
@@ -608,7 +628,7 @@ const checkFunctionExpressionWithDocComment = (
   func: FunctionExpression,
   docComment: DocComment | undefined,
 ): FunctionType => {
-  enterScope(state.env, 'Function');
+  enterScope(state.env, 'Function', func.range);
 
   const typeParams: TypeParameterDef[] = [];
   if (func.typeParams !== undefined)
@@ -634,7 +654,10 @@ const checkFunctionExpressionWithDocComment = (
       else if (docParamTypes.has(param.name.name)) paramType = docParamTypes.get(param.name.name)!;
       else paramType = AnyType;
       params.push({ 'name': param.name.name, 'type': paramType, 'optional': false });
-      defineSymbol(state.env, param.name.name, paramType, 'Parameter', false);
+      defineSymbol(state.env, param.name.name, paramType, 'Parameter', false, undefined, {
+        'declaration': param.name.range,
+        'visibleFrom': param.name.range.end,
+      });
       trackSymbol(state, param.name.name, paramType);
     } else if (param.isVariadic) {
       const varargType = param.type !== undefined ? resolveTypeAnnotation(state, param.type) : AnyType;
@@ -742,7 +765,7 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   const narrowing = extractNarrowing(state, stmt.condition);
   const narrowings: TypeNarrowing[] = narrowing !== undefined ? [narrowing] : [];
 
-  enterScope(state.env, 'Conditional');
+  enterScope(state.env, 'Conditional', stmt.thenRange);
   applyNarrowings(state, narrowings);
   checkBlock(state, stmt.thenBody);
   clearNarrowings(state, narrowings);
@@ -754,7 +777,7 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
     const clauseNarrowing = extractNarrowing(state, clause.condition);
     const clauseNarrowings: TypeNarrowing[] = clauseNarrowing !== undefined ? [clauseNarrowing] : [];
 
-    enterScope(state.env, 'Conditional');
+    enterScope(state.env, 'Conditional', clause.range);
     applyNarrowings(state, clauseNarrowings);
     checkBlock(state, clause.body);
     clearNarrowings(state, clauseNarrowings);
@@ -762,7 +785,10 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   }
 
   if (stmt.elseBody !== undefined) {
-    enterScope(state.env, 'Conditional');
+    enterScope(state.env, 'Conditional', {
+      'start': stmt.elseBody[0]?.range.start ?? stmt.range.end,
+      'end': stmt.range.end,
+    });
     checkBlock(state, stmt.elseBody);
     exitScope(state.env);
   }
@@ -775,13 +801,13 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
 
 const checkWhileStatement = (state: CheckerState, stmt: WhileStatement): void => {
   inferExpression(state, stmt.condition);
-  enterScope(state.env, 'Loop');
+  enterScope(state.env, 'Loop', stmt.range);
   checkBlock(state, stmt.body);
   exitScope(state.env);
 };
 
 const checkRepeatStatement = (state: CheckerState, stmt: RepeatStatement): void => {
-  enterScope(state.env, 'Loop');
+  enterScope(state.env, 'Loop', stmt.range);
   checkBlock(state, stmt.body);
   inferExpression(state, stmt.condition);
   exitScope(state.env);
@@ -804,8 +830,11 @@ const checkForNumeric = (state: CheckerState, stmt: ForNumeric): void => {
       addDiagnostic(state, 'For loop step must be a number', stmt.step.range, 'error', 'E004');
   }
 
-  enterScope(state.env, 'Loop');
-  defineSymbol(state.env, stmt.variable.name, NumberType, 'Variable', false);
+  enterScope(state.env, 'Loop', stmt.range);
+  defineSymbol(state.env, stmt.variable.name, NumberType, 'Variable', false, undefined, {
+    'declaration': stmt.variable.range,
+    'visibleFrom': stmt.bodyStart,
+  });
   trackSymbol(state, stmt.variable.name, NumberType);
   checkBlock(state, stmt.body);
   exitScope(state.env);
@@ -860,12 +889,15 @@ const checkForGeneric = (state: CheckerState, stmt: ForGeneric): void => {
 
   const inferredTypes = inferForGenericTypes(state, stmt);
 
-  enterScope(state.env, 'Loop');
+  enterScope(state.env, 'Loop', stmt.range);
 
   for (let i = 0; i < stmt.variables.length; i++) {
     const variable = stmt.variables[i]!;
     const varType = i < inferredTypes.length ? inferredTypes[i]! : AnyType;
-    defineSymbol(state.env, variable.name, varType, 'Variable', false);
+    defineSymbol(state.env, variable.name, varType, 'Variable', false, undefined, {
+      'declaration': variable.range,
+      'visibleFrom': stmt.bodyStart,
+    });
     trackSymbol(state, variable.name, varType);
   }
 
@@ -894,7 +926,7 @@ const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
   defineTypeAlias(state.env, stmt.name.name, { 'kind': 'TypeReference', 'name': stmt.name.name });
 
   if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
-    enterScope(state.env, 'Block');
+    enterScope(state.env, 'Block', stmt.range);
     for (const param of stmt.typeParams) {
       const defaultType = param.defaultType !== undefined ? resolveTypeAnnotation(state, param.defaultType) : AnyType;
       defineTypeAlias(state.env, param.name, defaultType);

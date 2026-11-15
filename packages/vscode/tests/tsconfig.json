@@ -5,7 +5,13 @@
     "rootDir": "..",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "paths": {
+      "#extension/*": ["../src/*"],
+      "@extension/*": ["../src/*"],
+      "@typings/*": ["../src/types/*"],
+      "@tests/*": ["./*"]
+    }
   },
   "include": ["./**/*.ts", "../src/**/*.ts"]
 }
