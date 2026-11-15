@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main, development]
   workflow_dispatch:
+    inputs:
+      release:
+        description: Publish the current version from main
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -52,7 +57,7 @@ jobs:
 
   release:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,6 +70,8 @@ jobs:
       - name: Detect version change
         id: version
         shell: bash
+        env:
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
@@ -77,9 +84,9 @@ jobs:
           fi
           echo "Previous version: ${old_version}"
 
-          if [[ "${version}" != "${old_version}" ]]; then
+          if [[ "${FORCE_RELEASE}" == "true" || "${version}" != "${old_version}" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed, will release."
+            echo "Release requested or version changed, will release."
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Version unchanged, skipping release."
