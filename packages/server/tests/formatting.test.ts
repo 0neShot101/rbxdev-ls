@@ -10,7 +10,8 @@ describe('Basic Formatter', () => {
     });
 
     test('indents const declaration blocks without changing the surrounding indentation', () => {
-      const input = 'do\nconst MAX_RETRIES = 3\nconst function getRetries()\nreturn MAX_RETRIES\nend\ngetRetries()\nend';
+      const input =
+        'do\nconst MAX_RETRIES = 3\nconst function getRetries()\nreturn MAX_RETRIES\nend\ngetRetries()\nend';
       expect(basicFormat(input)).toBe(
         'do\n\tconst MAX_RETRIES = 3\n\tconst function getRetries()\n\t\treturn MAX_RETRIES\n\tend\n\tgetRetries()\nend',
       );

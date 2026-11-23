@@ -331,7 +331,7 @@ type Private = config.Limit
     const nextConsumerDiagnostics = (expectError: boolean): Promise<ReadonlyArray<string | number | undefined>> => {
       const { promise, resolve } = Promise.withResolvers<ReadonlyArray<string | number | undefined>>();
       const subscription = harness.client.onNotification(PublishDiagnosticsNotification.type, params => {
-        if (params.uri !== consumerUri || (params.diagnostics.length > 0) !== expectError) return;
+        if (params.uri !== consumerUri || params.diagnostics.length > 0 !== expectError) return;
         subscription.dispose();
         resolve(params.diagnostics.map(diagnostic => diagnostic.code));
       });

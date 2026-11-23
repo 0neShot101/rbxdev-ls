@@ -1,6 +1,6 @@
 {
   "name": "@oneshot101/luau-bundler",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Bundles multiple Luau/Lua source files into a single self-contained script",
   "main": "dist/index.js",
   "bin": {
