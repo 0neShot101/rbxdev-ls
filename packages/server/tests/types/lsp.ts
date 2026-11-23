@@ -6,6 +6,7 @@ import type {
   CompletionList,
   Connection,
   Hover,
+  MessageConnection,
   Position,
   Range,
   SignatureHelp,
@@ -14,6 +15,7 @@ import type {
 
 /** In-memory language-server session driven by a JSON-RPC client over real streams. */
 export interface LspHarness {
+  readonly client: MessageConnection;
   /** Server connection that handlers register on before `start`. */
   readonly connection: Connection;
   /** Documents synchronised from client notifications. */

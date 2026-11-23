@@ -3,8 +3,15 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  DidChangeTextDocumentNotification,
+  DidOpenTextDocumentNotification,
+  PublishDiagnosticsNotification,
+} from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createDocumentManager } from '@lsp/documents';
+import { setupDiagnosticsHandler } from '@lsp/handlers/diagnostics';
+import { createLspHarness } from '@tests/helpers/lsp';
 import { resolveAnnotationToType } from '@workspace/annotationResolver';
 import { buildModuleIndex } from '@workspace/moduleIndex';
 import { loadSourcemapState } from '@workspace/sourcemap';
@@ -292,6 +299,69 @@ type Private = config.Limit
     );
     expect(invalid.parseErrors).toEqual([]);
     expect(invalid.typeErrors.map(d => d.code)).toEqual(['E009', 'E002', 'E010']);
+  });
+
+  test('allows calling a file module that returns a function while resolving its type exports', () => {
+    writeFileSync(
+      path.join(tempDir, 'factory.lua'),
+      'export type Result = number\nlocal function factory() return 1 end\nreturn factory',
+    );
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const result = manager.parseDocument(
+      TextDocument.create(
+        pathToFileURL(path.join(tempDir, 'main.lua')).href,
+        'luau',
+        1,
+        "--!strict\nlocal factory = require('./factory')\nlocal value: factory.Result = factory()",
+      ),
+    );
+    expect(result.typeErrors).toEqual([]);
+  });
+
+  test('publishes new diagnostics for an untouched consumer when an open module changes', async () => {
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const harness = createLspHarness(manager);
+    setupDiagnosticsHandler(harness.connection, harness.documents, manager);
+    const modulePath = path.join(tempDir, 'config.lua');
+    const moduleUri = pathToFileURL(modulePath).href;
+    const consumerUri = pathToFileURL(path.join(tempDir, 'consumer.lua')).href;
+    const diskSource = 'export type Count = number\nreturn {}';
+    writeFileSync(modulePath, diskSource);
+
+    const nextConsumerDiagnostics = (expectError: boolean): Promise<ReadonlyArray<string | number | undefined>> => {
+      const { promise, resolve } = Promise.withResolvers<ReadonlyArray<string | number | undefined>>();
+      const subscription = harness.client.onNotification(PublishDiagnosticsNotification.type, params => {
+        if (params.uri !== consumerUri || (params.diagnostics.length > 0) !== expectError) return;
+        subscription.dispose();
+        resolve(params.diagnostics.map(diagnostic => diagnostic.code));
+      });
+      return promise;
+    };
+
+    try {
+      await harness.start();
+      await harness.client.sendNotification(DidOpenTextDocumentNotification.type, {
+        'textDocument': { 'uri': moduleUri, 'languageId': 'luau', 'version': 1, 'text': diskSource },
+      });
+      const initial = nextConsumerDiagnostics(false);
+      await harness.client.sendNotification(DidOpenTextDocumentNotification.type, {
+        'textDocument': {
+          'uri': consumerUri,
+          'languageId': 'luau',
+          'version': 1,
+          'text': "--!strict\nlocal config = require('./config')\nlocal value: config.Count = 42",
+        },
+      });
+      expect(await initial).toEqual([]);
+      const updated = nextConsumerDiagnostics(true);
+      await harness.client.sendNotification(DidChangeTextDocumentNotification.type, {
+        'textDocument': { 'uri': moduleUri, 'version': 2 },
+        'contentChanges': [{ 'text': 'export type Count = string\nreturn {}' }],
+      });
+      expect(await updated).toEqual(['E002']);
+    } finally {
+      harness.dispose();
+    }
   });
 
   test('refreshes cached require consumers after edits, close, and workspace reload', () => {

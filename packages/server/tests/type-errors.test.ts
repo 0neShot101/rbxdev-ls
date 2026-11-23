@@ -73,7 +73,7 @@ describe('Type Errors (E002): Assignment Type Mismatches', () => {
   });
 });
 
-describe('Const bindings', () => {
+describe('Const bindings', () =>
   test('rejects rebinding const variables and functions without freezing their values', () => {
     const diagnostics = getDiagnostics(`
 const MAX_RETRIES = 3
@@ -96,8 +96,7 @@ function retry() end
       "Cannot reassign const binding 'MAX_RETRIES'",
       "Cannot reassign const binding 'retry'",
     ]);
-  });
-});
+  }));
 
 describe('Type Errors (E002): Valid Assignments (no errors)', () => {
   test('number to number', () => expectNoErrors('local x: number = 42'));
@@ -196,7 +195,7 @@ describe('Type Errors (E005): Return Type Mismatches', () => {
 });
 
 describe('Type checking short-circuit expressions and guards', () => {
-  test('narrows an optional after a negated early-return guard, without narrowing shadowing locals', () => {
+  test('narrows an optional after a negated early-return guard, without narrowing shadowing locals', () =>
     expectNoErrors(`
 type Config = { enabled: boolean }
 local defaultValue = true
@@ -208,8 +207,8 @@ local function foo(overrides: Config?): boolean
   end
   return overrides.enabled
 end
-`);
-  });
+`),
+  );
 
   test('does not retain a guard from a branch that may not run or after a reassignment', () => {
     const diagnostics = getDiagnostics(`

@@ -41,6 +41,7 @@ export const createLspHarness = (documentManager: DocumentManager): LspHarness =
 
   return {
     connection,
+    client,
     documents,
     'start': async () => {
       documents.listen(connection);

@@ -11,6 +11,7 @@ import {
   decodeSuncApi,
   openApiDump,
 } from '@definitions/updates/validate';
+import { isObject, isString } from '@utils/guards';
 import { once } from '@utils/once';
 
 import type { LoadedDefinitions, RobloxApiDump } from '@typings/definitions';
@@ -44,10 +45,8 @@ export const loadWorkspaceGlobals = (root: string): ReadonlyArray<string> | unde
   if (bytes === undefined) return undefined;
   try {
     const config: unknown = JSON.parse(bytes.toString('utf-8'));
-    if (typeof config === 'object' && config !== null && 'globals' in config && Array.isArray(config.globals))
-      return config.globals.filter(
-        (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z_]\w*$/.test(name),
-      );
+    if (isObject(config) && 'globals' in config && Array.isArray(config.globals))
+      return config.globals.filter((name: unknown): name is string => isString(name) && /^[A-Za-z_]\w*$/.test(name));
   } catch {
     report(`Ignoring invalid workspace config ${configPath}`);
   }

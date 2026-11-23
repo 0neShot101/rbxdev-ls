@@ -838,9 +838,8 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
     exitScope(state.env);
   }
 
-  if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody)) {
+  if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody))
     applyNarrowing(state, extractGuardNarrowing(state, stmt.condition));
-  }
 };
 
 const checkWhileStatement = (state: CheckerState, stmt: WhileStatement): void => {

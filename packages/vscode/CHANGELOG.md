@@ -11,7 +11,7 @@ All notable changes to the Roblox Luau Language Server extension will be documen
 ### Fixed
 
 - Luau `const` and `const function` now parse and highlight as declarations without reserving `const` as an identifier. Assigning to a const binding reports an error.
-- Exported types resolve through `require`. The checker narrows optionals after negated early-return guards and no longer carries `false` or `nil` into an `or` result when the fallback replaces them.
+- Exported types resolve through `require`, and editing a module refreshes diagnostics in its open consumers. The checker narrows optionals after negated early-return guards and no longer carries `false` or `nil` into an `or` result when the fallback replaces them.
 
 ## [0.5.1] - 2026-11-15
 

@@ -11,6 +11,7 @@ import { parse } from '@parser/parser';
 import { buildModuleIndex, extractModuleExports, resolveLocalModulePath, searchExports } from '@workspace/moduleIndex';
 import { loadRojoState } from '@workspace/rojo';
 import { loadSourcemapState } from '@workspace/sourcemap';
+import { isString } from '@utils/guards';
 
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
@@ -111,46 +112,72 @@ const moduleValueType = (exports: ReadonlyArray<ModuleExport>): LuauType => {
 export const createDocumentManager = (definitions?: LoadedDefinitions): DocumentManager => {
   const globalEnv = buildGlobalEnvironment(definitions);
   const documents = new Map<string, ParsedDocument>();
-  const documentCache = new Map<string, { parsed: ParsedDocument; usesRequire: boolean }>();
+  const documentCache = new Map<string, ParsedDocument>();
   const openFileAsts = new Map<string, Chunk>();
 
-  const invalidateModuleConsumers = (): void => {
-    for (const [uri, cached] of documentCache) if (cached.usesRequire) documentCache.delete(uri);
+  const moduleDependencies = new Map<string, ReadonlySet<string>>();
+  let invalidatedConsumers: Set<string> | undefined;
+
+  const invalidateModuleConsumers = (key: string, sourceUri: string): void => {
+    for (const [uri, dependencies] of moduleDependencies)
+      if (uri !== sourceUri && dependencies.has(key)) {
+        documentCache.delete(uri);
+        (invalidatedConsumers ??= new Set()).add(uri);
+      }
   };
 
-  const isOpenFile = (filePath: string): boolean => openFileAsts.has(fileKey(filePath));
+  const takeInvalidatedModuleConsumers = (): ReadonlySet<string> | undefined => {
+    const consumers = invalidatedConsumers;
+    invalidatedConsumers = undefined;
+    return consumers;
+  };
 
-  const createRequireResolver = (rootAst: Chunk, rootFilePath: string | undefined): RequireResolver => {
+  const createRequireResolver = (
+    rootAst: Chunk,
+    rootFilePath: string | undefined,
+    dependencies: Set<string>,
+  ): RequireResolver => {
     const rootKey = rootFilePath === undefined ? undefined : fileKey(rootFilePath);
     let resolvedModules: Map<string, RequiredModule> | undefined;
 
     const fromFile = (sourcePath: string | undefined): RequireResolver => request => {
-      const info = typeof request === 'string' ? undefined : findDataModelModule(moduleIndex, request);
-      const filePath =
-        typeof request === 'string' && sourcePath !== undefined && request.length > 0
-          ? resolveLocalModulePath(request, sourcePath, isOpenFile)
-          : info?.filePath;
+      const fileRequest = isString(request);
+      const info = fileRequest ? undefined : findDataModelModule(moduleIndex, request);
+      const filePath = fileRequest
+        ? sourcePath === undefined || request.length === 0
+          ? undefined
+          : resolveLocalModulePath(request, sourcePath, candidate => {
+              const key = fileKey(candidate);
+              dependencies.add(key);
+              return openFileAsts.has(key);
+            })
+        : info?.filePath;
       if (filePath === undefined) return undefined;
 
       const key = fileKey(filePath);
-      const cached = resolvedModules?.get(key);
+      dependencies.add(key);
+      const cacheKey = info === undefined ? `file:${key}` : key;
+      const cached = resolvedModules?.get(cacheKey);
       if (cached !== undefined) return cached;
 
       const openAst = key === rootKey ? rootAst : openFileAsts.get(key);
-      const moduleAst = openAst ?? (info === undefined ? readModuleAst(filePath) : undefined);
-      const exports =
-        moduleAst === undefined ? info?.exports : extractModuleExports(moduleAst, filePath, info?.dataModelPath);
-      if (exports === undefined) return undefined;
+      /** The export inventory is not a runtime type for arbitrary file modules. */
+      const valueType =
+        info === undefined
+          ? AnyType
+          : moduleValueType(
+              openAst === undefined ? info.exports : extractModuleExports(openAst, filePath, info.dataModelPath),
+            );
 
       let checked = false;
       let exportedTypes: TypeCheckResult['exportedTypes'];
       const required: RequiredModule = {
-        'valueType': moduleValueType(exports),
+        valueType,
         'getExportedTypes': () => {
-          // A back edge cannot use a namespace whose analysis is still in progress.
+          /** A back edge cannot use a namespace whose analysis is still in progress. */
           if (checked || key === rootKey) return exportedTypes;
           checked = true;
-          const ast = moduleAst ?? readModuleAst(filePath);
+          const ast = openAst ?? readModuleAst(filePath);
           if (ast !== undefined && ast.body.some(stmt => stmt.kind === 'ExportStatement'))
             exportedTypes = checkProgram(ast, {
               'globals': globalEnv,
@@ -161,7 +188,7 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
         },
       };
       resolvedModules ??= new Map();
-      resolvedModules.set(key, required);
+      resolvedModules.set(cacheKey, required);
       return required;
     };
 
@@ -174,7 +201,7 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
     const content = doc.getText();
 
     /** An unchanged version with identical text reuses the previous analysis; the comparison is exact. */
-    const cached = documentCache.get(uri)?.parsed;
+    const cached = documentCache.get(uri);
     if (cached !== undefined && cached.version === version && cached.content === content) {
       documents.set(uri, cached);
       return cached;
@@ -185,8 +212,9 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
     const filePath = getFilePath(uri);
     const previousDoc = documents.get(uri);
     if (filePath !== undefined && previousDoc?.content !== content) {
-      openFileAsts.set(fileKey(filePath), ast);
-      invalidateModuleConsumers();
+      const key = fileKey(filePath);
+      openFileAsts.set(key, ast);
+      invalidateModuleConsumers(key, uri);
     }
 
     const lastStatement = ast.body[ast.body.length - 1];
@@ -205,6 +233,7 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
     let typeCheckResult: TypeCheckResult | undefined;
     let typeErrors: TypeDiagnostic[] = [];
     let resolveRequire: RequireResolver | undefined;
+    let dependencies: Set<string> | undefined;
 
     const mode = detectTypeCheckMode(ast.comments);
 
@@ -213,7 +242,10 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
         'globals': globalEnv,
         'mode': mode,
         'requireResolver': request => {
-          resolveRequire ??= createRequireResolver(ast, filePath);
+          if (resolveRequire === undefined) {
+            dependencies = new Set();
+            resolveRequire = createRequireResolver(ast, filePath, dependencies);
+          }
           return resolveRequire(request);
         },
       });
@@ -239,7 +271,10 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
       typeCheckResult,
     };
 
-    documentCache.set(uri, { parsed, 'usesRequire': resolveRequire !== undefined });
+    if (dependencies === undefined) moduleDependencies.delete(uri);
+    else moduleDependencies.set(uri, dependencies);
+    invalidatedConsumers?.delete(uri);
+    documentCache.set(uri, parsed);
     if (documentCache.size > MAX_CACHE_SIZE) {
       /** Over the limit, the oldest half of the cache is evicted. */
       const keys = [...documentCache.keys()].slice(0, Math.floor(MAX_CACHE_SIZE / 2));
@@ -255,8 +290,12 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
   const removeDocument = (uri: string): void => {
     documents.delete(uri);
     documentCache.delete(uri);
+    moduleDependencies.delete(uri);
+    invalidatedConsumers?.delete(uri);
     const filePath = getFilePath(uri);
-    if (filePath !== undefined && openFileAsts.delete(fileKey(filePath))) invalidateModuleConsumers();
+    if (filePath === undefined) return;
+    const key = fileKey(filePath);
+    if (openFileAsts.delete(key)) invalidateModuleConsumers(key, uri);
   };
 
   let rojoState: RojoState | undefined;
@@ -296,6 +335,7 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
     globalEnv,
     documents,
     parseDocument,
+    takeInvalidatedModuleConsumers,
     getDocument,
     removeDocument,
     initializeWorkspace,
