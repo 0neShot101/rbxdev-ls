@@ -7,6 +7,7 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/vscode"],
+      "preLaunchTask": "build-all",
       "outFiles": ["${workspaceFolder}/packages/vscode/out/**/*.js"]
     }
   ]

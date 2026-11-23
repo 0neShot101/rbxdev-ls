@@ -2,6 +2,12 @@
 
 All notable changes to the Roblox Luau Language Server extension will be documented in this file.
 
+## [0.5.3] - 2026-11-23
+
+### Fixed
+
+- Color Luau `const` declarations like `local` in VS Code even when semantic highlighting is disabled.
+
 ## [0.5.2] - 2026-11-23
 
 ### Added
