@@ -15,10 +15,12 @@ import { commonType, isAssignable, isSubtype } from '@analyzer/subtyping';
 import {
   AnyType,
   BooleanType,
+  FalseLiteral,
   NeverType,
   NilType,
   NumberType,
   StringType,
+  TrueLiteral,
   createArrayType,
   createBooleanLiteral,
   createErrorType,
@@ -72,6 +74,7 @@ import type {
 } from '@typings/types';
 import type {
   DiagnosticTag,
+  RequiredModule,
   TypeDiagnostic,
   TypeCheckResult,
   TypeNarrowing,
@@ -79,6 +82,7 @@ import type {
   CheckerOptions,
 } from '@typings/checker';
 import type { GlobalEnvironment } from '@typings/definitions';
+import type { Scope, Symbol } from '@typings/environment';
 
 let standaloneGlobals: GlobalEnvironment | undefined;
 
@@ -113,9 +117,12 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
     ignoreState,
     'returnType': undefined,
     'isVariadic': false,
-    'narrowings': new Map(),
+    'narrowings': undefined,
+    'branchWrites': undefined,
     'allSymbols': new Map(),
     'requireResolver': options.requireResolver,
+    'modules': undefined,
+    'exportedTypes': undefined,
   };
 };
 
@@ -159,15 +166,70 @@ const widenTypeForMutableVariable = (type: LuauType): LuauType => {
 
 const stripNilFromType = (type: LuauType): LuauType => {
   if (type.kind === 'Union') {
-    const nonNil = type.types.filter(t => t.kind !== 'Primitive' || t.name !== 'nil');
-    if (nonNil.length === 0) return NeverType;
-    const [onlyType] = nonNil;
-    if (nonNil.length === 1 && onlyType !== undefined) return onlyType;
-    return createUnionType(nonNil);
+    if (type.types.some(t => t.kind === 'Primitive' && t.name === 'nil') === false) return type;
+    return createUnionType(type.types.filter(t => t.kind !== 'Primitive' || t.name !== 'nil'));
   }
   if (type.kind === 'Optional') return type.type;
   if (type.kind === 'Primitive' && type.name === 'nil') return NeverType;
   return type;
+};
+
+const unionOf = (left: LuauType, right: LuauType): LuauType => {
+  if (left === right || right.kind === 'Never') return left;
+  if (left.kind === 'Never') return right;
+  return createUnionType([left, right]);
+};
+
+const selectByTruthiness = (type: LuauType, truthy: boolean): LuauType => {
+  switch (type.kind) {
+    case 'Primitive':
+      if (type.name === 'boolean') return truthy ? TrueLiteral : FalseLiteral;
+      return (type.name !== 'nil') === truthy ? type : NeverType;
+    case 'Literal':
+      return (type.value !== false) === truthy ? type : NeverType;
+    case 'Optional': {
+      const selected = selectByTruthiness(type.type, truthy);
+      return truthy ? selected : unionOf(selected, NilType);
+    }
+    case 'Union': {
+      let selected: LuauType[] | undefined;
+      let i = 0;
+      for (const member of type.types) {
+        const result = selectByTruthiness(member, truthy);
+        if (result !== member) selected ??= type.types.slice(0, i);
+        if (result.kind !== 'Never') selected?.push(result);
+        i++;
+      }
+      return selected === undefined ? type : createUnionType(selected);
+    }
+    case 'Table':
+    case 'Function':
+    case 'Class':
+    case 'Enum':
+      return truthy ? type : NeverType;
+    default:
+      return type;
+  }
+};
+
+const refinedType = (state: CheckerState, symbol: Symbol): LuauType => {
+  if (state.narrowings !== undefined)
+    for (let scope: Scope | undefined = state.env.currentScope; scope !== undefined; scope = scope.parent) {
+      const narrowed = state.narrowings.get(scope)?.get(symbol);
+      if (narrowed !== undefined) return narrowed;
+      if (scope.kind === 'Function') break;
+    }
+  return symbol.type;
+};
+
+const narrowNonNil = (state: CheckerState, left: Expression, right: Expression): TypeNarrowing | undefined => {
+  const id = right.kind === 'NilLiteral' ? left : left.kind === 'NilLiteral' ? right : undefined;
+  if (id?.kind !== 'Identifier') return undefined;
+  const symbol = lookupSymbol(state.env, id.name);
+  if (symbol === undefined) return undefined;
+  const type = refinedType(state, symbol);
+  const narrowedType = stripNilFromType(type);
+  return narrowedType === type ? undefined : { symbol, narrowedType };
 };
 
 const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
@@ -183,24 +245,13 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
     const classType = state.env.classes.get(className);
     if (classType === undefined) return undefined;
 
-    if (condition.object.kind === 'Identifier')
-      return { 'variableName': condition.object.name, 'narrowedType': classType };
-
-    return undefined;
+    if (condition.object.kind !== 'Identifier') return undefined;
+    const symbol = lookupSymbol(state.env, condition.object.name);
+    return symbol === undefined ? undefined : { symbol, 'narrowedType': classType };
   }
 
-  if (condition.kind === 'BinaryExpression' && condition.operator === '~=') {
-    if (condition.right.kind === 'NilLiteral' && condition.left.kind === 'Identifier') {
-      const symbol = lookupSymbol(state.env, condition.left.name);
-      if (symbol !== undefined)
-        return { 'variableName': condition.left.name, 'narrowedType': stripNilFromType(symbol.type) };
-    }
-    if (condition.left.kind === 'NilLiteral' && condition.right.kind === 'Identifier') {
-      const symbol = lookupSymbol(state.env, condition.right.name);
-      if (symbol !== undefined)
-        return { 'variableName': condition.right.name, 'narrowedType': stripNilFromType(symbol.type) };
-    }
-  }
+  if (condition.kind === 'BinaryExpression' && condition.operator === '~=')
+    return narrowNonNil(state, condition.left, condition.right);
 
   if (condition.kind === 'BinaryExpression' && condition.operator === '==') {
     const typeofNarrowing = extractTypeofNarrowing(state, condition.left, condition.right);
@@ -212,8 +263,9 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
   if (condition.kind === 'Identifier') {
     const symbol = lookupSymbol(state.env, condition.name);
     if (symbol !== undefined) {
-      const narrowed = stripNilFromType(symbol.type);
-      if (narrowed !== symbol.type) return { 'variableName': condition.name, 'narrowedType': narrowed };
+      const type = refinedType(state, symbol);
+      const narrowedType = selectByTruthiness(type, true);
+      if (narrowedType !== type) return { symbol, narrowedType };
     }
   }
 
@@ -229,7 +281,7 @@ const extractNarrowing = (state: CheckerState, condition: Expression): TypeNarro
 };
 
 const extractTypeofNarrowing = (
-  _state: CheckerState,
+  state: CheckerState,
   callSide: Expression,
   litSide: Expression,
 ): TypeNarrowing | undefined => {
@@ -240,6 +292,8 @@ const extractTypeofNarrowing = (
   const [arg] = callSide.args;
   if (arg === undefined) return undefined;
   if (arg.kind !== 'Identifier') return undefined;
+  const symbol = lookupSymbol(state.env, arg.name);
+  if (symbol === undefined) return undefined;
 
   const typeName = litSide.value;
   let narrowedType: LuauType;
@@ -267,15 +321,35 @@ const extractTypeofNarrowing = (
       return undefined;
   }
 
-  return { 'variableName': arg.name, narrowedType };
+  return { symbol, narrowedType };
 };
 
-const applyNarrowings = (state: CheckerState, narrowings: ReadonlyArray<TypeNarrowing>): void => {
-  for (const narrowing of narrowings) state.narrowings.set(narrowing.variableName, narrowing.narrowedType);
+const applyNarrowing = (
+  state: CheckerState,
+  narrowing: TypeNarrowing | undefined,
+  scope = state.env.currentScope,
+): void => {
+  if (narrowing === undefined) return;
+  state.narrowings ??= new WeakMap();
+  let refinements = state.narrowings.get(scope);
+  if (refinements === undefined) {
+    refinements = new Map();
+    state.narrowings.set(scope, refinements);
+  }
+  refinements.set(narrowing.symbol, narrowing.narrowedType);
 };
 
-const clearNarrowings = (state: CheckerState, narrowings: ReadonlyArray<TypeNarrowing>): void => {
-  for (const narrowing of narrowings) state.narrowings.delete(narrowing.variableName);
+const invalidateNarrowing = (state: CheckerState, symbol: Symbol): void => {
+  if (state.narrowings === undefined) return;
+  for (let scope: Scope | undefined = state.env.currentScope; scope !== undefined; scope = scope.parent) {
+    state.narrowings.get(scope)?.delete(symbol);
+    if (scope.kind === 'Conditional') {
+      (state.branchWrites ??= new Set()).add(symbol);
+      applyNarrowing(state, { symbol, 'narrowedType': symbol.type }, scope);
+      break;
+    }
+    if (scope.kind === 'Function') break;
+  }
 };
 
 const lookupClassMethod = (classType: ClassType, methodName: string): ClassMethod | undefined => {
@@ -316,7 +390,12 @@ export const checkProgram = (chunk: Chunk, options?: CheckerOptions): TypeCheckR
   const state = createCheckerState({ ...options, ignoreState });
   checkBlock(state, chunk.body);
 
-  return { 'diagnostics': state.diagnostics, 'environment': state.env, 'allSymbols': state.allSymbols };
+  return {
+    'diagnostics': state.diagnostics,
+    'environment': state.env,
+    'allSymbols': state.allSymbols,
+    'exportedTypes': state.exportedTypes,
+  };
 };
 
 const blockAlwaysExits = (statements: ReadonlyArray<Statement>): boolean => {
@@ -342,18 +421,10 @@ const blockAlwaysExits = (statements: ReadonlyArray<Statement>): boolean => {
 const extractGuardNarrowing = (state: CheckerState, condition: Expression): TypeNarrowing | undefined => {
   if (condition.kind === 'ParenthesizedExpression') return extractGuardNarrowing(state, condition.expression);
 
-  if (condition.kind === 'BinaryExpression' && condition.operator === '==') {
-    if (condition.right.kind === 'NilLiteral' && condition.left.kind === 'Identifier') {
-      const symbol = lookupSymbol(state.env, condition.left.name);
-      if (symbol !== undefined)
-        return { 'variableName': condition.left.name, 'narrowedType': stripNilFromType(symbol.type) };
-    }
-    if (condition.left.kind === 'NilLiteral' && condition.right.kind === 'Identifier') {
-      const symbol = lookupSymbol(state.env, condition.right.name);
-      if (symbol !== undefined)
-        return { 'variableName': condition.right.name, 'narrowedType': stripNilFromType(symbol.type) };
-    }
-  }
+  if (condition.kind === 'UnaryExpression' && condition.operator === 'not')
+    return extractNarrowing(state, condition.operand);
+  if (condition.kind === 'BinaryExpression' && condition.operator === '==')
+    return narrowNonNil(state, condition.left, condition.right);
 
   return undefined;
 };
@@ -430,9 +501,14 @@ const checkStatement = (state: CheckerState, stmt: Statement): void => {
       checkTypeAlias(state, stmt);
       break;
 
-    case 'ExportStatement':
-      checkTypeAlias(state, stmt.declaration);
+    case 'ExportStatement': {
+      const type = checkTypeAlias(state, stmt.declaration);
+      if (state.env.currentScope === state.env.globalScope) {
+        state.exportedTypes ??= new Map();
+        state.exportedTypes.set(stmt.declaration.name.name, type);
+      }
       break;
+    }
 
     case 'CallStatement':
       inferExpression(state, stmt.expression);
@@ -540,17 +616,25 @@ const checkLocalDeclaration = (state: CheckerState, decl: LocalDeclaration): voi
       declaredType = docType !== undefined ? docType : widenTypeForMutableVariable(valueType);
     } else declaredType = widenTypeForMutableVariable(valueType);
 
-    defineSymbol(state.env, name.name, declaredType, 'Variable', true, docComment, {
+    defineSymbol(state.env, name.name, declaredType, 'Variable', decl.isConst === false, docComment, {
       'declaration': name.range,
       'visibleFrom': decl.range.end,
     });
+    if (state.modules !== undefined) {
+      let initializer = decl.values[i];
+      while (initializer?.kind === 'ParenthesizedExpression') initializer = initializer.expression;
+      const module = initializer?.kind === 'CallExpression' ? state.modules.get(initializer) : undefined;
+      const symbol = module === undefined ? undefined : state.env.currentScope.symbols.get(name.name);
+      if (module !== undefined && symbol !== undefined) state.modules.set(symbol, module);
+    }
     trackSymbol(state, name.name, declaredType);
   }
 };
 
 const checkLocalFunction = (state: CheckerState, decl: LocalFunction): void => {
+  if (decl.isConst) defineSymbol(state.env, decl.name.name, AnyType, 'Function', false);
   const funcType = checkFunctionExpressionWithDocComment(state, decl.func, decl.docComment);
-  defineSymbol(state.env, decl.name.name, funcType, 'Function', false, decl.docComment, {
+  defineSymbol(state.env, decl.name.name, funcType, 'Function', decl.isConst === false, decl.docComment, {
     'declaration': decl.name.range,
     'visibleFrom': decl.name.range.start,
   });
@@ -568,10 +652,14 @@ const checkFunctionDeclaration = (state: CheckerState, decl: FunctionDeclaration
         bindingScope = bindingScope.parent;
 
       const existing = bindingScope.symbols.get(decl.name.base.name);
+      if (existing !== undefined) {
+        if (rejectConstReassignment(state, decl.name.base, existing)) return;
+        invalidateNarrowing(state, existing);
+      }
       if (existing === undefined || existing.kind === 'Global') bindingScope = state.env.globalScope;
     }
 
-    defineSymbol(state.env, decl.name.base.name, funcType, 'Function', false, decl.docComment, {
+    defineSymbol(state.env, decl.name.base.name, funcType, 'Function', true, decl.docComment, {
       'declaration': decl.name.base.range,
       'visibleFrom': decl.name.base.range.start,
       'scope': bindingScope,
@@ -657,6 +745,12 @@ const checkFunctionExpressionWithDocComment = (
   return createFunctionType(params, declaredReturnType ?? AnyType, { typeParams, 'isVariadic': func.isVariadic });
 };
 
+const rejectConstReassignment = (state: CheckerState, target: Identifier, symbol: Symbol): boolean => {
+  if (symbol.mutable || (symbol.kind !== 'Variable' && symbol.kind !== 'Function')) return false;
+  addDiagnostic(state, `Cannot reassign const binding '${target.name}'`, target.range, 'error', 'E014');
+  return true;
+};
+
 const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
   const valueTypes: LuauType[] = stmt.values.map(v => inferExpression(state, v));
 
@@ -666,6 +760,10 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
     let targetType: LuauType;
     if (target.kind === 'Identifier') {
       const symbol = lookupSymbol(state.env, target.name);
+      if (symbol !== undefined) {
+        if (rejectConstReassignment(state, target, symbol)) continue;
+        invalidateNarrowing(state, symbol);
+      }
       targetType = symbol !== undefined ? symbol.type : inferExpression(state, target);
     } else targetType = inferExpression(state, target);
 
@@ -685,10 +783,18 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
 };
 
 const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment): void => {
-  const targetType = inferExpression(state, stmt.target);
+  const target = stmt.target;
+  const symbol = target.kind === 'Identifier' ? lookupSymbol(state.env, target.name) : undefined;
+  const rejected = target.kind === 'Identifier' && symbol !== undefined && rejectConstReassignment(state, target, symbol);
+  const targetType = rejected
+    ? AnyType
+    : symbol === undefined
+      ? inferExpression(state, target)
+      : refinedType(state, symbol);
   const valueType = inferExpression(state, stmt.value);
+  if (symbol !== undefined && rejected === false) invalidateNarrowing(state, symbol);
 
-  if (state.env.mode === 'nonstrict') return;
+  if (rejected || state.env.mode === 'nonstrict') return;
 
   const numericOps = ['+=', '-=', '*=', '/=', '//=', '%=', '^='];
   const stringOps = ['..='];
@@ -711,44 +817,49 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
   }
 };
 
+const checkConditionalBranch = (
+  state: CheckerState,
+  body: ReadonlyArray<Statement>,
+  range: NodeRange,
+  narrowing?: TypeNarrowing,
+): Set<Symbol> | undefined => {
+  const outerWrites = state.branchWrites;
+  state.branchWrites = undefined;
+  enterScope(state.env, 'Conditional', range);
+  applyNarrowing(state, narrowing);
+  checkBlock(state, body);
+  exitScope(state.env);
+  const writes = state.branchWrites;
+  state.branchWrites = outerWrites;
+  return writes !== undefined && blockAlwaysExits(body) === false ? writes : undefined;
+};
+
 const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   inferExpression(state, stmt.condition);
 
-  const narrowing = extractNarrowing(state, stmt.condition);
-  const narrowings: TypeNarrowing[] = narrowing !== undefined ? [narrowing] : [];
-
-  enterScope(state.env, 'Conditional', stmt.thenRange);
-  applyNarrowings(state, narrowings);
-  checkBlock(state, stmt.thenBody);
-  clearNarrowings(state, narrowings);
-  exitScope(state.env);
+  let writes = checkConditionalBranch(state, stmt.thenBody, stmt.thenRange, extractNarrowing(state, stmt.condition));
 
   for (const clause of stmt.elseifClauses) {
     inferExpression(state, clause.condition);
 
-    const clauseNarrowing = extractNarrowing(state, clause.condition);
-    const clauseNarrowings: TypeNarrowing[] = clauseNarrowing !== undefined ? [clauseNarrowing] : [];
-
-    enterScope(state.env, 'Conditional', clause.range);
-    applyNarrowings(state, clauseNarrowings);
-    checkBlock(state, clause.body);
-    clearNarrowings(state, clauseNarrowings);
-    exitScope(state.env);
+    const nextWrites = checkConditionalBranch(state, clause.body, clause.range, extractNarrowing(state, clause.condition));
+    if (writes === undefined) writes = nextWrites;
+    else if (nextWrites !== undefined) for (const symbol of nextWrites) writes.add(symbol);
   }
 
   if (stmt.elseBody !== undefined) {
-    enterScope(state.env, 'Conditional', {
+    const nextWrites = checkConditionalBranch(state, stmt.elseBody, {
       'start': stmt.elseBody[0]?.range.start ?? stmt.range.end,
       'end': stmt.range.end,
     });
-    checkBlock(state, stmt.elseBody);
-    exitScope(state.env);
+    if (writes === undefined) writes = nextWrites;
+    else if (nextWrites !== undefined) for (const symbol of nextWrites) writes.add(symbol);
   }
 
-  if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody)) {
-    const guardNarrowing = extractGuardNarrowing(state, stmt.condition);
-    if (guardNarrowing !== undefined) state.narrowings.set(guardNarrowing.variableName, guardNarrowing.narrowedType);
-  }
+  if (writes !== undefined) for (const symbol of writes) invalidateNarrowing(state, symbol);
+
+  if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody))
+    applyNarrowing(state, extractGuardNarrowing(state, stmt.condition));
 };
 
 const checkWhileStatement = (state: CheckerState, stmt: WhileStatement): void => {
@@ -783,7 +894,7 @@ const checkForNumeric = (state: CheckerState, stmt: ForNumeric): void => {
   }
 
   enterScope(state.env, 'Loop', stmt.range);
-  defineSymbol(state.env, stmt.variable.name, NumberType, 'Variable', false, undefined, {
+  defineSymbol(state.env, stmt.variable.name, NumberType, 'Variable', true, undefined, {
     'declaration': stmt.variable.range,
     'visibleFrom': stmt.bodyStart,
   });
@@ -845,7 +956,7 @@ const checkForGeneric = (state: CheckerState, stmt: ForGeneric): void => {
 
   for (const [i, variable] of stmt.variables.entries()) {
     const varType = inferredTypes[i] ?? AnyType;
-    defineSymbol(state.env, variable.name, varType, 'Variable', false, undefined, {
+    defineSymbol(state.env, variable.name, varType, 'Variable', true, undefined, {
       'declaration': variable.range,
       'visibleFrom': stmt.bodyStart,
     });
@@ -873,7 +984,7 @@ const checkReturnStatement = (state: CheckerState, stmt: ReturnStatement): void 
   }
 };
 
-const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
+const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): LuauType => {
   defineTypeAlias(state.env, stmt.name.name, { 'kind': 'TypeReference', 'name': stmt.name.name });
 
   if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) {
@@ -889,6 +1000,7 @@ const checkTypeAlias = (state: CheckerState, stmt: TypeAlias): void => {
   if (stmt.typeParams !== undefined && stmt.typeParams.length > 0) exitScope(state.env);
 
   defineTypeAlias(state.env, stmt.name.name, resolvedType);
+  return resolvedType;
 };
 
 const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
@@ -983,9 +1095,6 @@ const inferExpression = (state: CheckerState, expr: Expression): LuauType => {
 };
 
 const inferIdentifier = (state: CheckerState, id: Identifier): LuauType => {
-  const narrowedType = state.narrowings.get(id.name);
-  if (narrowedType !== undefined) return narrowedType;
-
   const symbol = lookupSymbol(state.env, id.name);
 
   if (symbol === undefined) {
@@ -993,7 +1102,7 @@ const inferIdentifier = (state: CheckerState, id: Identifier): LuauType => {
     return AnyType;
   }
 
-  return symbol.type;
+  return refinedType(state, symbol);
 };
 
 const inferTableExpression = (state: CheckerState, table: TableExpression): TableType => {
@@ -1138,13 +1247,12 @@ const inferBinaryExpression = (state: CheckerState, expr: BinaryExpression): Lua
       return BooleanType;
 
     case 'and':
-      return createUnionType([rightType, { 'kind': 'Literal', 'value': false, 'baseType': 'boolean' }, NilType]);
+      if (selectByTruthiness(leftType, true).kind === 'Never') return leftType;
+      return unionOf(selectByTruthiness(leftType, false), rightType);
 
-    case 'or': {
-      const stripped = stripNilFromType(leftType);
-      if (stripped.kind === 'Never') return rightType;
-      return createUnionType([stripped, rightType]);
-    }
+    case 'or':
+      if (selectByTruthiness(leftType, false).kind === 'Never') return leftType;
+      return unionOf(selectByTruthiness(leftType, true), rightType);
 
     default:
       return AnyType;
@@ -1194,8 +1302,12 @@ const inferCallExpression = (state: CheckerState, expr: CallExpression): LuauTyp
   const instanceNewType = inferInstanceNewCall(state, expr);
   if (instanceNewType !== undefined) return instanceNewType;
 
-  const requireType = inferRequireCall(state, expr);
-  if (requireType !== undefined) return requireType;
+  const requiredModule = inferRequireCall(state, expr);
+  if (requiredModule !== undefined) {
+    state.modules ??= new WeakMap();
+    state.modules.set(expr, requiredModule);
+    return requiredModule.valueType;
+  }
 
   if (calleeType.kind === 'Function') return resolveType(calleeType.returnType, state.env.classes);
 
@@ -1233,14 +1345,14 @@ const extractRequirePath = (expr: Expression): string[] | undefined => {
   return undefined;
 };
 
-const inferRequireCall = (state: CheckerState, expr: CallExpression): LuauType | undefined => {
+const inferRequireCall = (state: CheckerState, expr: CallExpression): RequiredModule | undefined => {
   if (state.requireResolver === undefined) return undefined;
   if (expr.callee.kind !== 'Identifier' || expr.callee.name !== 'require') return undefined;
-  if (expr.args.length === 0) return undefined;
+  if (lookupSymbol(state.env, 'require')?.kind !== 'Global') return undefined;
 
   const firstArg = expr.args[0];
   if (firstArg === undefined) return undefined;
-
+  if (firstArg.kind === 'StringLiteral') return state.requireResolver(firstArg.value);
   const pathParts = extractRequirePath(firstArg);
   if (pathParts === undefined || pathParts.length === 0) return undefined;
 
@@ -1714,6 +1826,19 @@ const resolveTypeReference = (
     range: NodeRange;
   },
 ): LuauType => {
+  if (ref.module !== undefined) {
+    const binding = lookupSymbol(state.env, ref.module);
+    const exported = binding === undefined ? undefined : state.modules?.get(binding)?.getExportedTypes()?.get(ref.name);
+    if (exported !== undefined) return exported;
+    if (ref.module === 'Enum') {
+      const enumType = state.env.enums.get(ref.name);
+      if (enumType !== undefined) return enumType;
+    }
+    if (state.env.mode === 'strict')
+      addDiagnostic(state, `Unknown type '${ref.module}.${ref.name}'`, ref.range, 'error', 'E010');
+    return AnyType;
+  }
+
   switch (ref.name) {
     case 'nil':
       return NilType;

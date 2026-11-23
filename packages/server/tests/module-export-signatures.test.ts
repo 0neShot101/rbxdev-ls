@@ -1,7 +1,17 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+  DidChangeTextDocumentNotification,
+  DidOpenTextDocumentNotification,
+  PublishDiagnosticsNotification,
+} from 'vscode-languageserver/node';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { createDocumentManager } from '@lsp/documents';
+import { setupDiagnosticsHandler } from '@lsp/handlers/diagnostics';
+import { createLspHarness } from '@tests/helpers/lsp';
 import { resolveAnnotationToType } from '@workspace/annotationResolver';
 import { buildModuleIndex } from '@workspace/moduleIndex';
 import { loadSourcemapState } from '@workspace/sourcemap';
@@ -210,5 +220,192 @@ return Module
     const exports = loadExports();
     expect(exports.get('getConstant')?.params).toBe('');
     expect(exports.get('getConstant')?.returnType).toBe('number');
+  });
+
+  test('resolves indexed DataModel type exports without losing runtime function signatures', () => {
+    writeFixture(`
+export type Config = { count: number }
+return {
+  count = function(value: number): number
+    return value
+  end,
+}
+`);
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    manager.initializeWorkspace(tempDir);
+    const doc = TextDocument.create(
+      pathToFileURL(path.join(tempDir, 'main.lua')).href,
+      'luau',
+      1,
+      `--!strict
+local module = require(game.ReplicatedStorage.Module)
+local config: module.Config = { count = 1 }
+local value = module.count(config.count)
+`,
+    );
+    const result = manager.parseDocument(doc);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.typeErrors).toEqual([]);
+    expect(result.typeCheckResult?.allSymbols.get('value')).toMatchObject({ 'kind': 'Primitive', 'name': 'number' });
+    expect(result.typeCheckResult?.allSymbols.get('config')?.kind).toBe('Table');
+  });
+
+  test('resolves transitive file type exports without exposing private aliases', () => {
+    mkdirSync(path.join(tempDir, 'core', 'parts'), { 'recursive': true });
+    writeFileSync(
+      path.join(tempDir, 'core', 'config.lua'),
+      `local parts = require('./parts')
+type Limit = parts.Limit
+export type Config = { enabled: boolean, maxEntries: Limit }
+local config = {}
+return config
+`,
+    );
+    writeFileSync(
+      path.join(tempDir, 'core', 'parts', 'init.luau'),
+      `local value = require('../value.luau')
+export type Limit = value.Limit
+return {}
+`,
+    );
+    writeFileSync(path.join(tempDir, 'core', 'value.luau'), 'export type Limit = number\nreturn {}');
+
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const uri = pathToFileURL(path.join(tempDir, 'main.lua')).href;
+    const source = `--!strict
+local config = require('core/config')
+local function apply(cfg: config.Config): number
+  print(cfg.enabled)
+  return cfg.maxEntries
+end
+`;
+    const valid = manager.parseDocument(TextDocument.create(uri, 'luau', 1, source));
+    expect(valid.parseErrors).toEqual([]);
+    expect(valid.typeErrors).toEqual([]);
+
+    const invalid = manager.parseDocument(
+      TextDocument.create(
+        uri,
+        'luau',
+        2,
+        `${source}
+local function bad(cfg: config.Config)
+  print(cfg.missing)
+  local wrong: string = cfg.maxEntries
+end
+type Private = config.Limit
+`,
+      ),
+    );
+    expect(invalid.parseErrors).toEqual([]);
+    expect(invalid.typeErrors.map(d => d.code)).toEqual(['E009', 'E002', 'E010']);
+  });
+
+  test('allows calling a file module that returns a function while resolving its type exports', () => {
+    writeFileSync(
+      path.join(tempDir, 'factory.lua'),
+      'export type Result = number\nlocal function factory() return 1 end\nreturn factory',
+    );
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const result = manager.parseDocument(
+      TextDocument.create(
+        pathToFileURL(path.join(tempDir, 'main.lua')).href,
+        'luau',
+        1,
+        "--!strict\nlocal factory = require('./factory')\nlocal value: factory.Result = factory()",
+      ),
+    );
+    expect(result.typeErrors).toEqual([]);
+  });
+
+  test('publishes new diagnostics for an untouched consumer when an open module changes', async () => {
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const harness = createLspHarness(manager);
+    setupDiagnosticsHandler(harness.connection, harness.documents, manager);
+    const modulePath = path.join(tempDir, 'config.lua');
+    const moduleUri = pathToFileURL(modulePath).href;
+    const consumerUri = pathToFileURL(path.join(tempDir, 'consumer.lua')).href;
+    const diskSource = 'export type Count = number\nreturn {}';
+    writeFileSync(modulePath, diskSource);
+
+    const nextConsumerDiagnostics = (expectError: boolean): Promise<ReadonlyArray<string | number | undefined>> => {
+      const { promise, resolve } = Promise.withResolvers<ReadonlyArray<string | number | undefined>>();
+      const subscription = harness.client.onNotification(PublishDiagnosticsNotification.type, params => {
+        if (params.uri !== consumerUri || (params.diagnostics.length > 0) !== expectError) return;
+        subscription.dispose();
+        resolve(params.diagnostics.map(diagnostic => diagnostic.code));
+      });
+      return promise;
+    };
+
+    try {
+      await harness.start();
+      await harness.client.sendNotification(DidOpenTextDocumentNotification.type, {
+        'textDocument': { 'uri': moduleUri, 'languageId': 'luau', 'version': 1, 'text': diskSource },
+      });
+      const initial = nextConsumerDiagnostics(false);
+      await harness.client.sendNotification(DidOpenTextDocumentNotification.type, {
+        'textDocument': {
+          'uri': consumerUri,
+          'languageId': 'luau',
+          'version': 1,
+          'text': "--!strict\nlocal config = require('./config')\nlocal value: config.Count = 42",
+        },
+      });
+      expect(await initial).toEqual([]);
+      const updated = nextConsumerDiagnostics(true);
+      await harness.client.sendNotification(DidChangeTextDocumentNotification.type, {
+        'textDocument': { 'uri': moduleUri, 'version': 2 },
+        'contentChanges': [{ 'text': 'export type Count = string\nreturn {}' }],
+      });
+      expect(await updated).toEqual(['E002']);
+    } finally {
+      harness.dispose();
+    }
+  });
+
+  test('refreshes cached require consumers after edits, close, and workspace reload', () => {
+    const modulePath = path.join(tempDir, 'config.lua');
+    const diskSource = 'export type Count = number\nreturn {}';
+    const editedSource = 'export type Count = string\nreturn {}';
+    writeFileSync(modulePath, diskSource);
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    manager.initializeWorkspace(tempDir);
+    const consumer = TextDocument.create(
+      pathToFileURL(path.join(tempDir, 'main.lua')).href,
+      'luau',
+      1,
+      "--!strict\nlocal config = require('./config')\nlocal count: config.Count = 1",
+    );
+    const moduleUri = pathToFileURL(modulePath).href;
+
+    expect(manager.parseDocument(consumer).typeErrors).toEqual([]);
+    manager.parseDocument(TextDocument.create(moduleUri, 'luau', 1, diskSource));
+    expect(manager.parseDocument(consumer).typeErrors).toEqual([]);
+    manager.parseDocument(TextDocument.create(moduleUri, 'luau', 2, editedSource));
+    expect(manager.parseDocument(consumer).typeErrors.map(d => d.code)).toEqual(['E002']);
+    manager.removeDocument(moduleUri);
+    expect(manager.parseDocument(consumer).typeErrors).toEqual([]);
+    writeFileSync(modulePath, editedSource);
+    manager.reloadWorkspace();
+    expect(manager.parseDocument(consumer).typeErrors.map(d => d.code)).toEqual(['E002']);
+  });
+
+  test('terminates cyclic exported type lookups without discarding independent aliases', () => {
+    writeFileSync(
+      path.join(tempDir, 'a.lua'),
+      "local B = require('./b')\nexport type FromB = B.FromA\nexport type Count = number\nreturn {}",
+    );
+    writeFileSync(path.join(tempDir, 'b.lua'), "local A = require('./a')\nexport type FromA = A.FromB\nreturn {}");
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    const doc = TextDocument.create(
+      pathToFileURL(path.join(tempDir, 'main.lua')).href,
+      'luau',
+      1,
+      "--!strict\nlocal A = require('./a')\nlocal count: A.Count = 'wrong'",
+    );
+    const result = manager.parseDocument(doc);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.typeErrors.map(d => d.code)).toEqual(['E002']);
   });
 });

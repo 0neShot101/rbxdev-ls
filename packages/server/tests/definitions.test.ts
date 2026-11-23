@@ -1,8 +1,14 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'bun:test';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { checkProgram } from '@analyzer/checker';
 import { createTableType, NumberType, StringType, typeToString } from '@analyzer/values';
 import { buildGlobalEnvironment, createEmptyGlobalEnvironment } from '@definitions/globals';
 import { createAllStdLibraries } from '@definitions/stdlib';
+import { createDocumentManager } from '@lsp/documents';
 import { parse } from '@parser/parser';
 import type { TypeCheckResult } from '@typings/checker';
 import type { GlobalEnvironment, RobloxApiDump, RobloxClass } from '@typings/definitions';
@@ -183,6 +189,30 @@ describe('disk-free canonical environment', () => {
     expect(symbolType(overlaid, 'fixture')).toBe('number');
     expect(globals.env.classes.get('NewPart')).toBe(baseClass);
   });
+});
+
+test('workspace-configured globals are visible in strict files without hiding typos or replacing builtins', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rbxdev-globals-'));
+  try {
+    const configPath = join(root, '.luaurc');
+    writeFileSync(configPath, JSON.stringify({ 'globals': ['hostClock', 'string'] }));
+    const manager = createDocumentManager({ 'roblox': undefined, 'sunc': undefined });
+    manager.initializeWorkspace(root);
+    const doc = TextDocument.create(
+      pathToFileURL(join(root, 'main.luau')).href,
+      'luau',
+      1,
+      '--!strict\nhostClock()\nhostClok()\nlocal size: string = string.len("hello")',
+    );
+    const diagnostics = manager.parseDocument(doc).typeErrors;
+    expect(diagnostics.map(d => d.code)).toEqual(['E006', 'E002']);
+    expect(diagnostics[0]?.message).toBe("Unknown identifier 'hostClok'");
+    writeFileSync(configPath, '{}');
+    manager.reloadWorkspace();
+    expect(manager.parseDocument(doc).typeErrors[0]?.message).toBe("Unknown identifier 'hostClock'");
+  } finally {
+    rmSync(root, { 'recursive': true, 'force': true });
+  }
 });
 
 describe('canonical constructors', () => {

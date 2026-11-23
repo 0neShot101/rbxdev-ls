@@ -26,6 +26,7 @@ export interface DocumentManager {
   readonly globalEnv: GlobalEnvironment;
   readonly documents: Map<string, ParsedDocument>;
   parseDocument: (doc: TextDocument) => ParsedDocument;
+  takeInvalidatedModuleConsumers: () => ReadonlySet<string> | undefined;
   getDocument: (uri: string) => ParsedDocument | undefined;
   removeDocument: (uri: string) => void;
   initializeWorkspace: (workspacePath: string) => void;

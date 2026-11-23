@@ -73,6 +73,31 @@ describe('Type Errors (E002): Assignment Type Mismatches', () => {
   });
 });
 
+describe('Const bindings', () =>
+  test('rejects rebinding const variables and functions without freezing their values', () => {
+    const diagnostics = getDiagnostics(`
+const MAX_RETRIES = 3
+const state: { count: number } = { count = 0 }
+state.count = 1
+state.count += 1
+do
+  local MAX_RETRIES = 4
+  MAX_RETRIES += 1
+end
+const function retry()
+  MAX_RETRIES += 1
+  if state.count > 1 then retry() end
+end
+MAX_RETRIES = 4
+function retry() end
+`);
+    expect(diagnostics.map(d => d.message)).toEqual([
+      "Cannot reassign const binding 'MAX_RETRIES'",
+      "Cannot reassign const binding 'MAX_RETRIES'",
+      "Cannot reassign const binding 'retry'",
+    ]);
+  }));
+
 describe('Type Errors (E002): Valid Assignments (no errors)', () => {
   test('number to number', () => expectNoErrors('local x: number = 42'));
 
@@ -167,6 +192,82 @@ describe('Type Errors (E005): Return Type Mismatches', () => {
   test('valid string return', () => expectNoErrors('local function f(): string\n  return "hello"\nend'));
 
   test('returning nil from void function', () => expectNoErrors('local function f()\n  return nil\nend'));
+});
+
+describe('Type checking short-circuit expressions and guards', () => {
+  test('narrows an optional after a negated early-return guard, without narrowing shadowing locals', () =>
+    expectNoErrors(`
+type Config = { enabled: boolean }
+local defaultValue = true
+local function foo(overrides: Config?): boolean
+  if not (overrides) then return defaultValue end
+  do
+    local overrides = 'shadowed'
+    local text: string = overrides
+  end
+  return overrides.enabled
+end
+`),
+  );
+
+  test('does not retain a guard from a branch that may not run or after a reassignment', () => {
+    const diagnostics = getDiagnostics(`
+type Config = { enabled: boolean }
+local function branch(overrides: Config?, skip: boolean): boolean
+  if skip then
+    if not overrides then return false end
+  end
+  return overrides.enabled
+end
+local function reassigned(overrides: Config?): boolean
+  if not overrides then return false end
+  overrides = nil
+  return overrides.enabled
+end
+`);
+    expect(diagnostics.map(d => [d.code, d.range.start.line])).toEqual([
+      ['E009', 7],
+      ['E009', 12],
+    ]);
+  });
+
+  test('isolates sibling refinements and invalidates writes only on paths reaching the join', () => {
+    const diagnostics = getDiagnostics(`
+type Config = { enabled: boolean }
+local function check(x: Config?, flag: boolean)
+  if not x then return end
+  if flag then
+    x = nil
+    return
+  end
+  print(x.enabled)
+  if flag then
+    x = nil
+  else
+    print(x.enabled)
+  end
+  print(x.enabled)
+end
+`);
+    expect(diagnostics.map(d => [d.code, d.range.start.line])).toEqual([['E009', 15]]);
+  });
+
+  test('or replaces false and nil; and still returns a reachable false', () => {
+    const diagnostics = getDiagnostics(`
+local function pick(condition: boolean): string
+  local valueA = 'a'
+  local valueB = 'b'
+  return condition and valueA or valueB
+end
+local function defaulted(value: (boolean | string)?): true | string
+  return value or 'fallback'
+end
+local function andOnly(condition: boolean): string
+  return condition and 'a'
+end
+`);
+    expect(diagnostics.map(d => [d.code, d.range.start.line])).toEqual([['E005', 11]]);
+  });
 });
 
 describe('Type Errors (E006): Unknown Identifiers (strict mode)', () => {

@@ -1022,14 +1022,18 @@ const parseStatement = (state: ParserState): Statement => {
     case TokenKind.Export:
       return parseExportStatement(state);
     default:
+      if (token.kind === TokenKind.Identifier && token.value === 'const') {
+        const next = peek(state, 1).kind;
+        if (next === TokenKind.Identifier || next === TokenKind.Function) return parseLocalStatement(state, true);
+      }
       return parseExpressionStatement(state);
   }
 };
 
-const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFunction => {
+const parseLocalStatement = (state: ParserState, isConst = false): LocalDeclaration | LocalFunction => {
   const docComment = collectDocComment(state);
   const start = current(state);
-  consume(state, TokenKind.Local, 'Expected local');
+  advance(state);
 
   if (check(state, TokenKind.Function)) {
     advance(state);
@@ -1052,6 +1056,7 @@ const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFuncti
 
     return {
       'kind': 'LocalFunction',
+      isConst,
       name,
       func,
       docComment,
@@ -1076,8 +1081,18 @@ const parseLocalStatement = (state: ParserState): LocalDeclaration | LocalFuncti
     do values.push(parseExpression(state));
     while (match(state, TokenKind.Comma));
 
+  if (isConst && values.length < names.length) {
+    const last = values[values.length - 1];
+    if (last?.kind !== 'CallExpression' && last?.kind !== 'MethodCallExpression' && last?.kind !== 'VarargExpression')
+      state.errors.push({
+        'message': 'Missing initializer in const declaration',
+        'range': createRange(start.start, last?.range.end ?? peek(state, -1).end),
+      });
+  }
+
   return {
     'kind': 'LocalDeclaration',
+    isConst,
     names,
     types,
     values,

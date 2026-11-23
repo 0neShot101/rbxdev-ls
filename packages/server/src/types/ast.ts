@@ -52,17 +52,19 @@ export type Statement =
   | CallStatement
   | ErrorStatement;
 
-/** Local variable declaration `local a: T, b = x, y`. */
+/** Local variable declaration starting with `local` or `const`. */
 export interface LocalDeclaration extends DocumentedNode {
   readonly kind: 'LocalDeclaration';
+  readonly isConst: boolean;
   readonly names: ReadonlyArray<Identifier>;
   readonly types: ReadonlyArray<TypeAnnotation | undefined>;
   readonly values: ReadonlyArray<Expression>;
 }
 
-/** Local function declaration `local function name() end`. */
+/** Local function declaration starting with `local function` or `const function`. */
 export interface LocalFunction extends DocumentedNode {
   readonly kind: 'LocalFunction';
+  readonly isConst: boolean;
   readonly name: Identifier;
   readonly func: FunctionExpression;
 }

@@ -143,11 +143,23 @@ export const setupDiagnosticsHandler = (
   documentManager: DocumentManager,
   liveGameModel?: LiveGameModel,
 ): void => {
+  const publish = (doc: TextDocument): void =>
+    publishDiagnostics(connection, documentManager.parseDocument(doc), liveGameModel);
+
+  const refreshModuleConsumers = (): void => {
+    const consumers = documentManager.takeInvalidatedModuleConsumers();
+    if (consumers === undefined) return;
+    for (const uri of consumers) {
+      const consumer = documents.get(uri);
+      if (consumer !== undefined) publish(consumer);
+    }
+  };
+
   documents.onDidOpen(
     event =>
       void setImmediate(() => {
-        const parsed = documentManager.parseDocument(event.document);
-        publishDiagnostics(connection, parsed, liveGameModel);
+        publish(event.document);
+        refreshModuleConsumers();
       }),
   );
 
@@ -161,8 +173,8 @@ export const setupDiagnosticsHandler = (
       debounceTimers.delete(uri);
       const doc = documents.get(uri);
       if (doc !== undefined) {
-        const parsed = documentManager.parseDocument(doc);
-        publishDiagnostics(connection, parsed, liveGameModel);
+        publish(doc);
+        refreshModuleConsumers();
       }
     }, DEBOUNCE_DELAY);
 
@@ -178,5 +190,6 @@ export const setupDiagnosticsHandler = (
 
     clearDiagnostics(connection, event.document.uri);
     documentManager.removeDocument(event.document.uri);
+    refreshModuleConsumers();
   });
 };

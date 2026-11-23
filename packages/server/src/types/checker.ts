@@ -1,7 +1,7 @@
-import type { NodeRange } from '@typings/ast';
+import type { CallExpression, NodeRange } from '@typings/ast';
 import type { GlobalEnvironment } from '@typings/definitions';
 import type { ClassType, LuauType } from '@typings/types';
-import type { TypeEnvironment } from '@typings/environment';
+import type { Scope, Symbol, TypeEnvironment } from '@typings/environment';
 import type { IgnoreState } from '@typings/ignoreDirectives';
 import type { TypeCheckMode } from '@typings/subtyping';
 
@@ -22,16 +22,23 @@ export interface TypeCheckResult {
   readonly diagnostics: ReadonlyArray<TypeDiagnostic>;
   readonly environment: TypeEnvironment;
   readonly allSymbols: ReadonlyMap<string, LuauType>;
+  readonly exportedTypes: ReadonlyMap<string, LuauType> | undefined;
 }
 
 /** A type narrowing applied to a variable within a guarded branch. */
 export interface TypeNarrowing {
-  readonly variableName: string;
+  readonly symbol: Symbol;
   readonly narrowedType: LuauType;
 }
 
-/** Resolves a require path to the module's exported type, if known. */
-export type RequireResolver = (pathParts: ReadonlyArray<string>) => LuauType | undefined;
+/** Runtime type and separate type namespace of a required module. */
+export interface RequiredModule {
+  readonly valueType: LuauType;
+  readonly getExportedTypes: () => ReadonlyMap<string, LuauType> | undefined;
+}
+
+/** Resolves a file or DataModel path used by a require call. */
+export type RequireResolver = (path: string | ReadonlyArray<string>) => RequiredModule | undefined;
 
 /** Mutable state threaded through a single type-checking pass. */
 export interface CheckerState {
@@ -42,9 +49,12 @@ export interface CheckerState {
   readonly ignoreState: IgnoreState;
   returnType: LuauType | undefined;
   isVariadic: boolean;
-  readonly narrowings: Map<string, LuauType>;
+  narrowings: WeakMap<Scope, Map<Symbol, LuauType>> | undefined;
+  branchWrites: Set<Symbol> | undefined;
   readonly allSymbols: Map<string, LuauType>;
   readonly requireResolver: RequireResolver | undefined;
+  modules: WeakMap<CallExpression | Symbol, RequiredModule> | undefined;
+  exportedTypes: Map<string, LuauType> | undefined;
 }
 
 /** Options controlling how a type-checking pass constructs its state. */

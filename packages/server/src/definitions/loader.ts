@@ -11,6 +11,7 @@ import {
   decodeSuncApi,
   openApiDump,
 } from '@definitions/updates/validate';
+import { isObject, isString } from '@utils/guards';
 import { once } from '@utils/once';
 
 import type { LoadedDefinitions, RobloxApiDump } from '@typings/definitions';
@@ -35,6 +36,21 @@ const decodeFile = <T>(path: string, decode: (text: string) => T | undefined): T
   const value = decode(bytes.toString('utf-8'));
   if (value === undefined) report(`Ignoring invalid definitions file ${path}`);
   return value;
+};
+
+/** Reads untyped global names from the workspace's .luaurc, without changing the bundled catalogue. */
+export const loadWorkspaceGlobals = (root: string): ReadonlyArray<string> | undefined => {
+  const configPath = join(root, '.luaurc');
+  const bytes = readOptional(configPath);
+  if (bytes === undefined) return undefined;
+  try {
+    const config: unknown = JSON.parse(bytes.toString('utf-8'));
+    if (isObject(config) && 'globals' in config && Array.isArray(config.globals))
+      return config.globals.filter((name: unknown): name is string => isString(name) && /^[A-Za-z_]\w*$/.test(name));
+  } catch {
+    report(`Ignoring invalid workspace config ${configPath}`);
+  }
+  return undefined;
 };
 
 /** Opens an API file lazily when it is in the `class-lines` layout, and otherwise decodes and validates it whole. */

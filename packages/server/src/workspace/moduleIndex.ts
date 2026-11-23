@@ -41,7 +41,19 @@ const createExport = (
 ): ModuleExport =>
   signature === undefined ? { name, kind, modulePath, filePath } : { name, kind, modulePath, filePath, signature };
 
-const extractModuleExports = (chunk: Chunk, filePath: string, dataModelPath: string[]): ModuleExport[] => {
+const localModuleName = (filePath: string): string => {
+  const name = path.basename(filePath);
+  return name === 'init.lua' || name === 'init.luau'
+    ? path.basename(path.dirname(filePath))
+    : name.replace(/\.(lua|luau)$/, '');
+};
+
+/** Extracts runtime table exports and signatures from a module's parsed source. */
+export const extractModuleExports = (
+  chunk: Chunk,
+  filePath: string,
+  dataModelPath: string[] = [localModuleName(filePath)],
+): ModuleExport[] => {
   const exports: ModuleExport[] = [];
   const modulePath = dataModelPath.join('.');
 
@@ -303,24 +315,41 @@ export const searchExports = (modules: Map<string, ModuleInfo>, query: string, l
   return results;
 };
 
+const localModuleCandidates = (resolved: string): string[] => [
+  resolved,
+  `${resolved}.lua`,
+  `${resolved}.luau`,
+  path.join(resolved, 'init.lua'),
+  path.join(resolved, 'init.luau'),
+];
+
+const statModuleFile = (filePath: string): fs.Stats | undefined => {
+  try {
+    const stat = fs.statSync(filePath, { 'throwIfNoEntry': false });
+    return stat?.isFile() === true ? stat : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Resolves the source file for a local require, including open files that have not been saved. */
+export const resolveLocalModulePath = (
+  relativePath: string,
+  currentFilePath: string,
+  isOpen: (filePath: string) => boolean,
+): string | undefined => {
+  const resolved = path.resolve(path.dirname(currentFilePath), relativePath);
+  for (const candidate of localModuleCandidates(resolved))
+    if (isOpen(candidate) || statModuleFile(candidate) !== undefined) return candidate;
+  return undefined;
+};
+
 /** Resolves a local module path relative to the current file. */
 export const resolveLocalModule = (relativePath: string, currentFilePath: string): ModuleInfo | undefined => {
-  const currentDir = path.dirname(currentFilePath);
-  const resolved = path.resolve(currentDir, relativePath);
-
-  const candidates = [
-    resolved,
-    `${resolved}.lua`,
-    `${resolved}.luau`,
-    path.join(resolved, 'init.lua'),
-    path.join(resolved, 'init.luau'),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate) === false) continue;
-
-    const stat = fs.statSync(candidate);
-    if (stat.isDirectory()) continue;
+  const resolved = path.resolve(path.dirname(currentFilePath), relativePath);
+  for (const candidate of localModuleCandidates(resolved)) {
+    const stat = statModuleFile(candidate);
+    if (stat === undefined) continue;
 
     try {
       const content = fs.readFileSync(candidate, 'utf-8');
