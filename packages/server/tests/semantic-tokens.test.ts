@@ -16,6 +16,7 @@ const methodToken = typeIndex(SemanticTokenTypes.method);
 const parameterToken = typeIndex(SemanticTokenTypes.parameter);
 const variableToken = typeIndex(SemanticTokenTypes.variable);
 const propertyToken = typeIndex(SemanticTokenTypes.property);
+const keywordToken = typeIndex(SemanticTokenTypes.keyword);
 const declarationBit = modifierBit(SemanticTokenModifiers.declaration);
 const defaultLibraryBit = modifierBit(SemanticTokenModifiers.defaultLibrary);
 
@@ -57,6 +58,14 @@ describe('Semantic Tokens', () => {
       const tokens = tokensOf('local function myFunc() end');
       const token = expectDefined(tokens.find(t => t.tokenType === functionToken && t.character === 15));
       expect(hasModifier(token, declarationBit)).toBe(true);
+    });
+
+    test('highlights const only as a declaration keyword', () => {
+      const tokens = tokensOf('local const = 0\n  const MAX_RETRIES = 3\n  const function getRetries() end');
+      expect(tokens.filter(t => t.tokenType === keywordToken)).toEqual([
+        { 'line': 1, 'character': 2, 'length': 5, 'tokenType': keywordToken, 'modifiers': 0 },
+        { 'line': 2, 'character': 2, 'length': 5, 'tokenType': keywordToken, 'modifiers': 0 },
+      ]);
     });
 
     test('classifies function parameters as parameter type', () =>

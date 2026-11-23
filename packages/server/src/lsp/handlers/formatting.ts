@@ -78,7 +78,7 @@ export const basicFormat = (code: string): string => {
   let indent = 0;
   const indentStr = '\t';
 
-  const increaseIndent = /^\s*(function|if|for|while|repeat|do)\b/;
+  const increaseIndent = /^\s*(const\s+function|function|if|for|while|repeat|do)\b/;
   const decreaseIndent = /^\s*(end|else|elseif|until)\b/;
   const decreaseIncrease = /^\s*(else|elseif)\b/;
 

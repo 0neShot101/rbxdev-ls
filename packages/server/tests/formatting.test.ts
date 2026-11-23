@@ -9,6 +9,13 @@ describe('Basic Formatter', () => {
       expect(result).toContain('\tprint("hello")');
     });
 
+    test('indents const declaration blocks without changing the surrounding indentation', () => {
+      const input = 'do\nconst MAX_RETRIES = 3\nconst function getRetries()\nreturn MAX_RETRIES\nend\ngetRetries()\nend';
+      expect(basicFormat(input)).toBe(
+        'do\n\tconst MAX_RETRIES = 3\n\tconst function getRetries()\n\t\treturn MAX_RETRIES\n\tend\n\tgetRetries()\nend',
+      );
+    });
+
     test('indents after if-then', () => {
       const input = 'if true then\nprint("yes")\nend';
       const result = basicFormat(input);

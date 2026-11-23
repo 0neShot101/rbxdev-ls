@@ -291,7 +291,7 @@ The server also exposes three MCP resources for passive reading:
 
 ## Configuration
 
-All settings are prefixed with `rbxdev-ls.` and can be set in VS Code's `settings.json` or through the Settings UI.
+VS Code settings are prefixed with `rbxdev-ls.` and can be set in `settings.json` or through the Settings UI.
 
 | Setting                                    | Default  | Purpose                                                                                                             |
 | ------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -304,6 +304,18 @@ All settings are prefixed with `rbxdev-ls.` and can be set in VS Code's `setting
 | `rbxdev-ls.autoRefreshGameTree.enabled`    | `false`  | Refresh the game tree when instances are added or removed                                                           |
 | `rbxdev-ls.autoRefreshGameTree.intervalMs` | `5000`   | Debounce window for auto-refresh in milliseconds; values below `2000` are raised to `2000`                          |
 | `rbxdev-ls.debugLogs`                      | `false`  | Enables verbose logging in the extension output channel for troubleshooting connection and protocol issues          |
+
+### Extra Luau globals
+
+To declare host-provided globals that are not in the bundled definitions, add a `.luaurc` JSON file at the workspace root:
+
+```json
+{
+  "globals": ["hostClock", "hostLogger"]
+}
+```
+
+Extra globals are typed as `any`. Built-in globals keep their existing types. Restart the language server after editing `.luaurc`.
 
 ### Roblox API updates
 

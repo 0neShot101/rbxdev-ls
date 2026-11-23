@@ -31,6 +31,38 @@ describe('Parser', () => {
     });
   });
 
+  describe('Const Declarations', () => {
+    test('parses the reported const declaration', () => {
+      const result = parse('const MAX_RETRIES = 3');
+      expect(result.errors).toEqual([]);
+      expect(result.ast.body).toHaveLength(1);
+    });
+
+    test('parses const functions', () => {
+      const result = parse('const function getRetries(): number\n  return 3\nend');
+      expect(result.errors).toEqual([]);
+      expect(result.ast.body).toHaveLength(1);
+    });
+
+    test('parses initialized const multi-bind declarations', () => {
+      const result = parse('const min, max = 1, 3\nconst count, limit = getLimits()');
+      expect(result.errors).toEqual([]);
+      expect(result.ast.body).toHaveLength(2);
+    });
+
+    test('preserves const as an identifier outside declaration prefixes', () => {
+      const result = parse('local const = print\nconst = warn\nconst()\nlocal t = { const = const }\nt.const()');
+      expect(result.errors).toEqual([]);
+      expect(result.ast.body).toHaveLength(5);
+    });
+
+    test('reports a missing const initializer without losing the next statement', () => {
+      const result = parse('const MAX_RETRIES\nlocal delay = 1');
+      expect(result.errors.map(error => error.message)).toEqual(['Missing initializer in const declaration']);
+      expect(result.ast.body).toHaveLength(2);
+    });
+  });
+
   describe('Function Declarations', () => {
     test('parses local function', () => {
       const result = parse('local function foo(a, b)\n  return a + b\nend');

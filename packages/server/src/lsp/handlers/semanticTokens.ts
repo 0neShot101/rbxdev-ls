@@ -56,6 +56,7 @@ const TOKEN_TYPE_METHOD = 6;
 const TOKEN_TYPE_PARAMETER = 7;
 const TOKEN_TYPE_VARIABLE = 8;
 const TOKEN_TYPE_PROPERTY = 9;
+const TOKEN_TYPE_KEYWORD = 10;
 
 const MOD_DECLARATION = 1 << 0;
 const MOD_DEFAULT_LIBRARY = 1 << 6;
@@ -257,6 +258,8 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
 
   walk(chunk, {
     'visitLocalDeclaration': node => {
+      if (node.isConst) addToken(node, 'const'.length, TOKEN_TYPE_KEYWORD);
+
       for (const name of node.names) {
         localVariables.add(name.name);
         classifyIdentifier(name, true, false);
@@ -264,6 +267,8 @@ export const collectSemanticTokens = (chunk: Chunk): TokenInfo[] => {
     },
 
     'visitLocalFunction': node => {
+      if (node.isConst) addToken(node, 'const'.length, TOKEN_TYPE_KEYWORD);
+
       localFunctions.add(node.name.name);
       addToken(node.name, node.name.name.length, TOKEN_TYPE_FUNCTION, MOD_DECLARATION);
 
