@@ -50,6 +50,7 @@ export interface CheckerState {
   returnType: LuauType | undefined;
   isVariadic: boolean;
   narrowings: WeakMap<Scope, Map<Symbol, LuauType>> | undefined;
+  branchWrites: Set<Symbol> | undefined;
   readonly allSymbols: Map<string, LuauType>;
   readonly requireResolver: RequireResolver | undefined;
   modules: WeakMap<CallExpression | Symbol, RequiredModule> | undefined;

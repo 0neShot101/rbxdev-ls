@@ -118,6 +118,7 @@ const createCheckerState = (options: CheckerOptions = {}): CheckerState => {
     'returnType': undefined,
     'isVariadic': false,
     'narrowings': undefined,
+    'branchWrites': undefined,
     'allSymbols': new Map(),
     'requireResolver': options.requireResolver,
     'modules': undefined,
@@ -323,10 +324,13 @@ const extractTypeofNarrowing = (
   return { symbol, narrowedType };
 };
 
-const applyNarrowing = (state: CheckerState, narrowing: TypeNarrowing | undefined): void => {
+const applyNarrowing = (
+  state: CheckerState,
+  narrowing: TypeNarrowing | undefined,
+  scope = state.env.currentScope,
+): void => {
   if (narrowing === undefined) return;
   state.narrowings ??= new WeakMap();
-  const scope = state.env.currentScope;
   let refinements = state.narrowings.get(scope);
   if (refinements === undefined) {
     refinements = new Map();
@@ -339,6 +343,11 @@ const invalidateNarrowing = (state: CheckerState, symbol: Symbol): void => {
   if (state.narrowings === undefined) return;
   for (let scope: Scope | undefined = state.env.currentScope; scope !== undefined; scope = scope.parent) {
     state.narrowings.get(scope)?.delete(symbol);
+    if (scope.kind === 'Conditional') {
+      (state.branchWrites ??= new Set()).add(symbol);
+      applyNarrowing(state, { symbol, 'narrowedType': symbol.type }, scope);
+      break;
+    }
     if (scope.kind === 'Function') break;
   }
 };
@@ -808,35 +817,46 @@ const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment):
   }
 };
 
+const checkConditionalBranch = (
+  state: CheckerState,
+  body: ReadonlyArray<Statement>,
+  range: NodeRange,
+  narrowing?: TypeNarrowing,
+): Set<Symbol> | undefined => {
+  const outerWrites = state.branchWrites;
+  state.branchWrites = undefined;
+  enterScope(state.env, 'Conditional', range);
+  applyNarrowing(state, narrowing);
+  checkBlock(state, body);
+  exitScope(state.env);
+  const writes = state.branchWrites;
+  state.branchWrites = outerWrites;
+  return writes !== undefined && blockAlwaysExits(body) === false ? writes : undefined;
+};
+
 const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   inferExpression(state, stmt.condition);
 
-  const narrowing = extractNarrowing(state, stmt.condition);
-
-  enterScope(state.env, 'Conditional', stmt.thenRange);
-  applyNarrowing(state, narrowing);
-  checkBlock(state, stmt.thenBody);
-  exitScope(state.env);
+  let writes = checkConditionalBranch(state, stmt.thenBody, stmt.thenRange, extractNarrowing(state, stmt.condition));
 
   for (const clause of stmt.elseifClauses) {
     inferExpression(state, clause.condition);
 
-    const clauseNarrowing = extractNarrowing(state, clause.condition);
-
-    enterScope(state.env, 'Conditional', clause.range);
-    applyNarrowing(state, clauseNarrowing);
-    checkBlock(state, clause.body);
-    exitScope(state.env);
+    const nextWrites = checkConditionalBranch(state, clause.body, clause.range, extractNarrowing(state, clause.condition));
+    if (writes === undefined) writes = nextWrites;
+    else if (nextWrites !== undefined) for (const symbol of nextWrites) writes.add(symbol);
   }
 
   if (stmt.elseBody !== undefined) {
-    enterScope(state.env, 'Conditional', {
+    const nextWrites = checkConditionalBranch(state, stmt.elseBody, {
       'start': stmt.elseBody[0]?.range.start ?? stmt.range.end,
       'end': stmt.range.end,
     });
-    checkBlock(state, stmt.elseBody);
-    exitScope(state.env);
+    if (writes === undefined) writes = nextWrites;
+    else if (nextWrites !== undefined) for (const symbol of nextWrites) writes.add(symbol);
   }
+
+  if (writes !== undefined) for (const symbol of writes) invalidateNarrowing(state, symbol);
 
   if (stmt.elseifClauses.length === 0 && stmt.elseBody === undefined && blockAlwaysExits(stmt.thenBody))
     applyNarrowing(state, extractGuardNarrowing(state, stmt.condition));

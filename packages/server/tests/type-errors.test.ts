@@ -231,6 +231,27 @@ end
     ]);
   });
 
+  test('isolates sibling refinements and invalidates writes only on paths reaching the join', () => {
+    const diagnostics = getDiagnostics(`
+type Config = { enabled: boolean }
+local function check(x: Config?, flag: boolean)
+  if not x then return end
+  if flag then
+    x = nil
+    return
+  end
+  print(x.enabled)
+  if flag then
+    x = nil
+  else
+    print(x.enabled)
+  end
+  print(x.enabled)
+end
+`);
+    expect(diagnostics.map(d => [d.code, d.range.start.line])).toEqual([['E009', 15]]);
+  });
+
   test('or replaces false and nil; and still returns a reachable false', () => {
     const diagnostics = getDiagnostics(`
 local function pick(condition: boolean): string
