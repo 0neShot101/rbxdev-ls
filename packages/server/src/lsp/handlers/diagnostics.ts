@@ -133,7 +133,6 @@ export const clearDiagnostics = (connection: Connection, uri: string): void =>
     'diagnostics': [],
   });
 
-const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_DELAY = 150;
 
 /** Sets up the diagnostics handler for document events. */
@@ -143,6 +142,7 @@ export const setupDiagnosticsHandler = (
   documentManager: DocumentManager,
   liveGameModel?: LiveGameModel,
 ): void => {
+  const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const publish = (doc: TextDocument): void =>
     publishDiagnostics(connection, documentManager.parseDocument(doc), liveGameModel);
 
@@ -154,14 +154,6 @@ export const setupDiagnosticsHandler = (
       if (consumer !== undefined) publish(consumer);
     }
   };
-
-  documents.onDidOpen(
-    event =>
-      void setImmediate(() => {
-        publish(event.document);
-        refreshModuleConsumers();
-      }),
-  );
 
   documents.onDidChangeContent(change => {
     const uri = change.document.uri;
