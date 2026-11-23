@@ -140,57 +140,59 @@ export const createDocumentManager = (definitions?: LoadedDefinitions): Document
     const rootKey = rootFilePath === undefined ? undefined : fileKey(rootFilePath);
     let resolvedModules: Map<string, RequiredModule> | undefined;
 
-    const fromFile = (sourcePath: string | undefined): RequireResolver => request => {
-      const fileRequest = isString(request);
-      const info = fileRequest ? undefined : findDataModelModule(moduleIndex, request);
-      const filePath = fileRequest
-        ? sourcePath === undefined || request.length === 0
-          ? undefined
-          : resolveLocalModulePath(request, sourcePath, candidate => {
-              const key = fileKey(candidate);
-              dependencies.add(key);
-              return openFileAsts.has(key);
-            })
-        : info?.filePath;
-      if (filePath === undefined) return undefined;
+    const fromFile =
+      (sourcePath: string | undefined): RequireResolver =>
+      request => {
+        const fileRequest = isString(request);
+        const info = fileRequest ? undefined : findDataModelModule(moduleIndex, request);
+        const filePath = fileRequest
+          ? sourcePath === undefined || request.length === 0
+            ? undefined
+            : resolveLocalModulePath(request, sourcePath, candidate => {
+                const key = fileKey(candidate);
+                dependencies.add(key);
+                return openFileAsts.has(key);
+              })
+          : info?.filePath;
+        if (filePath === undefined) return undefined;
 
-      const key = fileKey(filePath);
-      dependencies.add(key);
-      const cacheKey = info === undefined ? `file:${key}` : key;
-      const cached = resolvedModules?.get(cacheKey);
-      if (cached !== undefined) return cached;
+        const key = fileKey(filePath);
+        dependencies.add(key);
+        const cacheKey = info === undefined ? `file:${key}` : key;
+        const cached = resolvedModules?.get(cacheKey);
+        if (cached !== undefined) return cached;
 
-      const openAst = key === rootKey ? rootAst : openFileAsts.get(key);
-      /** The export inventory is not a runtime type for arbitrary file modules. */
-      const valueType =
-        info === undefined
-          ? AnyType
-          : moduleValueType(
-              openAst === undefined ? info.exports : extractModuleExports(openAst, filePath, info.dataModelPath),
-            );
+        const openAst = key === rootKey ? rootAst : openFileAsts.get(key);
+        /** The export inventory is not a runtime type for arbitrary file modules. */
+        const valueType =
+          info === undefined
+            ? AnyType
+            : moduleValueType(
+                openAst === undefined ? info.exports : extractModuleExports(openAst, filePath, info.dataModelPath),
+              );
 
-      let checked = false;
-      let exportedTypes: TypeCheckResult['exportedTypes'];
-      const required: RequiredModule = {
-        valueType,
-        'getExportedTypes': () => {
-          /** A back edge cannot use a namespace whose analysis is still in progress. */
-          if (checked || key === rootKey) return exportedTypes;
-          checked = true;
-          const ast = openAst ?? readModuleAst(filePath);
-          if (ast !== undefined && ast.body.some(stmt => stmt.kind === 'ExportStatement'))
-            exportedTypes = checkProgram(ast, {
-              'globals': globalEnv,
-              'mode': detectTypeCheckMode(ast.comments),
-              'requireResolver': fromFile(filePath),
-            }).exportedTypes;
-          return exportedTypes;
-        },
+        let checked = false;
+        let exportedTypes: TypeCheckResult['exportedTypes'];
+        const required: RequiredModule = {
+          valueType,
+          'getExportedTypes': () => {
+            /** A back edge cannot use a namespace whose analysis is still in progress. */
+            if (checked || key === rootKey) return exportedTypes;
+            checked = true;
+            const ast = openAst ?? readModuleAst(filePath);
+            if (ast !== undefined && ast.body.some(stmt => stmt.kind === 'ExportStatement'))
+              exportedTypes = checkProgram(ast, {
+                'globals': globalEnv,
+                'mode': detectTypeCheckMode(ast.comments),
+                'requireResolver': fromFile(filePath),
+              }).exportedTypes;
+            return exportedTypes;
+          },
+        };
+        resolvedModules ??= new Map();
+        resolvedModules.set(cacheKey, required);
+        return required;
       };
-      resolvedModules ??= new Map();
-      resolvedModules.set(cacheKey, required);
-      return required;
-    };
 
     return fromFile(rootFilePath);
   };

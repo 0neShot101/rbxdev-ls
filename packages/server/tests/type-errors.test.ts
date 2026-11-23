@@ -207,8 +207,7 @@ local function foo(overrides: Config?): boolean
   end
   return overrides.enabled
 end
-`),
-  );
+`));
 
   test('does not retain a guard from a branch that may not run or after a reassignment', () => {
     const diagnostics = getDiagnostics(`

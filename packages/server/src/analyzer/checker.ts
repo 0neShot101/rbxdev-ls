@@ -785,7 +785,8 @@ const checkAssignment = (state: CheckerState, stmt: Assignment): void => {
 const checkCompoundAssignment = (state: CheckerState, stmt: CompoundAssignment): void => {
   const target = stmt.target;
   const symbol = target.kind === 'Identifier' ? lookupSymbol(state.env, target.name) : undefined;
-  const rejected = target.kind === 'Identifier' && symbol !== undefined && rejectConstReassignment(state, target, symbol);
+  const rejected =
+    target.kind === 'Identifier' && symbol !== undefined && rejectConstReassignment(state, target, symbol);
   const targetType = rejected
     ? AnyType
     : symbol === undefined
@@ -842,7 +843,12 @@ const checkIfStatement = (state: CheckerState, stmt: IfStatement): void => {
   for (const clause of stmt.elseifClauses) {
     inferExpression(state, clause.condition);
 
-    const nextWrites = checkConditionalBranch(state, clause.body, clause.range, extractNarrowing(state, clause.condition));
+    const nextWrites = checkConditionalBranch(
+      state,
+      clause.body,
+      clause.range,
+      extractNarrowing(state, clause.condition),
+    );
     if (writes === undefined) writes = nextWrites;
     else if (nextWrites !== undefined) for (const symbol of nextWrites) writes.add(symbol);
   }
